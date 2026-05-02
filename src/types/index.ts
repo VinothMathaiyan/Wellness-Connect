@@ -1,3 +1,19 @@
+// ─── Training Session (SCR-C05 / HomeScreen) ─────────────────────────────────
+export interface TrainingSession {
+  session_id: string;
+  session_name: string;
+  session_type: 'yoga' | 'strength' | 'cardio' | 'recovery' | string;
+  trainer_name: string;
+  scheduled_at: string;        // ISO 8601 datetime
+  duration_minutes: number;
+  status: 'upcoming' | 'live' | 'completed' | 'cancelled';
+  meeting_url?: string;
+}
+
+// ─── Weekly Report Status (SCR-C05 / HomeScreen) ─────────────────────────────
+export type WeeklyReportStatus = 'no_data' | 'generating' | 'ready';
+
+// ─── Health Profile (SCR-C02) ─────────────────────────────────────────────────
 export interface HealthProfile {
   dob?: string | null;
   gender?: string | null;
@@ -12,11 +28,13 @@ export interface HealthProfile {
   fitness_level?: string | null;
 }
 
+// ─── Assessment Booking (SCR-C03) ─────────────────────────────────────────────
 export interface AssessmentBooking {
   preferred_time?: string;
   status?: string;
 }
 
+// ─── Global App State ─────────────────────────────────────────────────────────
 export interface WellnessAppState extends HealthProfile, AssessmentBooking {
   // Screen 1: Sign Up
   full_name?: string;
@@ -27,7 +45,12 @@ export interface WellnessAppState extends HealthProfile, AssessmentBooking {
   data_consent?: boolean;
   consentTimestamp?: string;
   ipLogged?: boolean;
-  
+
+  // Screen 5: Dashboard (mocked until backend integration)
+  readinessScore?: number;
+  currentWeek?: number;
+  assessmentStatus?: 'pending' | 'scheduled' | 'completed' | null;
+
   // Dynamic signature to handle future extensions if needed temporarily
   [key: string]: any;
 }

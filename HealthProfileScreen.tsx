@@ -783,7 +783,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                       setShowConfirmBack(false);
                       onBack();
                     }}
-                    className="flex-1 py-3.5 bg-red-600 text-white rounded-xl text-sm font-medium"
+                    className="flex-1 py-3.5 bg-[#DC2626] text-white rounded-xl text-sm font-semibold shadow-sm active:scale-[0.98] transition-all"
                   >
                     Go back
                   </button>

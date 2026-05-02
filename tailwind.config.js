@@ -5,6 +5,13 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
     "./*.{js,ts,jsx,tsx}"
   ],
+  safelist: [
+    // Explicitly protect these from JIT purge — used in modal "Go back" buttons
+    // across root-level .tsx files which may not always be scanned
+    'bg-red-500',
+    'bg-red-600',
+    'bg-red-700',
+  ],
   theme: {
     extend: {
       colors: {
@@ -28,3 +35,4 @@ export default {
   },
   plugins: [],
 }
+
