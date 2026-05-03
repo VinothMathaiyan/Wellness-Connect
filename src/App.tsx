@@ -4,7 +4,9 @@ import HealthProfileScreen from '../HealthProfileScreen';
 import AssessmentBookingScreen from '../AssessmentBookingScreen';
 import AccountReadyScreen from '../AccountReadyScreen';
 import HomeScreen from '../HomeScreen';
-import type { WellnessAppState } from './types';
+import DailyCheckInScreen from '../DailyCheckInScreen';
+import MealLogScreen from '../MealLogScreen';
+import type { WellnessAppState, DailyLog, MealLog } from './types';
 
 function App() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -33,6 +35,26 @@ function App() {
   // ─── Step 4: Account Ready ──────────────────────────────────────────────────
   const handleGoToDashboard = (clientId: string) => {
     console.log('Navigating to Dashboard with Client ID:', clientId);
+    setCurrentStep(5);
+  };
+
+  // ─── Step 6: Daily Check-In ────────────────────────────────────
+  const handleDailyCheckInComplete = (log: DailyLog) => {
+    setAppState(prev => ({
+      ...prev,
+      dailyLog: log,
+      readinessScore: log.readiness_score ?? prev.readinessScore,
+      habitProgress: { done: 5, total: 5 },
+    }));
+    setCurrentStep(5);
+  };
+
+  // ─── Step 7: Meal Logger ────────────────────────────────────────
+  const handleMealLogComplete = (log: MealLog) => {
+    setAppState(prev => ({
+      ...prev,
+      mealLogs: [...(prev.mealLogs ?? []), log],
+    }));
     setCurrentStep(5);
   };
 
@@ -72,33 +94,49 @@ function App() {
       {currentStep === 5 && (
         <HomeScreen
           userData={{
-            full_name: appState.full_name ?? '',
-            readinessScore: 84,
-            currentWeek: 4,
-            assessmentStatus: 'pending',
-            habitProgress: { done: 1, total: 7 },
-            mealsLogged: 1,
+            full_name:          appState.full_name ?? '',
+            readinessScore:     appState.readinessScore ?? 84,
+            currentWeek:        4,
+            assessmentStatus:   'pending',
+            habitProgress:      appState.habitProgress ?? { done: 1, total: 5 },
+            mealsLogged:        (appState.mealLogs ?? []).length,
             weeklyReportStatus: 'no_data',
-            unReadAlertsCount: 0,
+            unReadAlertsCount:  0,
             sessions: [{
-              session_id: 'mock-001',
-              session_name: 'Power Yoga Flow',
-              session_type: 'yoga',
-              trainer_name: 'Priya Sharma',
-              scheduled_at: new Date(Date.now() + 5 * 60000).toISOString(),
-              duration_minutes: 45,
-              status: 'upcoming',
-              meeting_url: 'https://meet.example.com/session',
+              session_id:        'mock-001',
+              session_name:      'Power Yoga Flow',
+              session_type:      'yoga',
+              trainer_name:      'Priya Sharma',
+              scheduled_at:      new Date(Date.now() + 5 * 60000).toISOString(),
+              duration_minutes:  45,
+              status:            'upcoming',
+              meeting_url:       'https://meet.example.com/session',
             }],
           }}
-          onViewSession={(s) => console.log('Action Triggered: View Session', s)}
-          onStartCheckIn={() => console.log('Action Triggered: Start Check-In')}
-          onFindTrainer={() => console.log('Action Triggered: Find Trainer')}
-          onReviewGoals={() => console.log('Action Triggered: Review Goals')}
-          onTrackToday={() => console.log('Action Triggered: Track Today')}
-          onTrackNutrition={() => console.log('Action Triggered: Log your Meal')}
-          onProfileClick={() => console.log('Action Triggered: Profile')}
-          onViewWeeklyReport={() => console.log('Action Triggered: View Report')}
+          onViewSession={(s)      => console.log('Action Triggered: View Session', s)}
+          onStartCheckIn={()     => console.log('Action Triggered: Start Check-In')}
+          onFindTrainer={()      => console.log('Action Triggered: Find Trainer')}
+          onReviewGoals={()      => console.log('Action Triggered: Review Goals')}
+          onTrackToday={()       => setCurrentStep(6)}
+          onTrackNutrition={()   => setCurrentStep(7)}
+          onProfileClick={()     => console.log('Action Triggered: Profile')}
+          onViewWeeklyReport={()=> console.log('Action Triggered: View Report')}
+        />
+      )}
+
+      {currentStep === 6 && (
+        <DailyCheckInScreen
+          onBack={() => setCurrentStep(5)}
+          onComplete={handleDailyCheckInComplete}
+          existingLog={appState.dailyLog}
+        />
+      )}
+
+      {currentStep === 7 && (
+        <MealLogScreen
+          onBack={() => setCurrentStep(5)}
+          onComplete={handleMealLogComplete}
+          existingMeals={appState.mealLogs ?? []}
         />
       )}
     </>

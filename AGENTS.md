@@ -4,11 +4,12 @@ You are an autonomous AI software engineer. Your goal is to design, build, debug
 
 #### 📍 Current Project State (Handoff Checkpoint)
 * **Onboarding Flow (Steps 1-4):** Fully built and wired in `App.tsx`. Forward and 'Back' navigation is functional. User data is mapped accurately.
-* **Home Dashboard (Step 5):** The UI is built and accessible via the 'Go to Dashboard' button on Screen 4. 
-  * *UI Fixes Applied:* The scroll area correctly uses `pb-[72px]` so the bottom navigation doesn't hide content.
-  * *Interactivity:* Dashboard buttons currently trigger `console.log` events. 
-  * *Types:* `TrainingSession` and `WeeklyReportStatus` have been added to `src/types/index.ts`.
-* **Next Immediate Focus:** The agent taking over must review `HomeScreen.tsx` and begin wiring the specific sub-features (e.g., Meal Logging, Assessment flow) based on the next set of Excel specs in the `/input` folder.
+* **Home Dashboard (Step 5):** Fully built and wired. `readinessScore`, `habitProgress`, and `mealsLogged` now reflect **live state** from steps 6 & 7.
+* **Daily Check-in (Step 6):** ✅ Built — `DailyCheckInScreen.tsx` at project root. 5-step animated wizard (Sleep → Mood → Energy → Water → Workout). On completion, updates `appState.dailyLog`, `readinessScore`, and `habitProgress` in App.tsx. Maps to `daily_metrics` table.
+* **Meal Logger (Step 7):** ✅ Built — `MealLogScreen.tsx` at project root. Meal-type grid (Breakfast/Lunch/Dinner/Snack) + text description + quick-add chips. Appends to `appState.mealLogs[]`. Maps to `meal_logs` table.
+* **Types:** `DailyLog` and `MealLog` added to `src/types/index.ts` with full DB column comments. `WellnessAppState` extended with `dailyLog` and `mealLogs`.
+* **Remaining console.log stubs on HomeScreen:** `onViewSession`, `onFindTrainer`, `onViewWeeklyReport`, `onProfileClick`, nav "Progress", nav "Alerts".
+* **Next Immediate Focus:** Build the **Session Detail Screen (Step 8)** — triggered by tapping the Training card (`onViewSession`). Or build the **Trainer Discovery Screen** (nav "Trainers" → `onFindTrainer`).
 
 🌐 Ecosystem Awareness (CRITICAL)
 The Platform: This project consists of three integrated applications: Client App (Current Focus), Trainer App, and Assessment App.
