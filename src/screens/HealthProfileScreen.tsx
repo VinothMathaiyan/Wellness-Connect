@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Search, Check, AlertCircle, MapPin } from 'lucide-react';
-import type { HealthProfile } from './src/types';
-import Button from './src/components/Button';
-import Input from './src/components/Input';
-import ProgressBar from './src/components/ProgressBar';
+import type { HealthProfile } from '../types';
+import Button from '../components/Button';
+import Input from '../components/Input';
+import ProgressBar from '../components/ProgressBar';
 
 interface HealthProfileScreenProps {
   onBack: () => void;
@@ -13,19 +13,19 @@ interface HealthProfileScreenProps {
 }
 
 const CITIES = [
-  "Chennai", "Bangalore", "Mumbai", "Delhi", "Hyderabad", "Pune", 
-  "Kolkata", "Ahmedabad", "Jaipur", "Surat", "Kochi", "Coimbatore", 
-  "Madurai", "Visakhapatnam", "Chandigarh", "Indore", "Nagpur", 
+  "Chennai", "Bangalore", "Mumbai", "Delhi", "Hyderabad", "Pune",
+  "Kolkata", "Ahmedabad", "Jaipur", "Surat", "Kochi", "Coimbatore",
+  "Madurai", "Visakhapatnam", "Chandigarh", "Indore", "Nagpur",
   "Bhopal", "Lucknow", "Patna", "Bhubaneswar", "Guwahati"
 ];
 
 const GOAL_OPTIONS = [
-  "Weight loss", "Muscle gain", "Flexibility", "Endurance", 
+  "Weight loss", "Muscle gain", "Flexibility", "Endurance",
   "Stress relief", "Nutrition", "Wellness", "Rehabilitation", "Yoga"
 ];
 
 const CONDITION_OPTIONS = [
-  "Back pain", "Knee issue", "Diabetes", "Hypertension", 
+  "Back pain", "Knee issue", "Diabetes", "Hypertension",
   "Heart condition", "Respiratory issue", "Arthritis", "None"
 ];
 
@@ -157,8 +157,8 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
   const handleToggleGoal = (goal: string) => {
     setFormData(prev => ({
       ...prev,
-      fitnessGoals: prev.fitnessGoals.includes(goal) 
-        ? prev.fitnessGoals.filter(g => g !== goal) 
+      fitnessGoals: prev.fitnessGoals.includes(goal)
+        ? prev.fitnessGoals.filter(g => g !== goal)
         : [...prev.fitnessGoals, goal]
     }));
   };
@@ -169,8 +169,8 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
       const filtered = prev.conditions.filter(c => c !== "None");
       return {
         ...prev,
-        conditions: filtered.includes(condition) 
-          ? filtered.filter(c => c !== condition) 
+        conditions: filtered.includes(condition)
+          ? filtered.filter(c => c !== condition)
           : [...filtered, condition]
       };
     });
@@ -239,10 +239,10 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
     <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
       {/* Device Frame matching PNG layout */}
       <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
-        
+
         {/* Top Bar */}
         <header className="flex items-center px-4 py-4 bg-white sticky top-0 z-20">
-          <button 
+          <button
             type="button"
             onClick={() => {
               console.log('Back button clicked. isFormFilledEnough:', isFormFilledEnough);
@@ -252,7 +252,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 console.log('Calling onBack()');
                 onBack();
               }
-            }} 
+            }}
             className="p-1 -ml-1 text-text-primary relative z-50"
           >
             <ChevronLeft size={24} />
@@ -262,17 +262,17 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
           </div>
         </header>
 
-        <ProgressBar 
-          currentStep={2} 
-          totalSteps={4} 
+        <ProgressBar
+          currentStep={2}
+          totalSteps={4}
           title="helps us match you with the right trainer"
         />
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-6 pb-32 pt-2 space-y-10 scrollbar-hide">
-          
+
           {/* Support Banner */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-blue-light/50 border border-blue/10 p-4 rounded-xl flex gap-3"
@@ -286,7 +286,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
           {/* SECTION 1: PERSONAL DETAILS */}
           <section className="space-y-6">
             <h2 className="label-caps !text-[11px] text-text-secondary">Section 1 — Personal Details</h2>
-            
+
             {/* DOB */}
             <div className="space-y-2">
               <div className="flex justify-between items-center">
@@ -294,7 +294,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <Input 
+                <Input
                   type="number"
                   placeholder="DD"
                   maxLength={2}
@@ -303,7 +303,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                   onChange={(e) => setFormData(prev => ({ ...prev, dobDay: e.target.value.slice(0, 2) }))}
                   error={errors.dateOfBirth ? '' : undefined} // Only show the main error below
                 />
-                <Input 
+                <Input
                   type="number"
                   placeholder="MM"
                   maxLength={2}
@@ -311,7 +311,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                   value={formData.dobMonth}
                   onChange={(e) => setFormData(prev => ({ ...prev, dobMonth: e.target.value.slice(0, 2) }))}
                 />
-                <Input 
+                <Input
                   type="number"
                   placeholder="YYYY"
                   maxLength={4}
@@ -337,11 +337,10 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                   <button
                     key={opt}
                     onClick={() => setFormData(prev => ({ ...prev, gender: opt }))}
-                    className={`flex items-center gap-3 p-3 border rounded-xl transition-all ${
-                      formData.gender === opt 
-                        ? 'border-primary bg-green-light/20 text-primary font-medium' 
+                    className={`flex items-center gap-3 p-3 border rounded-xl transition-all ${formData.gender === opt
+                        ? 'border-primary bg-green-light/20 text-primary font-medium'
                         : 'border-gray-300 text-text-secondary'
-                    }`}
+                      }`}
                   >
                     <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${formData.gender === opt ? 'border-primary' : 'border-gray-300'}`}>
                       {formData.gender === opt && <div className="w-2 h-2 rounded-full bg-primary" />}
@@ -360,13 +359,13 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                   <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
                 </div>
                 <div className="flex bg-input-bg rounded-lg p-0.5 border border-gray-300 overflow-hidden">
-                  <button 
+                  <button
                     onClick={() => formData.heightUnit !== 'cm' && toggleHeightUnit()}
                     className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${formData.heightUnit === 'cm' ? 'bg-white shadow-sm text-primary' : 'text-text-secondary'}`}
                   >
                     cm
                   </button>
-                  <button 
+                  <button
                     onClick={() => formData.heightUnit !== 'ft/in' && toggleHeightUnit()}
                     className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${formData.heightUnit === 'ft/in' ? 'bg-white shadow-sm text-primary' : 'text-text-secondary'}`}
                   >
@@ -376,7 +375,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
               </div>
               <div className="flex gap-2">
                 {formData.heightUnit === 'cm' ? (
-                  <Input 
+                  <Input
                     type="number"
                     placeholder="170"
                     value={formData.heightValue}
@@ -386,18 +385,18 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 ) : (
                   <>
                     <div className="flex-1 relative">
-                      <Input 
-                        type="number" 
-                        placeholder="5" 
+                      <Input
+                        type="number"
+                        placeholder="5"
                         value={formData.heightValue}
                         onChange={(e) => setFormData(prev => ({ ...prev, heightValue: e.target.value }))}
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-text-secondary">ft</span>
                     </div>
                     <div className="flex-1 relative">
-                      <Input 
-                        type="number" 
-                        placeholder="10" 
+                      <Input
+                        type="number"
+                        placeholder="10"
                         value={formData.heightInches}
                         onChange={(e) => setFormData(prev => ({ ...prev, heightInches: e.target.value }))}
                       />
@@ -416,13 +415,13 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                   <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
                 </div>
                 <div className="flex bg-input-bg rounded-lg p-0.5 border border-gray-300 overflow-hidden">
-                  <button 
+                  <button
                     onClick={() => formData.weightUnit !== 'kg' && toggleWeightUnit()}
                     className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${formData.weightUnit === 'kg' ? 'bg-white shadow-sm text-primary' : 'text-text-secondary'}`}
                   >
                     kg
                   </button>
-                  <button 
+                  <button
                     onClick={() => formData.weightUnit !== 'lbs' && toggleWeightUnit()}
                     className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${formData.weightUnit === 'lbs' ? 'bg-white shadow-sm text-primary' : 'text-text-secondary'}`}
                   >
@@ -430,7 +429,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                   </button>
                 </div>
               </div>
-              <Input 
+              <Input
                 type="number"
                 step="0.1"
                 placeholder={formData.weightUnit === 'kg' ? "70" : "154"}
@@ -449,9 +448,8 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
               <button
                 type="button"
                 onClick={() => setIsCitySheetOpen(true)}
-                className={`w-full flex items-center justify-between p-3.5 bg-input-bg border rounded-xl text-left transition-all ${
-                  errors.city ? 'border-red-500 ring-1 ring-red-500/20' : 'border-gray-300'
-                }`}
+                className={`w-full flex items-center justify-between p-3.5 bg-input-bg border rounded-xl text-left transition-all ${errors.city ? 'border-red-500 ring-1 ring-red-500/20' : 'border-gray-300'
+                  }`}
               >
                 <span className={`text-[14px] ${formData.city ? 'text-text-primary' : 'text-text-secondary opacity-60'}`}>
                   {formData.city || "Select your city"}
@@ -476,18 +474,17 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 <button
                   key={goal}
                   onClick={() => handleToggleGoal(goal)}
-                  className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
-                    formData.fitnessGoals.includes(goal)
+                  className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${formData.fitnessGoals.includes(goal)
                       ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
                       : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
-                  }`}
+                    }`}
                 >
                   {goal}
                 </button>
               ))}
             </div>
             {formData.fitnessGoals.includes("Rehabilitation") && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-amber-light/30 border border-amber/20 p-4 rounded-xl flex gap-3"
@@ -515,18 +512,17 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 <button
                   key={cond}
                   onClick={() => handleToggleCondition(cond)}
-                  className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
-                    formData.conditions.includes(cond)
+                  className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${formData.conditions.includes(cond)
                       ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
                       : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
-                  }`}
+                    }`}
                 >
                   {cond}
                 </button>
               ))}
             </div>
             {(formData.conditions.includes("Heart condition") || formData.conditions.includes("Respiratory issue")) && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-red-light/30 border border-red-500/20 p-4 rounded-xl flex gap-3"
@@ -542,7 +538,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
           {/* SECTION 4: ACTIVITY & FITNESS LEVEL */}
           <section className="space-y-10">
             <h2 className="label-caps !text-[11px] text-text-secondary">Section 4 — Activity & Fitness Level</h2>
-            
+
             {/* Activity Level Slider */}
             <div className="space-y-8">
               <div className="flex justify-between items-center">
@@ -550,7 +546,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
               </div>
               <div className="px-2">
-                <input 
+                <input
                   type="range"
                   min="1"
                   max="5"
@@ -583,12 +579,12 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 <div className="relative mt-4 h-12">
                   <div className="absolute inset-0 flex justify-between pointer-events-none">
                     {ACTIVITY_LABELS.map((label, i) => (
-                      <div 
+                      <div
                         key={label}
                         className="flex flex-col items-center"
                         style={{ width: '1%', minWidth: '60px', marginLeft: i === 0 ? '-15px' : '0', marginRight: i === 4 ? '-15px' : '0' }}
                       >
-                        <span 
+                        <span
                           className={`text-[9px] font-semibold leading-tight text-center transition-colors ${formData.activityLevel === i + 1 ? 'text-primary' : 'text-text-secondary opacity-60'}`}
                           style={{ width: '60px' }}
                         >
@@ -623,11 +619,10 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                   <button
                     key={level}
                     onClick={() => setFormData(prev => ({ ...prev, fitnessLevel: level }))}
-                    className={`flex-1 py-3.5 rounded-lg text-[13px] font-medium transition-all ${
-                      formData.fitnessLevel === level
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'bg-transparent text-text-secondary hover:bg-white/50'
-                    }`}
+                    className={`flex-1 py-3.5 rounded-lg text-[13px] font-medium transition-all ${formData.fitnessLevel === level
+                        ? 'bg-primary text-white shadow-sm'
+                        : 'bg-transparent text-text-secondary hover:bg-white/50'
+                      }`}
                   >
                     {level}
                   </button>
@@ -652,14 +647,14 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
         <AnimatePresence>
           {isCitySheetOpen && (
             <>
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="absolute inset-0 bg-black/40 z-[60]"
                 onClick={() => setIsCitySheetOpen(false)}
               />
-              <motion.div 
+              <motion.div
                 initial={{ y: "100%" }}
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
@@ -667,11 +662,11 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 className="absolute bottom-0 w-full bg-white rounded-t-3xl z-[70] flex flex-col max-h-[85%]"
               >
                 <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto my-3 shrink-0" />
-                
+
                 <div className="px-6 pb-4 border-b border-gray-200">
                   <h3 className="text-lg font-bold mb-4">Select City</h3>
                   <div className="relative">
-                    <Input 
+                    <Input
                       type="text"
                       placeholder="Search cities..."
                       className="!pl-10"
@@ -693,7 +688,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                       {formData.city === city && <Check size={18} className="text-primary" />}
                     </button>
                   ))}
-                  
+
                   {filteredCities.length === 0 && (
                     <div className="p-8 text-center text-text-secondary text-sm">
                       No results for "{citySearch}"
@@ -702,7 +697,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 </div>
 
                 <div className="p-4 border-t border-gray-200">
-                  <button 
+                  <button
                     onClick={() => setIsCustomCity(true)}
                     className="w-full py-4 text-primary text-sm font-semibold hover:bg-[#E6F3F0] rounded-xl transition-colors"
                   >
@@ -712,7 +707,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
 
                 <AnimatePresence>
                   {isCustomCity && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, x: "100%" }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: "100%" }}
@@ -726,7 +721,7 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                       <div className="space-y-6">
                         <div className="space-y-2">
                           <label className="text-sm font-medium text-text-secondary">Enter your city name</label>
-                          <Input 
+                          <Input
                             type="text"
                             placeholder="e.g. Pune"
                             autoFocus

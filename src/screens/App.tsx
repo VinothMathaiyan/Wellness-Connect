@@ -1,12 +1,17 @@
-import { useState } from 'react';
-import SignUpScreen from '../SignUpScreen';
-import HealthProfileScreen from '../HealthProfileScreen';
-import AssessmentBookingScreen from '../AssessmentBookingScreen';
-import AccountReadyScreen from '../AccountReadyScreen';
-import HomeScreen from '../HomeScreen';
-import DailyCheckInScreen from '../DailyCheckInScreen';
-import NutritionLogFlow from '../NutritionLogFlow';
-import type { WellnessAppState, DailyLog, MealLog, NutritionMealEntry } from './types';
+import { useState } from "react";
+import SignUpScreen from "./SignUpScreen";
+import HealthProfileScreen from "./HealthProfileScreen";
+import AssessmentBookingScreen from "./AssessmentBookingScreen";
+import AccountReadyScreen from "./AccountReadyScreen";
+import HomeScreen from "./HomeScreen";
+import DailyCheckInScreen from "./DailyCheckInScreen";
+import NutritionLogFlow from "./NutritionLogFlow";
+import type {
+  WellnessAppState,
+  DailyLog,
+  NutritionMealEntry,
+  MealLog
+} from '../types';
 
 // Stable mock session time — computed once at module level to keep renders pure
 const MOCK_SESSION_AT = new Date(Date.now() + 5 * 60000).toISOString();
@@ -57,15 +62,15 @@ function App() {
     const newLogs: MealLog[] = payload.meals
       .filter(m => m.items.length > 0)
       .map(m => ({
-        meal_type: (['breakfast','lunch','dinner','snack'].includes(m.type.toLowerCase())
+        meal_type: (['breakfast', 'lunch', 'dinner', 'snack'].includes(m.type.toLowerCase())
           ? m.type.toLowerCase()
           : 'snack') as MealLog['meal_type'],
         description: m.items.map(i => i.name).join(', '),
         total_calories: m.items.reduce((s, i) => s + i.calories, 0),
         macros_json: {
           protein_g: m.items.reduce((s, i) => s + i.protein, 0),
-          carbs_g:   m.items.reduce((s, i) => s + i.carbs,   0),
-          fat_g:     m.items.reduce((s, i) => s + i.fat,     0),
+          carbs_g: m.items.reduce((s, i) => s + i.carbs, 0),
+          fat_g: m.items.reduce((s, i) => s + i.fat, 0),
         },
         logged_at: new Date().toISOString(),
       }));
@@ -112,33 +117,33 @@ function App() {
       {currentStep === 5 && (
         <HomeScreen
           userData={{
-            full_name:          appState.full_name ?? '',
-            readinessScore:     appState.readinessScore ?? 84,
-            currentWeek:        4,
-            assessmentStatus:   'pending',
-            habitProgress:      appState.habitProgress ?? { done: 1, total: 5 },
-            mealsLogged:        (appState.mealLogs ?? []).length,
+            full_name: appState.full_name ?? '',
+            readinessScore: appState.readinessScore ?? 84,
+            currentWeek: 4,
+            assessmentStatus: 'pending',
+            habitProgress: appState.habitProgress ?? { done: 1, total: 5 },
+            mealsLogged: (appState.mealLogs ?? []).length,
             weeklyReportStatus: 'no_data',
-            unReadAlertsCount:  0,
+            unReadAlertsCount: 0,
             sessions: [{
-              session_id:        'mock-001',
-              session_name:      'Power Yoga Flow',
-              session_type:      'yoga',
-              trainer_name:      'Priya Sharma',
-              scheduled_at:      MOCK_SESSION_AT,
-              duration_minutes:  45,
-              status:            'upcoming',
-              meeting_url:       'https://meet.example.com/session',
+              session_id: 'mock-001',
+              session_name: 'Power Yoga Flow',
+              session_type: 'yoga',
+              trainer_name: 'Priya Sharma',
+              scheduled_at: MOCK_SESSION_AT,
+              duration_minutes: 45,
+              status: 'upcoming',
+              meeting_url: 'https://meet.example.com/session',
             }],
           }}
-          onViewSession={(s)      => console.log('Action Triggered: View Session', s)}
-          onStartCheckIn={()     => setCurrentStep(6)}
-          onFindTrainer={()      => console.log('Action Triggered: Find Trainer')}
-          onReviewGoals={()      => console.log('Action Triggered: Review Goals')}
-          onTrackToday={()       => setCurrentStep(6)}
-          onTrackNutrition={()   => setCurrentStep(7)}
-          onProfileClick={()     => console.log('Action Triggered: Profile')}
-          onViewWeeklyReport={()=> console.log('Action Triggered: View Report')}
+          onViewSession={(s) => console.log('Action Triggered: View Session', s)}
+          onStartCheckIn={() => setCurrentStep(6)}
+          onFindTrainer={() => console.log('Action Triggered: Find Trainer')}
+          onReviewGoals={() => console.log('Action Triggered: Review Goals')}
+          onTrackToday={() => setCurrentStep(6)}
+          onTrackNutrition={() => setCurrentStep(7)}
+          onProfileClick={() => console.log('Action Triggered: Profile')}
+          onViewWeeklyReport={() => console.log('Action Triggered: View Report')}
         />
       )}
 

@@ -1,7 +1,0 @@
-Screen ID,Role,Screen Name,Field Name,Field Type,Placeholder / Default,Validation Rules,Error Message,Required,DB Table.Column,Dev Notes / Behaviour
-▸  ONBOARDING,,,,,,,,,,
-SCR-C01,Client,Registration,Full Name,Text Input,Full name,"Min 2 characters, letters only",Please enter your full name,Yes,users.full_name,"Step 1 of 4 Onboarding flow. Stored on submit, displayed in profile."
-SCR-C01,Client,Registration,Mobile Number,Text Input,10-digit mobile number,10 digits exactly,Please enter a valid 10-digit mobile number,Yes,users.phone_number,"Used for Send OTP & continue button, must be unique."
-SCR-C01,Client,Registration,Email Address,Text Input,Email address,Valid email format,Please enter a valid email address,No,users.email,Optional field for communications.
-SCR-C01,Client,Registration,Consent,Checkbox,—,Must be checked,You must agree to the Privacy Policy and Medical Disclaimer,Yes,consent_records.consent_status,"Records timestamp, agrees to Privacy Policy & Medical Disclaimer."
-SCR-C01,Client,Registration,OTP Code,Text Input,Enter OTP,Numeric only,Please enter a valid OTP,Yes,users.otp_code,Verifies mobile number.

@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronLeft, Plus, Camera, Trash2, CheckCircle2, Upload,
 } from 'lucide-react';
-import type { FoodItem, MealLog, NutritionMealEntry } from './src/types';
-import { Badge } from './src/components/Common';
+import type { FoodItem, MealLog, NutritionMealEntry } from '../types';
+import { Badge } from "../components/Common";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -12,15 +12,15 @@ type MealKind = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 const MEAL_META: Record<MealKind, { label: string; emoji: string; accent: string; bg: string }> = {
   breakfast: { label: 'Breakfast', emoji: '🥞', accent: '#F59E0B', bg: '#FFF7ED' },
-  lunch:     { label: 'Lunch',     emoji: '🥗', accent: '#10B981', bg: '#ECFDF5' },
-  dinner:    { label: 'Dinner',    emoji: '🍲', accent: '#3B82F6', bg: '#EFF6FF' },
-  snack:     { label: 'Snack',     emoji: '🍎', accent: '#A855F7', bg: '#FDF4FF' },
+  lunch: { label: 'Lunch', emoji: '🥗', accent: '#10B981', bg: '#ECFDF5' },
+  dinner: { label: 'Dinner', emoji: '🍲', accent: '#3B82F6', bg: '#EFF6FF' },
+  snack: { label: 'Snack', emoji: '🍎', accent: '#A855F7', bg: '#FDF4FF' },
 };
 
 const MOCK_ITEMS: FoodItem[] = [
-  { id: '101', name: 'Grilled Chicken', quantity: 200, unit: 'g',   calories: 330, protein: 58, carbs: 0,  fat: 9,  confidence: 'High'   },
-  { id: '102', name: 'Fresh Avocado',   quantity: 1,   unit: 'pcs', calories: 120, protein: 2,  carbs: 6,  fat: 12, confidence: 'High'   },
-  { id: '103', name: 'Boiled Rice',     quantity: 150, unit: 'g',   calories: 165, protein: 4,  carbs: 35, fat: 1,  confidence: 'Medium' },
+  { id: '101', name: 'Grilled Chicken', quantity: 200, unit: 'g', calories: 330, protein: 58, carbs: 0, fat: 9, confidence: 'High' },
+  { id: '102', name: 'Fresh Avocado', quantity: 1, unit: 'pcs', calories: 120, protein: 2, carbs: 6, fat: 12, confidence: 'High' },
+  { id: '103', name: 'Boiled Rice', quantity: 150, unit: 'g', calories: 165, protein: 4, carbs: 35, fat: 1, confidence: 'Medium' },
 ];
 
 const CAPTURE_IMAGE = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=400&auto=format&fit=crop';
@@ -64,11 +64,11 @@ interface NutritionLogFlowProps {
 
 export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlowProps) {
   const [subScreen, setSubScreen] = useState<1 | 2 | 3>(1);
-  const [mealKind, setMealKind]   = useState<MealKind | null>(null);
-  const [captured, setCaptured]   = useState(false);
-  const [scanning, setScanning]   = useState(false);
-  const [items, setItems]         = useState<FoodItem[]>([]);
-  const [saved, setSaved]         = useState(false);
+  const [mealKind, setMealKind] = useState<MealKind | null>(null);
+  const [captured, setCaptured] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [items, setItems] = useState<FoodItem[]>([]);
+  const [saved, setSaved] = useState(false);
 
   // ── Derived macros ──
   const totals = items.reduce(
@@ -106,11 +106,11 @@ export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlo
   const handleConfirmSave = () => {
     if (!mealKind) return;
     const payload: MealLog = {
-      meal_type:      mealKind,
-      description:    items.map(i => i.name).join(', '),
+      meal_type: mealKind,
+      description: items.map(i => i.name).join(', '),
       total_calories: totals.cal,
-      macros_json:    { protein_g: totals.pro, carbs_g: totals.carb, fat_g: totals.fat },
-      logged_at:      new Date().toISOString(),
+      macros_json: { protein_g: totals.pro, carbs_g: totals.carb, fat_g: totals.fat },
+      logged_at: new Date().toISOString(),
     };
     console.log('[meal_logs] Saving payload:', payload);
     setSaved(true);
@@ -185,7 +185,7 @@ export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlo
           {!captured && !scanning && (
             <>
               {[['top-3 left-3 border-t-2 border-l-2', ''], ['top-3 right-3 border-t-2 border-r-2', ''],
-                ['bottom-3 left-3 border-b-2 border-l-2', ''], ['bottom-3 right-3 border-b-2 border-r-2', '']
+              ['bottom-3 left-3 border-b-2 border-l-2', ''], ['bottom-3 right-3 border-b-2 border-r-2', '']
               ].map(([pos], i) => (
                 <div key={i} className={`absolute w-6 h-6 border-white/60 rounded-sm ${pos}`} />
               ))}
@@ -238,9 +238,9 @@ export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlo
         style={{ backgroundColor: meta?.bg ?? '#ECFDF5' }}>
         {[
           { l: 'Calories', v: totals.cal, u: 'kcal' },
-          { l: 'Protein',  v: totals.pro, u: 'g' },
-          { l: 'Carbs',    v: totals.carb, u: 'g' },
-          { l: 'Fat',      v: totals.fat,  u: 'g' },
+          { l: 'Protein', v: totals.pro, u: 'g' },
+          { l: 'Carbs', v: totals.carb, u: 'g' },
+          { l: 'Fat', v: totals.fat, u: 'g' },
         ].map(m => (
           <div key={m.l} className="flex flex-col items-center">
             <span className="text-[15px] font-black" style={{ color: meta?.accent ?? '#10B981' }}>{m.v}{m.u}</span>
@@ -360,9 +360,9 @@ export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlo
           <div className="bg-white rounded-2xl border border-[#E5E7EB] py-5 px-4">
             <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest mb-5 text-center">Macro Breakdown</p>
             <div className="flex justify-around items-center">
-              <DonutChart value={totals.pro}  total={macroKcal / 4} color="#10B981" label="Protein" unit="g" />
-              <DonutChart value={totals.carb} total={macroKcal / 4} color="#F59E0B" label="Carbs"   unit="g" />
-              <DonutChart value={totals.fat}  total={macroKcal / 9} color="#EF4444" label="Fat"     unit="g" />
+              <DonutChart value={totals.pro} total={macroKcal / 4} color="#10B981" label="Protein" unit="g" />
+              <DonutChart value={totals.carb} total={macroKcal / 4} color="#F59E0B" label="Carbs" unit="g" />
+              <DonutChart value={totals.fat} total={macroKcal / 9} color="#EF4444" label="Fat" unit="g" />
             </div>
           </div>
 

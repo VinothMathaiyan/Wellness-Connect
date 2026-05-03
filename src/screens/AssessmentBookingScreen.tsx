@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Info } from 'lucide-react';
-import Button from './src/components/Button';
-import ProgressBar from './src/components/ProgressBar';
-import type { AssessmentBooking } from './src/types';
+import Button from '../components/Button';
+import ProgressBar from '../components/ProgressBar';
+import type { AssessmentBooking } from '../types';
 
 interface AssessmentBookingScreenProps {
   onBack: () => void;
@@ -31,17 +31,17 @@ export default function AssessmentBookingScreen({ onBack, onConfirm, initialData
     <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
       {/* Device Frame */}
       <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
-        
+
         {/* Top Bar */}
         <header className="flex items-center px-4 py-4 bg-white sticky top-0 z-20">
-          <button 
-            onClick={() => setShowConfirmBack(true)} 
+          <button
+            onClick={() => setShowConfirmBack(true)}
             className="p-1 -ml-1 text-text-primary relative z-50"
           >
             <ChevronLeft size={24} />
           </button>
           <div className="flex-1 flex justify-center -ml-6">
-             <h1 className="text-primary font-bold text-xl tracking-tight">WellnessConnect</h1>
+            <h1 className="text-primary font-bold text-xl tracking-tight">WellnessConnect</h1>
           </div>
         </header>
 
@@ -50,7 +50,7 @@ export default function AssessmentBookingScreen({ onBack, onConfirm, initialData
 
         {/* Main Content */}
         <main className="flex-1 px-6 pb-32 space-y-8 overflow-y-auto scrollbar-hide pt-2">
-          
+
           {/* Info Card */}
           <section className="bg-white border-l-[3px] border-primary shadow-sm rounded-r-xl p-5 border-y border-r border-border-light">
             <div className="flex gap-3">
@@ -60,8 +60,8 @@ export default function AssessmentBookingScreen({ onBack, onConfirm, initialData
               <div className="space-y-3">
                 <h2 className="text-[13px] font-medium text-text-primary">Our assessment team will contact you</h2>
                 <p className="text-[12px] text-text-secondary leading-[1.6]">
-                  A certified assessment expert will call you within 24 hours to 
-                  conduct your detailed health profile review. This helps us match 
+                  A certified assessment expert will call you within 24 hours to
+                  conduct your detailed health profile review. This helps us match
                   you with the best trainer for your goals.
                 </p>
                 <div className="flex items-center gap-2">
@@ -80,11 +80,10 @@ export default function AssessmentBookingScreen({ onBack, onConfirm, initialData
                 <button
                   key={option.label}
                   onClick={() => setPreferredTime(option.label)}
-                  className={`flex items-center justify-between px-4 py-3.5 rounded-xl border transition-all ${
-                    preferredTime === option.label
+                  className={`flex items-center justify-between px-4 py-3.5 rounded-xl border transition-all ${preferredTime === option.label
                       ? 'border-primary bg-green-light/30 ring-1 ring-primary'
                       : 'border-border-light bg-input-bg text-text-secondary'
-                  }`}
+                    }`}
                 >
                   <div className="flex flex-col items-start translate-y-[-1px]">
                     <span className={`text-[13px] font-semibold ${preferredTime === option.label ? 'text-primary' : 'text-text-primary'}`}>
@@ -92,9 +91,8 @@ export default function AssessmentBookingScreen({ onBack, onConfirm, initialData
                     </span>
                     <span className="text-[11px] opacity-70">{option.window}</span>
                   </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                    preferredTime === option.label ? 'border-primary bg-primary' : 'border-border'
-                  }`}>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${preferredTime === option.label ? 'border-primary bg-primary' : 'border-border'
+                    }`}>
                     {preferredTime === option.label && <div className="w-2 h-2 rounded-full bg-white" />}
                   </div>
                 </button>
@@ -108,14 +106,13 @@ export default function AssessmentBookingScreen({ onBack, onConfirm, initialData
             <div className="space-y-6 relative">
               {/* Connecting Line */}
               <div className="absolute left-[13px] top-4 bottom-4 w-[1px] bg-border-light" />
-              
+
               {steps.map((step) => (
                 <div key={step.number} className="flex gap-4 relative z-10">
-                  <div className={`w-[26px] h-[26px] rounded-full flex items-center justify-center text-[12px] font-bold border-2 shrink-0 ${
-                    step.active 
-                      ? 'bg-primary border-primary text-white' 
+                  <div className={`w-[26px] h-[26px] rounded-full flex items-center justify-center text-[12px] font-bold border-2 shrink-0 ${step.active
+                      ? 'bg-primary border-primary text-white'
                       : 'bg-white border-border-light text-text-secondary'
-                  }`}>
+                    }`}>
                     {step.number}
                   </div>
                   <div className="flex flex-col mt-0.5">

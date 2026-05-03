@@ -1,30 +1,23 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import { useState, useEffect, useRef, KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, type KeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import type { WellnessAppState } from '../types';
+import Button from '../components/Button';
+import Input from '../components/Input';
+import ProgressBar from '../components/ProgressBar';
 
 interface SignUpScreenProps {
-  onSuccess: (data: { 
-    full_name: string; 
-    mobile: string; 
-    email: string;
-    privacy_accepted: boolean;
-    medical_disclaimer: boolean;
-    data_consent: boolean;
-  }) => void;
+  onSuccess: (data: Partial<WellnessAppState>) => void;
+  initialData?: Partial<WellnessAppState>;
 }
 
-export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
+export default function SignUpScreen({ onSuccess, initialData }: SignUpScreenProps) {
   // Form State
   const [formData, setFormData] = useState({
-    full_name: '',
-    mobile: '',
-    email: '',
-    consent: false
+    full_name: initialData?.full_name || '',
+    mobile: initialData?.mobile || '',
+    email: initialData?.email || '',
+    consent: initialData?.data_consent || false
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isTouched, setIsTouched] = useState<Record<string, boolean>>({});
@@ -83,11 +76,15 @@ export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
     }
   };
 
-  const isFormValid = 
+  const isFormValid =
     validateField('full_name', formData.full_name) === "" &&
     validateField('mobile', formData.mobile) === "" &&
     validateField('email', formData.email) === "" &&
     formData.consent === true;
+
+  const hasPreviouslyVerified = !!initialData?.consentTimestamp;
+  const isMobileUnchanged = initialData?.mobile === formData.mobile;
+  const canSkipOtp = hasPreviouslyVerified && isMobileUnchanged;
 
   // OTP Handlers
   const handleSendOtp = async () => {
@@ -102,6 +99,15 @@ export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
       });
       return;
     }
+
+    if (canSkipOtp) {
+      setIsLoading(true);
+      await new Promise(resolve => setTimeout(resolve, 500)); // Brief simulated loading
+      setIsSuccess(true);
+      setTimeout(() => onSuccess({ ...initialData, ...formData }), 500);
+      return;
+    }
+
     setIsLoading(true);
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -145,14 +151,16 @@ export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
     if (inputOtp === '123456') { // Mock success OTP
       setIsSuccess(true);
       const consentData = {
-        ...formData,
+        full_name: formData.full_name,
+        mobile: formData.mobile,
+        email: formData.email,
         consentTimestamp: new Date().toISOString(),
         privacy_accepted: true,
         medical_disclaimer: true,
         data_consent: true,
         ipLogged: true
       };
-      setTimeout(() => onSuccess(consentData as any), 1000);
+      setTimeout(() => onSuccess(consentData), 1000);
     } else {
       const newAttempts = otpAttempts + 1;
       setOtpAttempts(newAttempts);
@@ -167,7 +175,7 @@ export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
   };
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (isOtpSent && timer > 0) {
       interval = setInterval(() => setTimer(t => t - 1), 1000);
     }
@@ -178,77 +186,64 @@ export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
     <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
       {/* Device Frame matching PNG layout */}
       <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
-        
+
         {/* Wordmark */}
         <div className="py-6 flex justify-center mt-4">
-          <h1 className="text-[#00A99D] font-bold text-xl tracking-tight">WellnessConnect</h1>
+          <h1 className="text-primary font-bold text-xl tracking-tight">WellnessConnect</h1>
         </div>
 
-        {/* Progress Bar */}
-        <div className="w-full h-1 bg-gray-200">
-          <div className="h-full bg-[#00A99D] w-1/4 transition-all duration-500" />
-        </div>
-        <p className="px-6 py-4 text-[13px] text-gray-500">Step 1 of 4</p>
+        <ProgressBar currentStep={1} totalSteps={4} />
 
         {/* Form Section */}
         <div className="flex-1 px-6 pt-2 pb-28 overflow-y-auto space-y-4">
-          <div>
-            <input
-              type="text"
-              placeholder="Full name"
-              className={`w-full px-4 py-3.5 rounded-lg border ${errors.full_name ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20' : 'border-gray-300 focus:border-[#00A99D] focus:ring-1 focus:ring-[#00A99D]'} bg-[#F8F9FA] focus:bg-white outline-none transition-all placeholder-gray-400 text-gray-800 text-[15px]`}
-              value={formData.full_name}
-              onChange={(e) => handleChange('full_name', e.target.value)}
-              onBlur={() => handleBlur('full_name')}
-              disabled={isOtpSent}
-            />
-            {errors.full_name && <p className="text-red-500 text-[11px] mt-1.5 ml-1">{errors.full_name}</p>}
-          </div>
+          <Input
+            type="text"
+            placeholder="Full name"
+            value={formData.full_name}
+            onChange={(e) => handleChange('full_name', e.target.value)}
+            onBlur={() => handleBlur('full_name')}
+            disabled={isOtpSent}
+            error={errors.full_name}
+          />
 
-          <div>
-            <input
-              type="tel"
-              placeholder="10-digit mobile number"
-              className={`w-full px-4 py-3.5 rounded-lg border ${errors.mobile ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20' : 'border-gray-300 focus:border-[#00A99D] focus:ring-1 focus:ring-[#00A99D]'} bg-[#F8F9FA] focus:bg-white outline-none transition-all placeholder-gray-400 text-gray-800 text-[15px]`}
-              value={formData.mobile}
-              onChange={(e) => handleChange('mobile', e.target.value)}
-              onBlur={() => handleBlur('mobile')}
-              disabled={isOtpSent}
-            />
-            {errors.mobile && <p className="text-red-500 text-[11px] mt-1.5 ml-1">{errors.mobile}</p>}
-          </div>
+          <Input
+            type="tel"
+            placeholder="10-digit mobile number"
+            value={formData.mobile}
+            onChange={(e) => handleChange('mobile', e.target.value)}
+            onBlur={() => handleBlur('mobile')}
+            disabled={isOtpSent}
+            error={errors.mobile}
+          />
 
-          <div>
-            <input
-              type="email"
-              placeholder="Email address"
-              className={`w-full px-4 py-3.5 rounded-lg border ${errors.email ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20' : 'border-gray-300 focus:border-[#00A99D] focus:ring-1 focus:ring-[#00A99D]'} bg-[#F8F9FA] focus:bg-white outline-none transition-all placeholder-gray-400 text-gray-800 text-[15px]`}
-              value={formData.email}
-              onChange={(e) => handleChange('email', e.target.value)}
-              onBlur={() => handleBlur('email')}
-              disabled={isOtpSent}
-            />
-            {errors.email && <p className="text-red-500 text-[11px] mt-1.5 ml-1">{errors.email}</p>}
-          </div>
+          <Input
+            type="email"
+            placeholder="Email address"
+            value={formData.email}
+            onChange={(e) => handleChange('email', e.target.value)}
+            onBlur={() => handleBlur('email')}
+            disabled={isOtpSent}
+            error={errors.email}
+          />
 
           {/* Consent Block */}
           <div className="pt-3 flex items-start gap-3">
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               id="consent"
-              className="mt-1 w-4 h-4 text-[#00A99D] border-gray-300 rounded focus:ring-[#00A99D] cursor-pointer"
+              className="mt-1 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary cursor-pointer"
               checked={formData.consent}
               onChange={(e) => handleChange('consent', e.target.checked)}
               disabled={isOtpSent}
             />
             <div>
-              <label htmlFor="consent" className="text-[12px] text-gray-500 leading-relaxed cursor-pointer select-none block">
+              <label htmlFor="consent" className="text-[12px] text-text-secondary leading-relaxed cursor-pointer select-none block">
                 By continuing you agree to our{' '}
-                <span className="text-[#00A99D] font-medium hover:underline">Privacy Policy</span> and{' '}
-                <span className="text-[#00A99D] font-medium hover:underline">Medical Disclaimer</span>.{' '}
+                <span className="text-primary font-medium hover:underline">Privacy Policy</span> and{' '}
+                <span className="text-primary font-medium hover:underline">Medical Disclaimer</span>.{' '}
                 Your consent will be recorded with a timestamp.
               </label>
-              {isTouched.consent && errors.consent && <p className="text-red-500 text-[11px] mt-1.5">{errors.consent}</p>}
+              {isTouched.consent && errors.consent && <p className="text-red text-[11px] mt-1.5">{errors.consent}</p>}
             </div>
           </div>
 
@@ -261,18 +256,18 @@ export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden bg-[#E6F3F0] p-5 rounded-xl space-y-4 mt-6"
               >
-                <p className="text-[13px] text-gray-700 text-center font-medium">Enter 6-digit OTP sent to your mobile</p>
+                <p className="text-[13px] text-text-primary text-center font-medium">Enter 6-digit OTP sent to your mobile</p>
                 <div className="flex justify-between gap-2 px-1">
                   {otp.map((digit, i) => (
                     <input
                       key={i}
-                      ref={(el) => (otpRefs.current[i] = el)}
+                      ref={(el) => { otpRefs.current[i] = el; }}
                       type="tel"
                       maxLength={1}
                       value={digit}
                       onChange={(e) => handleOtpChange(i, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                      className="w-10 h-12 text-center bg-white border border-gray-300 rounded-lg text-lg font-semibold focus:border-[#00A99D] focus:ring-1 focus:ring-[#00A99D] outline-none transition-colors"
+                      className="w-10 h-12 text-center bg-white border border-gray-300 rounded-lg text-lg font-semibold focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors"
                       disabled={isLoading || otpAttempts >= 3}
                     />
                   ))}
@@ -280,11 +275,11 @@ export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
 
                 <div className="text-center">
                   {timer > 0 ? (
-                    <p className="text-xs text-gray-500">Resend OTP in 0:{timer < 10 ? `0${timer}` : timer}</p>
+                    <p className="text-xs text-text-secondary">Resend OTP in 0:{timer < 10 ? `0${timer}` : timer}</p>
                   ) : (
-                    <button 
+                    <button
                       onClick={handleSendOtp}
-                      className="text-[#00A99D] text-xs font-semibold hover:underline"
+                      className="text-primary text-xs font-semibold hover:underline"
                       disabled={isLoading || otpAttempts >= 3}
                     >
                       Resend OTP
@@ -293,7 +288,7 @@ export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
                 </div>
 
                 {otpError && (
-                  <div className="flex items-center justify-center gap-1.5 text-red-500">
+                  <div className="flex items-center justify-center gap-1.5 text-red">
                     <AlertTriangle size={14} />
                     <p className="text-[11px] font-medium">{otpError}</p>
                   </div>
@@ -305,21 +300,14 @@ export default function SignUpScreen({ onSuccess }: SignUpScreenProps) {
 
         {/* CTA Button */}
         <div className="absolute bottom-0 w-full p-6 bg-white z-10 rounded-b-[2rem] border-t border-gray-100">
-          <button
+          <Button
             onClick={handleSendOtp}
-            disabled={!isFormValid || isOtpSent || isLoading}
-            className={`w-full py-3.5 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all ${
-              (!isFormValid || isOtpSent || isLoading) ? 'bg-[#95D5C2] opacity-80 cursor-not-allowed' : 'bg-[#7ECBAF] hover:bg-[#68BEA0]'
-            }`}
+            disabled={!isFormValid || isOtpSent}
+            isLoading={isLoading}
+            isSuccess={isSuccess}
           >
-            {isLoading ? (
-              <Loader2 className="animate-spin" size={18} />
-            ) : isSuccess ? (
-              <CheckCircle2 color="white" size={18} />
-            ) : (
-              "Send OTP & continue"
-            )}
-          </button>
+            {canSkipOtp ? "Continue" : "Send OTP & continue"}
+          </Button>
         </div>
       </div>
     </div>

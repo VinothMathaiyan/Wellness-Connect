@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { Copy, Check } from 'lucide-react';
-import Button from './src/components/Button';
-import ProgressBar from './src/components/ProgressBar';
+import Button from "../components/Button";
+import ProgressBar from "../components/ProgressBar";
 
 interface AccountReadyScreenProps {
   /** full_name is collected in Screen 1 (SignUpScreen) as formData.full_name */
