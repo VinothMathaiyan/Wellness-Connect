@@ -5,8 +5,11 @@ import AssessmentBookingScreen from '../AssessmentBookingScreen';
 import AccountReadyScreen from '../AccountReadyScreen';
 import HomeScreen from '../HomeScreen';
 import DailyCheckInScreen from '../DailyCheckInScreen';
-import MealLogScreen from '../MealLogScreen';
-import type { WellnessAppState, DailyLog, MealLog } from './types';
+import NutritionLogFlow from '../NutritionLogFlow';
+import type { WellnessAppState, DailyLog, MealLog, NutritionMealEntry } from './types';
+
+// Stable mock session time — computed once at module level to keep renders pure
+const MOCK_SESSION_AT = new Date(Date.now() + 5 * 60000).toISOString();
 
 function App() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -49,11 +52,26 @@ function App() {
     setCurrentStep(5);
   };
 
-  // ─── Step 7: Meal Logger ────────────────────────────────────────
-  const handleMealLogComplete = (log: MealLog) => {
+  // ─── Step 7: Nutrition Log (NutritionLogFlow) ──────────────────
+  const handleNutritionLogComplete = (payload: { meals: NutritionMealEntry[]; totalCalories: number }) => {
+    const newLogs: MealLog[] = payload.meals
+      .filter(m => m.items.length > 0)
+      .map(m => ({
+        meal_type: (['breakfast','lunch','dinner','snack'].includes(m.type.toLowerCase())
+          ? m.type.toLowerCase()
+          : 'snack') as MealLog['meal_type'],
+        description: m.items.map(i => i.name).join(', '),
+        total_calories: m.items.reduce((s, i) => s + i.calories, 0),
+        macros_json: {
+          protein_g: m.items.reduce((s, i) => s + i.protein, 0),
+          carbs_g:   m.items.reduce((s, i) => s + i.carbs,   0),
+          fat_g:     m.items.reduce((s, i) => s + i.fat,     0),
+        },
+        logged_at: new Date().toISOString(),
+      }));
     setAppState(prev => ({
       ...prev,
-      mealLogs: [...(prev.mealLogs ?? []), log],
+      mealLogs: [...(prev.mealLogs ?? []), ...newLogs],
     }));
     setCurrentStep(5);
   };
@@ -107,14 +125,14 @@ function App() {
               session_name:      'Power Yoga Flow',
               session_type:      'yoga',
               trainer_name:      'Priya Sharma',
-              scheduled_at:      new Date(Date.now() + 5 * 60000).toISOString(),
+              scheduled_at:      MOCK_SESSION_AT,
               duration_minutes:  45,
               status:            'upcoming',
               meeting_url:       'https://meet.example.com/session',
             }],
           }}
           onViewSession={(s)      => console.log('Action Triggered: View Session', s)}
-          onStartCheckIn={()     => console.log('Action Triggered: Start Check-In')}
+          onStartCheckIn={()     => setCurrentStep(6)}
           onFindTrainer={()      => console.log('Action Triggered: Find Trainer')}
           onReviewGoals={()      => console.log('Action Triggered: Review Goals')}
           onTrackToday={()       => setCurrentStep(6)}
@@ -133,10 +151,9 @@ function App() {
       )}
 
       {currentStep === 7 && (
-        <MealLogScreen
+        <NutritionLogFlow
           onBack={() => setCurrentStep(5)}
-          onComplete={handleMealLogComplete}
-          existingMeals={appState.mealLogs ?? []}
+          onComplete={handleNutritionLogComplete}
         />
       )}
     </>

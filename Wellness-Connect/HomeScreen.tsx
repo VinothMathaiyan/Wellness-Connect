@@ -160,7 +160,7 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick }: {
 export default function HomeScreen({
   userData, onViewSession, onFindTrainer, onTrackToday, onTrackNutrition, onProfileClick, onViewWeeklyReport,
 }: HomeScreenProps) {
-  const [showToast] = useState(false);
+  const [showToast, setShowToast] = useState(false);
   const todayRef = useRef<HTMLDivElement>(null);
 
   const firstName = (userData.full_name || 'User').split(' ')[0];

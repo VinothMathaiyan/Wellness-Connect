@@ -45,11 +45,60 @@ export interface DailyLog {
   readiness_score?: number; // computed 0–100 — daily_metrics.readiness_score
 }
 
+// ─── Macros (meal_logs.macros_json) ─────────────────────────────────────────
+export interface MacrosJson {
+  protein_g: number;  // grams of protein
+  carbs_g: number;    // grams of carbohydrates
+  fat_g: number;      // grams of fat
+}
+
 // ─── Meal Log (meal_logs table — SCR-C07 / MealLogScreen) ────────────────────
 export interface MealLog {
   meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack'; // meal_logs.meal_type
-  description: string;  // meal_logs.description
-  logged_at: string;    // ISO datetime  — meal_logs.logged_at
+  description: string;          // meal_logs.description
+  total_calories: number;       // meal_logs.total_calories
+  macros_json: MacrosJson;      // meal_logs.macros_json
+  logged_at: string;            // ISO datetime  — meal_logs.logged_at
+}
+
+// ─── NutritionLogFlow types (SCR-C07 / NutritionLogFlow) ─────────────────────
+
+/** A single food item within a meal */
+export interface FoodItem {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  confidence?: 'High' | 'Medium' | 'Low';
+}
+
+/** Meal type string used in NutritionLogFlow (maps to MealLog.meal_type) */
+export type MealType = string;
+
+/** Daily calorie / macro targets */
+export interface NutritionLogTargets {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+/** Per-meal entry inside a NutritionLog */
+export interface NutritionMealEntry {
+  type: MealType;
+  time: string;
+  items: FoodItem[];
+}
+
+/** Top-level daily nutrition log (used internally by NutritionLogFlow) */
+export interface NutritionLog {
+  date: string;                     // YYYY-MM-DD
+  meals: NutritionMealEntry[];      // ordered list of meals
+  targets: NutritionLogTargets;     // daily macro targets
 }
 
 // ─── Global App State ─────────────────────────────────────────────────────────
@@ -75,6 +124,9 @@ export interface WellnessAppState extends HealthProfile, AssessmentBooking {
   // Screen 7: Meal Logger
   mealLogs?: MealLog[];
 
-  // Dynamic signature to handle future extensions if needed temporarily
-  [key: string]: any;
+  // Habit Progress
+  habitProgress?: { done: number; total: number };
+
+  // Forward-compatibility escape hatch — use unknown to avoid disabling type safety
+  [key: string]: unknown;
 }

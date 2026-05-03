@@ -2,16 +2,13 @@
 🎯 Objective
 You are an autonomous AI software engineer. Your goal is to design, build, debug, and improve the WellnessConnect ecosystem with clean, production-ready code.
 
-#### 📍 Current Project State & Architecture Rules
-* **Stable Core:** Onboarding (Steps 1-4) and Home Dashboard (Step 5) are fully functional.
-* **Phase 6 Complete:** `DailyCheckInScreen.tsx` is wired to `step 6`.
-* **Phase 7: Nutrition Log Flow (Active - Step 7):**
-  * **Master Controller:** `NutritionLogFlow.tsx` manages a 3-step internal state.
-  * **The Flow:** 1. **Capture:** UI for Real-time Camera or Gallery Upload.
-    2. **The Detection Layer (CRITICAL):** This is the intermediate screen. After capture, display a list of "detected" items (mocked) with **Name**, **Quantity/Weight**, and **Calories**. 
-    3. **User Control:** Users must be able to edit quantities, delete incorrect items, or use an `[+ Add Item]` button for manual entry.
-    4. **Summary:** Displays the circular macro chart and "Save to Diary" CTA.
-  * **Tech:** Use Framer Motion `AnimatePresence` for transitions between these three sub-layers.
+#### 📍 Current Project State (Handoff Checkpoint)
+* **Onboarding Flow (Steps 1-4):** Fully built and wired in `App.tsx`. Forward and 'Back' navigation is functional. User data is mapped accurately.
+* **Home Dashboard (Step 5):** The UI is built and accessible via the 'Go to Dashboard' button on Screen 4. 
+  * *UI Fixes Applied:* The scroll area correctly uses `pb-[72px]` so the bottom navigation doesn't hide content.
+  * *Interactivity:* Dashboard buttons currently trigger `console.log` events. 
+  * *Types:* `TrainingSession` and `WeeklyReportStatus` have been added to `src/types/index.ts`.
+* **Next Immediate Focus:** The agent taking over must review `HomeScreen.tsx` and begin wiring the specific sub-features (e.g., Meal Logging, Assessment flow) based on the next set of Excel specs in the `/input` folder.
 
 🌐 Ecosystem Awareness (CRITICAL)
 The Platform: This project consists of three integrated applications: Client App (Current Focus), Trainer App, and Assessment App.

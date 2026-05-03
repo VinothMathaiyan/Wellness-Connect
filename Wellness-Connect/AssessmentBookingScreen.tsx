@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Info } from 'lucide-react';
 import Button from './src/components/Button';
 import ProgressBar from './src/components/ProgressBar';
-import type { AssessmentBooking, WellnessAppState } from './src/types';
+import type { AssessmentBooking } from './src/types';
 
 interface AssessmentBookingScreenProps {
   onBack: () => void;
   onConfirm: (data: AssessmentBooking) => void;
-  initialData?: Partial<WellnessAppState>;
+  initialData?: any;
 }
 
 export default function AssessmentBookingScreen({ onBack, onConfirm, initialData }: AssessmentBookingScreenProps) {
