@@ -5,6 +5,7 @@ import type { HealthProfile } from '../types';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import ProgressBar from '../components/ProgressBar';
+import OnboardingLayout from '../components/OnboardingLayout';
 
 interface HealthProfileScreenProps {
   onBack: () => void;
@@ -20,13 +21,23 @@ const CITIES = [
 ];
 
 const GOAL_OPTIONS = [
-  "Weight loss", "Muscle gain", "Flexibility", "Endurance",
-  "Stress relief", "Nutrition", "Wellness", "Rehabilitation", "Yoga"
+  "General fitness", "Fat loss", "Muscle gain", "Flexibility",
+  "Stress relief", "Rehabilitation", "Yoga"
 ];
 
-const CONDITION_OPTIONS = [
-  "Back pain", "Knee issue", "Diabetes", "Hypertension",
-  "Heart condition", "Respiratory issue", "Arthritis", "None"
+const CONDITION_GROUPS = [
+  {
+    title: "Pain & Mobility",
+    options: ["Back pain", "Knee issue", "Joint pain"]
+  },
+  {
+    title: "Medical Conditions",
+    options: ["Diabetes", "Blood pressure", "Heart condition", "Respiratory condition"]
+  },
+  {
+    title: "Recovery & Hormonal Health",
+    options: ["PCOS / PCOD", "Injury recovery"]
+  }
 ];
 
 const ACTIVITY_DESCRIPTIONS = [
@@ -155,12 +166,21 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
   const canContinue = true;
 
   const handleToggleGoal = (goal: string) => {
-    setFormData(prev => ({
-      ...prev,
-      fitnessGoals: prev.fitnessGoals.includes(goal)
-        ? prev.fitnessGoals.filter(g => g !== goal)
-        : [...prev.fitnessGoals, goal]
-    }));
+    setFormData(prev => {
+      const isSelected = prev.fitnessGoals.includes(goal);
+      if (isSelected) {
+        return {
+          ...prev,
+          fitnessGoals: prev.fitnessGoals.filter(g => g !== goal)
+        };
+      } else {
+        if (prev.fitnessGoals.length >= 3) return prev;
+        return {
+          ...prev,
+          fitnessGoals: [...prev.fitnessGoals, goal]
+        };
+      }
+    });
   };
 
   const handleToggleCondition = (condition: string) => {
@@ -236,40 +256,47 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
-      {/* Device Frame matching PNG layout */}
-      <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
-
-        {/* Top Bar */}
-        <header className="flex items-center px-4 py-4 bg-white sticky top-0 z-20">
-          <button
-            type="button"
-            onClick={() => {
-              console.log('Back button clicked. isFormFilledEnough:', isFormFilledEnough);
-              if (isFormFilledEnough) {
-                setShowConfirmBack(true);
-              } else {
-                console.log('Calling onBack()');
-                onBack();
-              }
-            }}
-            className="p-1 -ml-1 text-text-primary relative z-50"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <div className="flex-1 flex justify-center -ml-6">
-            <h1 className="text-primary font-bold text-xl tracking-tight">WellnessConnect</h1>
-          </div>
-        </header>
-
-        <ProgressBar
-          currentStep={2}
-          totalSteps={4}
-          title="helps us match you with the right trainer"
-        />
-
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto px-6 pb-32 pt-2 space-y-10 scrollbar-hide">
+    <OnboardingLayout
+      header={
+        <>
+          <header className="flex items-center px-4 py-4">
+            <button
+              type="button"
+              onClick={() => {
+                console.log('Back button clicked. isFormFilledEnough:', isFormFilledEnough);
+                if (isFormFilledEnough) {
+                  setShowConfirmBack(true);
+                } else {
+                  console.log('Calling onBack()');
+                  onBack();
+                }
+              }}
+              className="p-1 -ml-1 text-text-primary relative z-50"
+            >
+              <ChevronLeft size={24} />
+            </button>
+            <div className="flex-1 flex justify-center -ml-6">
+              <h1 className="text-primary font-bold text-xl tracking-tight">WellnessConnect</h1>
+            </div>
+          </header>
+          <ProgressBar
+            currentStep={2}
+            totalSteps={4}
+            title="helps us match you with the right trainer"
+          />
+        </>
+      }
+      footer={
+        <Button
+          onClick={handleContinue}
+          disabled={!canContinue}
+        >
+          Continue
+        </Button>
+      }
+      useStandardPadding={false}
+    >
+      <div className="space-y-10">
 
           {/* Support Banner */}
           <motion.div
@@ -468,20 +495,29 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
               </div>
               <p className="text-[13px] font-medium text-text-primary pt-2">What are your fitness goals?</p>
+              <p className="text-[12px] text-text-secondary">Select up to 3 goals</p>
             </div>
             <div className="flex flex-wrap gap-2.5">
-              {GOAL_OPTIONS.map(goal => (
-                <button
-                  key={goal}
-                  onClick={() => handleToggleGoal(goal)}
-                  className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${formData.fitnessGoals.includes(goal)
-                      ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
-                      : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
-                    }`}
-                >
-                  {goal}
-                </button>
-              ))}
+              {GOAL_OPTIONS.map(goal => {
+                const isSelected = formData.fitnessGoals.includes(goal);
+                const isDisabled = !isSelected && formData.fitnessGoals.length >= 3;
+                return (
+                  <button
+                    key={goal}
+                    onClick={() => !isDisabled && handleToggleGoal(goal)}
+                    disabled={isDisabled}
+                    className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
+                      isSelected
+                        ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
+                        : isDisabled
+                        ? 'bg-[#F3F4F6] text-[#D1D5DB] border border-[#E5E7EB] cursor-not-allowed opacity-50'
+                        : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
+                      }`}
+                  >
+                    {goal}
+                  </button>
+                );
+              })}
             </div>
             {formData.fitnessGoals.includes("Rehabilitation") && (
               <motion.div
@@ -505,23 +541,44 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
                 <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
               </div>
               <p className="text-[13px] font-medium text-text-primary pt-2">Any existing health conditions?</p>
-              <p className="text-[12px] text-text-secondary">This helps us ensure your program is safe. Select all that apply.</p>
+              <p className="text-[12px] text-text-secondary">This helps us personalize your wellness plan safely. Select all that apply.</p>
             </div>
-            <div className="flex flex-wrap gap-2.5">
-              {CONDITION_OPTIONS.map(cond => (
+
+            <div className="space-y-5">
+              {CONDITION_GROUPS.map(group => (
+                <div key={group.title} className="space-y-2.5">
+                  <h3 className="text-[11px] font-medium text-text-secondary/60 tracking-wide">{group.title}</h3>
+                  <div className="flex flex-wrap gap-2.5">
+                    {group.options.map(cond => (
+                      <button
+                        key={cond}
+                        onClick={() => handleToggleCondition(cond)}
+                        className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${formData.conditions.includes(cond)
+                            ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
+                            : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
+                          }`}
+                      >
+                        {cond}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <div className="pt-1 border-t border-gray-100/60">
                 <button
-                  key={cond}
-                  onClick={() => handleToggleCondition(cond)}
-                  className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${formData.conditions.includes(cond)
+                  onClick={() => handleToggleCondition("None")}
+                  className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${formData.conditions.includes("None")
                       ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
                       : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
                     }`}
                 >
-                  {cond}
+                  None
                 </button>
-              ))}
+              </div>
             </div>
-            {(formData.conditions.includes("Heart condition") || formData.conditions.includes("Respiratory issue")) && (
+
+            {(formData.conditions.includes("Heart condition") || formData.conditions.includes("Respiratory condition")) && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -631,16 +688,6 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
             </div>
           </section>
 
-        </div>
-
-        {/* CTA Button */}
-        <div className="absolute bottom-0 w-full p-6 bg-white z-10 rounded-b-[2rem] border-t border-gray-100 pb-10">
-          <Button
-            onClick={handleContinue}
-            disabled={!canContinue}
-          >
-            Continue
-          </Button>
         </div>
 
         {/* City Bottom Sheet */}
@@ -787,7 +834,6 @@ export default function HealthProfileScreen({ onBack, onContinue, initialData }:
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-    </div>
+    </OnboardingLayout>
   );
 }

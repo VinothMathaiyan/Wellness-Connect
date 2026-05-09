@@ -1,7 +1,11 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft } from 'lucide-react';
-import type { DailyLog } from './src/types';
+import { useState, type ComponentType } from 'react';
+import { motion } from 'motion/react';
+import { 
+  ChevronLeft, Calendar, Minus, Plus, Moon, Zap, Check,
+  Home, Users, BarChart3, Bell
+} from 'lucide-react';
+import OnboardingLayout from '../components/OnboardingLayout';
+import type { DailyLog } from '../types';
 
 interface Props {
   onBack: () => void;
@@ -9,321 +13,540 @@ interface Props {
   existingLog?: DailyLog;
 }
 
-const MOOD_OPTIONS = [
-  { score: 1, emoji: '😔', label: 'Low' },
-  { score: 2, emoji: '😕', label: 'Meh' },
-  { score: 3, emoji: '😐', label: 'Okay' },
-  { score: 4, emoji: '🙂', label: 'Good' },
-  { score: 5, emoji: '😄', label: 'Great' },
-];
-
-const ENERGY_OPTIONS = [
-  { score: 1, label: 'Drained', color: '#E24B4A' },
-  { score: 2, label: 'Low',     color: '#EF9F27' },
-  { score: 3, label: 'Okay',    color: '#F5C842' },
-  { score: 4, label: 'High',    color: '#8BC34A' },
-  { score: 5, label: 'Peak',    color: '#1D9E75' },
-];
-
-const STEP_META = [
-  { icon: '😴', title: 'Sleep', subtitle: 'How many hours did you sleep last night?' },
-  { icon: '😊', title: 'Mood',  subtitle: 'How are you feeling right now?' },
-  { icon: '⚡', title: 'Energy', subtitle: "What's your energy level today?" },
-  { icon: '💧', title: 'Hydration', subtitle: 'How many glasses of water so far?' },
-  { icon: '🏋️', title: 'Workout', subtitle: 'Did you complete a workout today?' },
-];
-
-function computeScore(s: Omit<DailyLog, 'log_date' | 'readiness_score'>): number {
-  const sleep  = Math.round(((s.sleep_hours - 4) / 6) * 30);
-  const mood   = Math.round((s.mood_score   / 5) * 25);
-  const energy = Math.round((s.energy_score / 5) * 25);
-  const water  = Math.round(Math.min(s.water_glasses / 8, 1) * 10);
-  const workout = s.workout_done ? 10 : 0;
-  return Math.min(100, Math.max(0, sleep + mood + energy + water + workout));
+interface DailyCheckInDraft {
+  water_litres: number;
+  sleep_hours: number;
+  sleep_quality_score: number;
+  mood_score: number;
+  energy_level: number;
+  pain_score: number | null;
+  mobility_score: number;
+  trainer_note: string;
 }
 
-const getScoreColor = (n: number) => n >= 70 ? '#1D9E75' : n >= 40 ? '#EF9F27' : '#E24B4A';
-const getScoreLabel = (n: number) => n >= 70 ? 'Great day ahead! 🚀' : n >= 40 ? 'Keep pushing! 💪' : 'Rest & recover 🛌';
+interface NavButtonProps {
+  label: string;
+  icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string }>;
+  active?: boolean;
+  onClick?: () => void;
+  badge?: number;
+}
 
-const slideVariants = {
-  enter: (dir: number) => ({ x: dir > 0 ? '100%' : '-100%', opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit:  (dir: number) => ({ x: dir > 0 ? '-100%' : '100%', opacity: 0 }),
-};
+const EMOJI_MOOD = [
+  { value: 1, label: 'Terrible', emoji: '😫' },
+  { value: 2, label: 'Bad', emoji: '🙁' },
+  { value: 3, label: 'Neutral', emoji: '😐' },
+  { value: 4, label: 'Good', emoji: '🙂' },
+  { value: 5, label: 'Amazing', emoji: '🤩' },
+];
+
+const EMOJI_PAIN = [
+  { value: 0, label: 'None', emoji: '😌', color: '#E1F5EE', textColor: '#1D9E75' },
+  { value: 2, label: 'Mild', emoji: '😐', color: '#F7FEE7', textColor: '#1D9E75' },
+  { value: 5, label: 'Moderate', emoji: '😕', color: '#FEF3C7', textColor: '#EF9F27' },
+  { value: 7, label: 'High', emoji: '😣', color: '#FFEDD5', textColor: '#F97316' },
+  { value: 10, label: 'Severe', emoji: '😫', color: '#FCEBEB', textColor: '#E24B4A' },
+];
+
+const ENERGY_LEVELS = [
+  { value: 1, label: 'Drained', color: '#E24B4A', light: '#FCEBEB' },
+  { value: 2, label: 'Low', color: '#EF9F27', light: '#FEF3C7' },
+  { value: 3, label: 'Balanced', color: '#EF9F27', light: '#FEF3C7' },
+  { value: 4, label: 'Good', color: '#1D9E75', light: '#E1F5EE' },
+  { value: 5, label: 'Excellent', color: '#0F6E56', light: '#D1FAE5' },
+];
+
+const SLEEP_QUALITY_ICONS = [
+  { value: 1, label: 'Restless' },
+  { value: 2, label: 'Poor' },
+  { value: 3, label: 'Fair' },
+  { value: 4, label: 'Good' },
+  { value: 5, label: 'Refreshed' },
+];
+
+const NavButton = ({ label, icon: Icon, active = false, onClick, badge }: NavButtonProps) => (
+  <button onClick={onClick} className="flex flex-col items-center justify-center gap-[2px] transition-all min-w-[56px]">
+    <div className="relative">
+      <Icon size={20} strokeWidth={active ? 2.5 : 2} color={active ? '#1D9E75' : '#6B7280'} />
+      {badge && badge > 0 && (
+        <div className="absolute -top-[1.5px] -right-[1.5px] w-[6px] h-[6px] bg-[#E24B4A] rounded-full" />
+      )}
+    </div>
+    <span className={`text-[10px] font-medium ${active ? 'text-[#1D9E75]' : 'text-[#6B7280]'}`}>{label}</span>
+  </button>
+);
 
 export default function DailyCheckInScreen({ onBack, onComplete, existingLog }: Props) {
-  const [step, setStep]           = useState(0);
-  const [dir,  setDir]            = useState(1);
-  const [sleep, setSleep]         = useState(existingLog?.sleep_hours  ?? 7);
-  const [mood,  setMood]          = useState(existingLog?.mood_score    ?? 0);
-  const [energy, setEnergy]       = useState(existingLog?.energy_score  ?? 0);
-  const [water, setWater]         = useState(existingLog?.water_glasses ?? 4);
-  const [workout, setWorkout]     = useState<boolean | null>(existingLog != null ? existingLog.workout_done : null);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [logDate, setLogDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [log, setLog] = useState<DailyCheckInDraft>({
+    water_litres: existingLog?.water_glasses ? existingLog.water_glasses * 0.25 : 0,
+    sleep_hours: existingLog?.sleep_hours ?? 8,
+    sleep_quality_score: 0,
+    mood_score: existingLog?.mood_score ?? 0,
+    energy_level: existingLog?.energy_score ?? 0,
+    pain_score: null,
+    mobility_score: 5,
+    trainer_note: '',
+  });
+  const [lastAddedWater, setLastAddedWater] = useState<number[]>([]);
 
-  const isSummary = step === 5;
-  const progress  = isSummary ? 100 : (step / 5) * 100;
+  const waterGoal = 2.5;
 
-  const canNext = () => {
-    if (step === 1) return mood   > 0;
-    if (step === 2) return energy > 0;
-    if (step === 4) return workout !== null;
-    return true;
+  const handleUpdate = (updates: Partial<DailyCheckInDraft>) => {
+    setLog(prev => ({ ...prev, ...updates }));
   };
 
-  const go = (d: 1 | -1) => { setDir(d); setStep(s => s + d); };
-  const handleBack = () => step === 0 ? onBack() : go(-1);
-
-  const handleDone = () => {
-    const raw = { sleep_hours: sleep, mood_score: mood, energy_score: energy, water_glasses: water, workout_done: workout ?? false };
-    onComplete({ log_date: new Date().toISOString().split('T')[0], ...raw, readiness_score: computeScore(raw) });
+  const computeReadinessScore = () => {
+    const sleepScore = Math.round((Math.min(Math.max(log.sleep_hours, 4), 10) - 4) / 6 * 30);
+    const moodScore = Math.round((Math.max(log.mood_score, 0) / 5) * 25);
+    const energyScore = Math.round((Math.max(log.energy_level, 0) / 5) * 25);
+    const waterScore = Math.round(Math.min(Math.round(log.water_litres * 4) / 8, 1) * 20);
+    return Math.min(100, Math.max(0, sleepScore + moodScore + energyScore + waterScore));
   };
 
-  const score = computeScore({ sleep_hours: sleep, mood_score: mood || 3, energy_score: energy || 3, water_glasses: water, workout_done: workout ?? false });
+  const handleComplete = () => {
+    onComplete({
+      log_date: logDate,
+      sleep_hours: log.sleep_hours,
+      mood_score: log.mood_score,
+      energy_score: log.energy_level,
+      water_glasses: Math.round(log.water_litres * 4), 
+      workout_done: false, 
+      readiness_score: computeReadinessScore(),
+    });
+  };
+
+  const doneCount = [
+    (log.water_litres || 0) > 0,
+    (log.sleep_hours || 0) > 0,
+    (log.mood_score || 0) > 0,
+    (log.energy_level || 0) > 0,
+    (log.pain_score !== null && log.pain_score !== undefined),
+    (log.mobility_score !== null && log.mobility_score !== undefined),
+    (log.sleep_quality_score || 0) > 0
+  ].filter(Boolean).length;
+
+  const waterConsumed = log.water_litres || 0;
+  const waterProgress = Math.min((waterConsumed / waterGoal) * 100, 100);
+
+  const formatDateLabel = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
-
-        {/* Header */}
-        <header className="h-[52px] w-full flex items-center px-[14px] bg-white shrink-0 border-b border-[#F3F4F6] relative">
-          <button onClick={handleBack} className="w-[36px] h-[36px] flex items-center justify-center rounded-full active:bg-[#F3F4F6] transition-colors">
-            <ChevronLeft size={22} color="#111827" />
-          </button>
-          <h1 className="absolute left-0 right-0 text-center text-[16px] font-bold text-[#111827] pointer-events-none">
-            {isSummary ? "Today's Readiness" : 'Daily Check-in'}
-          </h1>
-        </header>
-
-        {/* Progress bar */}
-        <div className="h-[3px] bg-[#F3F4F6] shrink-0">
-          <motion.div className="h-full bg-[#1D9E75]" animate={{ width: `${progress}%` }} transition={{ duration: 0.4, ease: 'easeInOut' }} />
-        </div>
-
-        {/* Step dots */}
-        {!isSummary && (
-          <div className="flex justify-center gap-[8px] py-[10px] shrink-0">
-            {STEP_META.map((m, i) => (
-              <div key={m.title} className={`w-[7px] h-[7px] rounded-full transition-all duration-300 ${i === step ? 'bg-[#1D9E75] w-[18px]' : i < step ? 'bg-[#1D9E75]/40' : 'bg-[#E5E7EB]'}`} />
-            ))}
+    <OnboardingLayout
+      header={
+        <header className="bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm">
+          <div className="grid h-[52px] w-full grid-cols-[64px_1fr_96px] items-center px-4">
+            <button onClick={() => {
+              if (currentStep > 1) setCurrentStep(currentStep - 1);
+              else onBack();
+            }} className="flex h-9 w-9 items-center justify-center rounded-full text-[#111827] active:bg-gray-100">
+              <ChevronLeft size={24} />
+            </button>
+            <h1 className="text-center text-[16px] font-semibold text-[#111827]">Daily Tracking Log</h1>
+            <div className="justify-self-end rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[12px] font-semibold text-emerald-600 transition-colors duration-500">
+              Step {currentStep} of 4
+            </div>
           </div>
-        )}
-
-        {/* Slides */}
-        <div className="flex-1 overflow-hidden relative">
-          <AnimatePresence custom={dir} mode="wait">
-            <motion.div
-              key={step}
-              custom={dir}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.28, ease: 'easeInOut' }}
-              className="absolute inset-0 flex flex-col px-[24px] pt-[20px] pb-[24px]"
-            >
-
-              {/* ── Step 0: Sleep ── */}
-              {step === 0 && (
-                <div className="flex flex-col flex-1">
-                  <div className="text-[48px] text-center mb-[6px]">{STEP_META[0].icon}</div>
-                  <h2 className="text-[20px] font-bold text-[#111827] text-center mb-[4px]">{STEP_META[0].title}</h2>
-                  <p className="text-[13px] text-[#6B7280] text-center mb-[32px]">{STEP_META[0].subtitle}</p>
-
-                  <div className="flex flex-col items-center gap-[20px] flex-1 justify-center">
-                    <div className="w-[120px] h-[120px] rounded-full border-[4px] border-[#1D9E75] flex flex-col items-center justify-center bg-[#F0FDF8]">
-                      <span className="text-[36px] font-bold text-[#1D9E75]">{sleep}</span>
-                      <span className="text-[12px] text-[#6B7280] font-medium">hours</span>
-                    </div>
-
-                    <input
-                      type="range" min={4} max={10} step={0.5} value={sleep}
-                      onChange={e => setSleep(Number(e.target.value))}
-                      className="w-full accent-[#1D9E75]"
-                    />
-                    <div className="flex justify-between w-full text-[11px] text-[#9CA3AF]">
-                      <span>4 hrs</span><span>10 hrs</span>
-                    </div>
-
-                    <div className="flex gap-[6px] flex-wrap justify-center">
-                      {[5,6,7,8,9].map(h => (
-                        <button key={h} onClick={() => setSleep(h)}
-                          className={`px-[14px] py-[8px] rounded-full text-[13px] font-semibold border transition-all ${sleep === h ? 'bg-[#1D9E75] text-white border-[#1D9E75]' : 'border-[#E5E7EB] text-[#6B7280]'}`}>
-                          {h}h
-                        </button>
-                      ))}
-                    </div>
+          
+          <div className="relative mx-auto flex cursor-pointer flex-col items-center pb-3">
+            <input 
+              type="date" 
+              className="absolute inset-0 opacity-0 cursor-pointer z-10" 
+              value={logDate} 
+              onChange={(e) => setLogDate(e.target.value)}
+            />
+            <div className="flex items-center gap-1.5">
+              <span className="text-[12px] font-medium text-[#1D9E75]">{formatDateLabel(logDate)}</span>
+              <Calendar size={14} className="text-[#1D9E75]" />
+            </div>
+          </div>
+        </header>
+      }
+      footer={
+         <div className="flex gap-3">
+           {currentStep > 1 && (
+             <button onClick={() => setCurrentStep(currentStep - 1)}
+               className="h-[52px] px-6 bg-white border-2 border-gray-200 text-[#111827] rounded-2xl text-[15px] font-bold flex items-center justify-center active:bg-gray-50 transition-colors">
+               Back
+             </button>
+           )}
+           <button onClick={() => {
+               if (currentStep < 4) setCurrentStep(currentStep + 1);
+               else handleComplete();
+             }}
+             className="btn-primary flex-1 h-[52px] rounded-2xl text-[15px] font-bold active:scale-[0.98] shadow-lg shadow-emerald-500/25">
+             {currentStep === 4 ? '✓ Submit Log' : 'Next →'}
+           </button>
+         </div>
+      }
+      bottomNavigation={
+        <nav className="h-[60px] w-full bg-white border-t border-gray-100 flex items-center justify-around px-[10px] z-[100]">
+          <NavButton label="Home" icon={Home} active={false} onClick={onBack} />
+          <NavButton label="Trainers" icon={Users} onClick={() => console.log('Nav: Trainers')} />
+          <NavButton label="Progress" icon={BarChart3} onClick={() => console.log('Nav: Progress')} />
+          <NavButton label="Alerts" icon={Bell} onClick={() => console.log('Nav: Alerts')} />
+        </nav>
+      }
+      useStandardPadding={false}
+    >
+        <div className="px-[16px] py-4 space-y-[12px]">
+          
+          {currentStep === 1 && (
+            <>
+              {/* CARD 1 — WATER INTAKE */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                <div className="flex flex-col items-center text-center mb-[14px]">
+                  <h4 className="text-[15px] font-bold text-[#111827] mb-1">Water Intake</h4>
+                  <div className="flex items-center gap-1.5 min-h-[20px] justify-center">
+                    <span className={`text-[13px] font-semibold ${waterConsumed >= waterGoal ? 'text-[#1D9E75]' : 'text-[#3B9EE8]'}`}>
+                      {waterConsumed.toFixed(2)} L of {waterGoal} L
+                    </span>
+                    {waterConsumed > waterGoal && (
+                      <motion.div 
+                        initial={{ scale: 0 }} animate={{ scale: 1 }}
+                        className="px-2 py-0.5 bg-[#D1FAE5] text-[#1D9E75] text-[10px] font-bold rounded-full"
+                      >
+                        Goal exceeded ✓
+                      </motion.div>
+                    )}
                   </div>
                 </div>
-              )}
 
-              {/* ── Step 1: Mood ── */}
-              {step === 1 && (
-                <div className="flex flex-col flex-1">
-                  <div className="text-[48px] text-center mb-[6px]">{STEP_META[1].icon}</div>
-                  <h2 className="text-[20px] font-bold text-[#111827] text-center mb-[4px]">{STEP_META[1].title}</h2>
-                  <p className="text-[13px] text-[#6B7280] text-center mb-[32px]">{STEP_META[1].subtitle}</p>
-
-                  <div className="flex justify-around items-end flex-1 max-h-[220px]">
-                    {MOOD_OPTIONS.map(opt => (
-                      <button key={opt.score} onClick={() => setMood(opt.score)}
-                        className="flex flex-col items-center gap-[8px] group">
-                        <motion.div
-                          animate={{ scale: mood === opt.score ? 1.2 : 1 }}
-                          className={`w-[52px] h-[52px] rounded-full flex items-center justify-center text-[28px] border-2 transition-all ${mood === opt.score ? 'border-[#1D9E75] bg-[#F0FDF8] shadow-md' : 'border-[#E5E7EB] bg-[#F9FAFB]'}`}>
-                          {opt.emoji}
-                        </motion.div>
-                        <span className={`text-[10px] font-medium ${mood === opt.score ? 'text-[#1D9E75]' : 'text-[#9CA3AF]'}`}>{opt.label}</span>
+                <div className="flex flex-col items-center space-y-6">
+                  {/* Progress Bar centered */}
+                  <div className="w-[85%] h-[8px] bg-[#E5E7EB] rounded-[4px] overflow-hidden">
+                    <motion.div 
+                      className={`h-full ${waterConsumed >= waterGoal ? 'bg-[#1D9E75]' : 'bg-[#3B9EE8]'}`}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${waterProgress}%` }}
+                    />
+                  </div>
+                  
+                  {/* 2x2 Centered Grid for Add Buttons */}
+                  <div className="grid grid-cols-2 gap-3 w-[85%]">
+                    {[150, 250, 500, 1000].map(amt => (
+                      <button
+                        key={amt}
+                        onClick={() => {
+                          const val = amt / 1000;
+                          handleUpdate({ water_litres: waterConsumed + val });
+                          setLastAddedWater(prev => [...prev, val]);
+                        }}
+                        className="h-[48px] bg-white border border-[#D1D5DB] rounded-[10px] text-[14px] font-semibold text-[#111827] active:bg-[#E1F5EE] active:border-[#1D9E75] active:text-[#0F6E56] transition-all flex items-center justify-center"
+                      >
+                        + {amt >= 1000 ? (amt/1000) + ' L' : amt + ' ml'}
                       </button>
                     ))}
                   </div>
-
-                  {mood === 0 && <p className="text-[12px] text-[#9CA3AF] text-center mt-[24px]">Tap an emoji to continue</p>}
                 </div>
-              )}
 
-              {/* ── Step 2: Energy ── */}
-              {step === 2 && (
-                <div className="flex flex-col flex-1">
-                  <div className="text-[48px] text-center mb-[6px]">{STEP_META[2].icon}</div>
-                  <h2 className="text-[20px] font-bold text-[#111827] text-center mb-[4px]">{STEP_META[2].title}</h2>
-                  <p className="text-[13px] text-[#6B7280] text-center mb-[32px]">{STEP_META[2].subtitle}</p>
+                {waterConsumed > 0 && (
+                  <div className="flex justify-center mt-5">
+                    <button 
+                      onClick={() => {
+                        const last = lastAddedWater[lastAddedWater.length - 1];
+                        if (last !== undefined) {
+                          handleUpdate({ water_litres: Math.max(0, waterConsumed - last) });
+                          setLastAddedWater(prev => prev.slice(0, -1));
+                        }
+                      }}
+                      className="text-[12px] text-[#6B7280] underline hover:text-[#111827] transition-colors"
+                    >
+                      Undo last entry
+                    </button>
+                  </div>
+                )}
+              </div>
 
-                  <div className="flex gap-[8px] items-end justify-center flex-1 max-h-[180px]">
-                    {ENERGY_OPTIONS.map((opt, i) => {
-                      const active = energy >= opt.score;
-                      const barH = 40 + i * 20;
-                      return (
-                        <button key={opt.score} onClick={() => setEnergy(opt.score)} className="flex flex-col items-center gap-[6px]">
-                          <motion.div
-                            animate={{ height: barH, backgroundColor: active ? opt.color : '#E5E7EB' }}
-                            transition={{ duration: 0.2 }}
-                            className="w-[40px] rounded-[8px]"
-                            style={{ height: barH }}
+              {/* CARD 2 — SLEEP DURATION & QUALITY */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                 <div className="flex justify-between items-center mb-1">
+                   <h4 className="text-[15px] font-bold text-[#111827]">Sleep</h4>
+                   <span className="text-[13px] font-semibold text-[#111827]">{(log.sleep_hours || 8).toFixed(1)} hrs</span>
+                 </div>
+                 <p className="text-[12px] text-[#9CA3AF] italic mb-[10px]">How many hours did you sleep last night?</p>
+
+                 <div className="flex flex-col items-center py-2">
+                    <div className="relative w-[180px] h-[100px] flex justify-center items-end overflow-hidden mb-4 mt-2">
+                       <svg width="180" height="180" className="absolute top-0">
+                          <path 
+                            d="M10,90 A80,80 0 0,1 170,90" 
+                            fill="none" stroke="#E5E7EB" strokeWidth="10" strokeLinecap="round"
                           />
-                          <span className={`text-[9px] font-medium ${energy === opt.score ? 'text-[#111827]' : 'text-[#9CA3AF]'}`}>{opt.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {energy === 0 && <p className="text-[12px] text-[#9CA3AF] text-center mt-[24px]">Tap a bar to select</p>}
-                </div>
-              )}
-
-              {/* ── Step 3: Water ── */}
-              {step === 3 && (
-                <div className="flex flex-col flex-1">
-                  <div className="text-[48px] text-center mb-[6px]">{STEP_META[3].icon}</div>
-                  <h2 className="text-[20px] font-bold text-[#111827] text-center mb-[4px]">{STEP_META[3].title}</h2>
-                  <p className="text-[13px] text-[#6B7280] text-center mb-[32px]">{STEP_META[3].subtitle}</p>
-
-                  <div className="flex flex-col items-center gap-[24px] flex-1 justify-center">
-                    <div className="flex items-center gap-[28px]">
-                      <button onClick={() => setWater(w => Math.max(0, w - 1))}
-                        className="w-[52px] h-[52px] rounded-full bg-[#F3F4F6] text-[28px] font-bold text-[#6B7280] flex items-center justify-center active:scale-90 transition-transform">−</button>
-                      <div className="flex flex-col items-center">
-                        <span className="text-[52px] font-bold text-[#185FA5] leading-none">{water}</span>
-                        <span className="text-[12px] text-[#6B7280]">glasses</span>
-                      </div>
-                      <button onClick={() => setWater(w => Math.min(8, w + 1))}
-                        className="w-[52px] h-[52px] rounded-full bg-[#E6F1FB] text-[28px] font-bold text-[#185FA5] flex items-center justify-center active:scale-90 transition-transform">+</button>
+                          <motion.path 
+                            d="M10,90 A80,80 0 0,1 170,90" 
+                            fill="none" stroke="#7C3AED" strokeWidth="10" strokeLinecap="round"
+                            strokeDasharray="251.32"
+                            strokeDashoffset={251.32 - (Math.min(log.sleep_hours || 8, 12) / 12) * 251.32}
+                            transition={{ type: 'spring', damping: 25 }}
+                          />
+                       </svg>
+                       <div className="flex flex-col items-center z-10 mb-2">
+                          <span className="text-[24px] mb-1">🌙</span>
+                          <span className="text-[20px] font-bold text-[#111827]">
+                             {Math.floor(log.sleep_hours || 8)}h {Math.round(((log.sleep_hours || 8) % 1) * 60).toString().padStart(2, '0')}m
+                          </span>
+                       </div>
                     </div>
 
-                    <div className="flex gap-[6px]">
-                      {[...Array(8)].map((_, i) => (
-                        <button key={i} onClick={() => setWater(i + 1)}
-                          className={`w-[26px] h-[32px] rounded-[6px] border-2 transition-all ${i < water ? 'bg-[#185FA5] border-[#185FA5]' : 'border-[#D1D5DB]'}`}>
-                          {i < water && <span className="text-white text-[10px]">💧</span>}
-                        </button>
-                      ))}
+                    <div className="flex items-center gap-8 mb-6 mt-2">
+                       <button 
+                         onClick={() => handleUpdate({ sleep_hours: Math.max(0.5, (log.sleep_hours || 8) - 0.5) })}
+                         className="w-[44px] h-[44px] border-[1.5px] border-[#D1D5DB] rounded-full flex items-center justify-center text-[#111827] active:bg-gray-100 bg-white shadow-sm"
+                       >
+                         <Minus size={20} />
+                       </button>
+                       <span className="text-[22px] font-bold text-[#111827] w-20 text-center">{(log.sleep_hours || 8)} hrs</span>
+                       <button 
+                         onClick={() => handleUpdate({ sleep_hours: Math.min(12, (log.sleep_hours || 8) + 0.5) })}
+                         className="w-[44px] h-[44px] border-[1.5px] border-[#D1D5DB] rounded-full flex items-center justify-center text-[#111827] active:bg-gray-100 bg-white shadow-sm"
+                       >
+                         <Plus size={20} />
+                       </button>
                     </div>
-                    <p className="text-[12px] text-[#9CA3AF]">Goal: 8 glasses per day</p>
-                  </div>
-                </div>
-              )}
 
-              {/* ── Step 4: Workout ── */}
-              {step === 4 && (
-                <div className="flex flex-col flex-1">
-                  <div className="text-[48px] text-center mb-[6px]">{STEP_META[4].icon}</div>
-                  <h2 className="text-[20px] font-bold text-[#111827] text-center mb-[4px]">{STEP_META[4].title}</h2>
-                  <p className="text-[13px] text-[#6B7280] text-center mb-[32px]">{STEP_META[4].subtitle}</p>
+                    <div className="w-full pt-5 border-t border-[#E5E7EB]">
+                       <span className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-[0.06em] block mb-4 text-center">SLEEP QUALITY</span>
+                       <div className="flex justify-between w-full px-1">
+                          {SLEEP_QUALITY_ICONS.map(sq => (
+                            <button
+                              key={sq.value}
+                              onClick={() => handleUpdate({ sleep_quality_score: sq.value })}
+                              className="flex flex-col items-center gap-1.5"
+                            >
+                               <div className={`w-[48px] h-[48px] rounded-full flex items-center justify-center transition-all ${log.sleep_quality_score === sq.value ? 'bg-[#EEEDFE] scale-110' : 'bg-[#F3F4F6]'}`}>
+                                  <Moon 
+                                    size={20} 
+                                    className={log.sleep_quality_score === sq.value ? 'text-[#7C3AED]' : 'text-[#9CA3AF]'} 
+                                    fill={log.sleep_quality_score === sq.value ? 'currentColor' : 'none'} 
+                                  />
+                               </div>
+                               <span className={`text-[10px] font-medium leading-tight ${log.sleep_quality_score === sq.value ? 'text-[#7C3AED] font-bold' : 'text-[#6B7280]'}`}>{sq.label}</span>
+                            </button>
+                          ))}
+                       </div>
+                    </div>
+                 </div>
+              </div>
+            </>
+          )}
 
-                  <div className="flex gap-[12px] flex-1 items-center justify-center max-h-[200px]">
-                    {[{ val: true, emoji: '✅', label: 'Yes, I did!', bg: '#F0FDF8', border: '#1D9E75', text: '#1D9E75' },
-                      { val: false, emoji: '😅', label: 'Not today', bg: '#F9FAFB', border: '#D1D5DB', text: '#6B7280' }]
-                      .map(opt => (
-                        <button key={String(opt.val)} onClick={() => setWorkout(opt.val)}
-                          className="flex-1 h-[140px] rounded-[16px] flex flex-col items-center justify-center gap-[10px] border-2 transition-all active:scale-[0.97]"
-                          style={{ backgroundColor: workout === opt.val ? opt.bg : '#F9FAFB', borderColor: workout === opt.val ? opt.border : '#E5E7EB' }}>
-                          <span className="text-[40px]">{opt.emoji}</span>
-                          <span className="text-[14px] font-semibold" style={{ color: workout === opt.val ? opt.text : '#6B7280' }}>{opt.label}</span>
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              )}
+          {currentStep === 2 && (
+            <>
+              {/* CARD 3 — MOOD */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col items-center">
+                 <div className="flex flex-col items-center text-center mb-6">
+                   <h4 className="text-[17px] font-bold text-[#111827]">How are you feeling?</h4>
+                   <p className="text-[13px] text-[#9CA3AF] mt-1">Select the emoji that best matches your mood</p>
+                 </div>
+                 <div className="flex w-full max-w-[360px] items-start justify-between gap-2">
+                    {EMOJI_MOOD.map(m => (
+                      <button
+                        key={m.value}
+                        onClick={() => handleUpdate({ mood_score: m.value })}
+                        className="flex w-[60px] flex-col items-center gap-2"
+                        aria-pressed={log.mood_score === m.value}
+                      >
+                         <span className={`flex h-[52px] w-[52px] items-center justify-center rounded-full border-2 text-[29px] leading-none transition-all duration-200 ${
+                           log.mood_score === m.value
+                             ? 'bg-emerald-50 border-emerald-500 scale-105 shadow-md shadow-emerald-500/15'
+                             : 'bg-gray-50 border-transparent'
+                         }`}>
+                           {['😫', '🙁', '😐', '🙂', '🤩'][m.value - 1]}
+                         </span>
+                         <span className={`text-[10px] font-semibold leading-tight ${
+                           log.mood_score === m.value ? 'text-emerald-600' : 'text-[#9CA3AF]'
+                         }`}>
+                            {m.label}
+                         </span>
+                      </button>
+                    ))}
+                 </div>
+                 {log.mood_score > 0 && (
+                   <div className="mt-5 px-4 py-2 bg-emerald-50 rounded-full">
+                     <span className="text-[13px] font-semibold text-emerald-600">Feeling {EMOJI_MOOD.find(m => m.value === log.mood_score)?.label}</span>
+                   </div>
+                 )}
+              </div>
+            </>
+          )}
 
-              {/* ── Step 5: Summary ── */}
-              {isSummary && (
-                <div className="flex flex-col flex-1 items-center">
-                  <p className="text-[13px] text-[#6B7280] mb-[16px]">Here's your readiness for today</p>
+          {currentStep === 3 && (
+            <>
+              {/* CARD 4 — ENERGY LEVEL */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                 <div className="flex justify-between items-center mb-1">
+                   <h4 className="text-[15px] font-bold text-[#111827]">Energy Level</h4>
+                   <span className="text-[13px] font-semibold" style={{ color: ENERGY_LEVELS.find(e => e.value === log.energy_level)?.color }}>
+                      {ENERGY_LEVELS.find(e => e.value === log.energy_level)?.label || ''}
+                   </span>
+                 </div>
+                 <p className="text-[12px] text-[#9CA3AF] italic mb-[10px]">How energised do you feel right now?</p>
+                 <div className="flex justify-between mt-4">
+                    {ENERGY_LEVELS.map(lv => (
+                      <button
+                        key={lv.value}
+                        onClick={() => handleUpdate({ energy_level: lv.value })}
+                        className="flex flex-col items-center w-[52px] gap-2 py-2 rounded-[12px] transition-all border-[1.5px]"
+                        style={{ 
+                          backgroundColor: log.energy_level === lv.value ? lv.light : 'transparent',
+                          borderColor: log.energy_level === lv.value ? lv.color : '#E5E7EB'
+                        }}
+                      >
+                         <div className="flex flex-col items-center min-h-[30px] justify-center mt-1">
+                            {[...Array(lv.value)].map((_, i) => (
+                              <Zap 
+                                key={i} size={10} 
+                                className={log.energy_level === lv.value ? '' : 'text-[#9CA3AF]'} 
+                                style={{ color: log.energy_level === lv.value ? lv.color : undefined, fill: log.energy_level === lv.value ? 'currentColor' : 'none' }} 
+                              />
+                            ))}
+                         </div>
+                         <span className={`text-[10px] mb-1 ${log.energy_level === lv.value ? 'font-bold' : 'text-[#6B7280]'}`} style={{ color: log.energy_level === lv.value ? lv.color : undefined }}>
+                            {lv.label}
+                         </span>
+                      </button>
+                    ))}
+                 </div>
+              </div>
 
-                  {/* Score ring */}
-                  <div className="w-[140px] h-[140px] rounded-full flex flex-col items-center justify-center mb-[24px] shadow-lg"
-                    style={{ backgroundColor: getScoreColor(score), boxShadow: `0 8px 24px ${getScoreColor(score)}44` }}>
-                    <motion.span
-                      className="text-[44px] font-bold text-white leading-none"
-                      initial={{ scale: 0.5, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}>
-                      {score}
-                    </motion.span>
-                    <span className="text-[12px] text-white/70 font-medium">/ 100</span>
-                  </div>
+              {/* CARD 5 — PAIN LEVEL */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                 <div className="flex justify-between items-center mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="text-[15px] font-bold text-[#111827]">Pain Level</h4>
+                    </div>
+                    <span className="text-[13px] font-semibold" style={{ color: EMOJI_PAIN.find(p => p.value === log.pain_score)?.textColor }}>
+                      {EMOJI_PAIN.find(p => p.value === log.pain_score)?.label || ''}
+                    </span>
+                 </div>
+                 <p className="text-[12px] text-[#9CA3AF] italic mb-[10px]">Current pain or discomfort</p>
+                 <div className="flex justify-between mt-4">
+                    {EMOJI_PAIN.map(p => (
+                      <button
+                        key={p.value}
+                        onClick={() => handleUpdate({ pain_score: p.value })}
+                        className="flex flex-col items-center w-[52px] gap-2 py-3 rounded-[12px] transition-all border-[1.5px]"
+                        style={{ 
+                          backgroundColor: log.pain_score === p.value ? p.color : 'transparent',
+                          borderColor: log.pain_score === p.value ? 'transparent' : '#E5E7EB'
+                        }}
+                      >
+                         <span className={`text-[28px] transition-transform ${log.pain_score === p.value ? 'scale-115' : ''}`}>
+                            {p.emoji}
+                         </span>
+                         <span className={`text-[10px] ${log.pain_score === p.value ? 'font-bold' : 'text-[#6B7280]'}`}>
+                            {p.label}
+                         </span>
+                      </button>
+                    ))}
+                 </div>
+              </div>
 
-                  <p className="text-[15px] font-semibold text-[#111827] mb-[20px]">{getScoreLabel(score)}</p>
+              {/* CARD 6 — MOBILITY */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                 <div className="flex justify-between items-center mb-1">
+                   <div className="flex items-center gap-1.5">
+                      <h4 className="text-[15px] font-bold text-[#111827]">Mobility</h4>
+                   </div>
+                   <span className="text-[13px] font-bold text-[#1D9E75]">{(log.mobility_score || 5)}/10</span>
+                 </div>
+                 <p className="text-[12px] text-[#9CA3AF] italic mb-[10px]">How well are you moving?</p>
 
-                  {/* Metric chips */}
-                  <div className="grid grid-cols-2 gap-[10px] w-full mb-[24px]">
+                 <div className="relative pt-8 pb-4">
+                    <div className="h-[8px] w-full bg-[#E5E7EB] rounded-[4px] relative overflow-hidden">
+                       <div className="h-full bg-[#1D9E75]" style={{ width: `${(log.mobility_score || 5) * 10}%` }} />
+                    </div>
+                    <input 
+                      type="range" min="0" max="10" step="1"
+                      className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
+                      value={log.mobility_score || 5}
+                      onChange={(e) => handleUpdate({ mobility_score: parseInt(e.target.value) })}
+                    />
+                    <div 
+                      className="absolute top-2 w-[28px] h-[28px] bg-white border-[3px] border-[#1D9E75] rounded-full shadow-[0_2px_6px_rgba(0,0,0,0.2)] flex items-center justify-center pointer-events-none"
+                      style={{ left: `calc(${(log.mobility_score || 5) * 10}% - 14px)` }}
+                    >
+                       <div className="absolute -top-8 bg-[#1D9E75] text-white text-[11px] px-2 py-0.5 rounded-full font-bold">
+                          {log.mobility_score || 5}
+                       </div>
+                    </div>
+                    <div className="flex justify-between mt-4">
+                       <span className="text-[11px] font-medium text-[#9CA3AF]">Stiff</span>
+                       <span className="text-[11px] font-medium text-[#9CA3AF]">Moderate</span>
+                       <span className="text-[11px] font-medium text-[#9CA3AF]">Full range</span>
+                    </div>
+                 </div>
+              </div>
+            </>
+          )}
+
+          {currentStep === 4 && (
+            <>
+              {/* CARD 7 — NOTE FOR TRAINER */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                 <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-[13px] font-bold text-[#111827] uppercase">NOTE FOR TRAINER</h4>
+                      <span className="px-2 py-0.5 border border-[#D1D5DB] text-[#6B7280] text-[10px] font-medium rounded-full">Optional</span>
+                    </div>
+                 </div>
+                 <div className="relative">
+                    <textarea 
+                      className="w-full min-h-[100px] bg-[#F9FAFB] border border-[#D1D5DB] rounded-[12px] p-3.5 text-[14px] placeholder:italic placeholder:text-[#9CA3AF] outline-none focus:min-h-[140px] focus:border-[#1D9E75] transition-all duration-300"
+                      placeholder="Share any wins, concerns or training feedback..."
+                      maxLength={1000}
+                      value={log.trainer_note || ''}
+                      onChange={(e) => handleUpdate({ trainer_note: e.target.value })}
+                    />
+                    <span className="absolute bottom-3 right-4 text-[11px] text-[#9CA3AF] font-medium">
+                      {(log.trainer_note || '').length} / 1000
+                    </span>
+                 </div>
+              </div>
+
+              {/* CARD 8 — TODAY AT A GLANCE */}
+              <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                 <h4 className="text-[15px] font-bold text-[#111827] mb-6">Today at a glance</h4>
+                 <div className="flex justify-between px-2">
                     {[
-                      { label: 'Sleep',    value: `${sleep}h`,             emoji: '😴' },
-                      { label: 'Mood',     value: MOOD_OPTIONS[mood - 1]?.label ?? '—',  emoji: '😊' },
-                      { label: 'Energy',   value: ENERGY_OPTIONS[energy - 1]?.label ?? '—', emoji: '⚡' },
-                      { label: 'Water',    value: `${water} glasses`,      emoji: '💧' },
-                      { label: 'Workout',  value: workout ? 'Done ✓' : 'Rest day', emoji: '🏋️' },
-                    ].map(m => (
-                      <div key={m.label} className="bg-[#F9FAFB] rounded-[12px] p-[12px] border border-[#E5E7EB]">
-                        <p className="text-[11px] text-[#9CA3AF] mb-[2px]">{m.emoji} {m.label}</p>
-                        <p className="text-[13px] font-semibold text-[#111827]">{m.value}</p>
+                      { label: 'Water', emoji: '💧', active: (log.water_litres || 0) > 0 },
+                      { label: 'Sleep', emoji: '🌙', active: (log.sleep_hours || 0) > 0 },
+                      { label: 'Mood', emoji: '😊', active: (log.mood_score || 0) > 0 },
+                      { label: 'Energy', emoji: '⚡', active: (log.energy_level || 0) > 0 },
+                      { label: 'Pain', emoji: '😌', active: (log.pain_score !== null && log.pain_score !== undefined) },
+                      { label: 'Mobility', emoji: '🦵', active: (log.mobility_score !== null && log.mobility_score !== undefined) },
+                    ].map(it => (
+                      <div key={it.label} className="flex flex-col items-center gap-1.5">
+                         <span className="text-[30px] mb-1 leading-none">{it.emoji}</span>
+                         <span className="text-[11px] font-medium text-[#9CA3AF]">{it.label}</span>
+                          {it.active ? (
+                            <div className="w-[18px] h-[18px] rounded-full bg-[#1D9E75] flex items-center justify-center mt-1">
+                              <Check size={12} className="text-white" strokeWidth={3} />
+                            </div>
+                          ) : (
+                            <div className="w-[18px] h-[18px] rounded-full border-2 border-[#D1D5DB] mt-1" />
+                          )}
                       </div>
                     ))}
-                  </div>
+                 </div>
+                 {doneCount >= 6 && (
+                   <motion.div 
+                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      className="mt-8 p-3 bg-[#E1F5EE] rounded-[10px] flex items-center justify-center"
+                   >
+                      <span className="text-[13px] font-bold text-[#0F6E56]">All sections complete — great work today! 🎉</span>
+                   </motion.div>
+                 )}
+              </div>
+            </>
+          )}
 
-                  <button onClick={handleDone}
-                    className="w-full h-[52px] bg-[#1D9E75] text-white text-[15px] font-bold rounded-[14px] active:scale-[0.98] transition-transform shadow-lg shadow-[#1D9E75]/30 mt-auto">
-                    Save & Back to Dashboard
-                  </button>
-                </div>
-              )}
-
-            </motion.div>
-          </AnimatePresence>
         </div>
-
-        {/* Next CTA (not on summary) */}
-        {!isSummary && (
-          <div className="px-[24px] pb-[24px] shrink-0">
-            <button
-              onClick={() => go(1)}
-              disabled={!canNext()}
-              className={`w-full h-[52px] rounded-[14px] text-[15px] font-bold transition-all active:scale-[0.98] ${canNext() ? 'bg-[#1D9E75] text-white shadow-lg shadow-[#1D9E75]/30' : 'bg-[#E5E7EB] text-[#9CA3AF]'}`}>
-              {step === 4 ? 'See my score →' : 'Continue →'}
-            </button>
-          </div>
-        )}
-
-      </div>
-    </div>
+    </OnboardingLayout>
   );
 }

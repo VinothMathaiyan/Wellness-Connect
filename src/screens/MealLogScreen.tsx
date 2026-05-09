@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Plus, Trash2, CheckCircle2, Clock } from 'lucide-react';
-import type { MealLog } from './src/types';
+import type { MealLog } from '../types';
+import MobileShell from '../components/MobileShell';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -164,8 +165,7 @@ export default function MealLogScreen({ onBack, onComplete, existingMeals = [] }
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
+    <MobileShell>
 
         {/* ── Header ── */}
         <header className="h-[52px] w-full flex items-center px-[14px] bg-white shrink-0 border-b border-[#F3F4F6] relative">
@@ -198,7 +198,7 @@ export default function MealLogScreen({ onBack, onComplete, existingMeals = [] }
         <AnimatePresence>
           {submitted && (
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-              className="absolute inset-0 bg-white flex flex-col items-center justify-center z-50 rounded-[2rem]">
+              className="absolute inset-0 bg-white flex flex-col items-center justify-center z-50">
               <CheckCircle2 size={72} color="#1D9E75" strokeWidth={1.5} />
               <h2 className="text-[22px] font-bold text-[#111827] mt-[16px]">Meal Saved!</h2>
               <p className="text-[13px] text-[#6B7280] mt-[6px]">{totalCal} kcal · Returning to dashboard…</p>
@@ -430,7 +430,6 @@ export default function MealLogScreen({ onBack, onComplete, existingMeals = [] }
           )}
         </AnimatePresence>
 
-      </div>
-    </div>
+    </MobileShell>
   );
 }

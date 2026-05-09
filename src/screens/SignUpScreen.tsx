@@ -5,6 +5,7 @@ import type { WellnessAppState } from '../types';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import ProgressBar from '../components/ProgressBar';
+import MobileShell from '../components/MobileShell';
 
 interface SignUpScreenProps {
   onSuccess: (data: Partial<WellnessAppState>) => void;
@@ -183,9 +184,7 @@ export default function SignUpScreen({ onSuccess, initialData }: SignUpScreenPro
   }, [isOtpSent, timer]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
-      {/* Device Frame matching PNG layout */}
-      <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
+    <MobileShell>
 
         {/* Wordmark */}
         <div className="py-6 flex justify-center mt-4">
@@ -299,7 +298,7 @@ export default function SignUpScreen({ onSuccess, initialData }: SignUpScreenPro
         </div>
 
         {/* CTA Button */}
-        <div className="absolute bottom-0 w-full p-6 bg-white z-10 rounded-b-[2rem] border-t border-gray-100">
+        <div className="absolute bottom-0 w-full p-6 bg-white z-10 border-t border-gray-100">
           <Button
             onClick={handleSendOtp}
             disabled={!isFormValid || isOtpSent}
@@ -309,7 +308,6 @@ export default function SignUpScreen({ onSuccess, initialData }: SignUpScreenPro
             {canSkipOtp ? "Continue" : "Send OTP & continue"}
           </Button>
         </div>
-      </div>
-    </div>
+    </MobileShell>
   );
 }

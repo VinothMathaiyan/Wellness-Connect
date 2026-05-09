@@ -4,6 +4,7 @@ import { ChevronLeft, Info } from 'lucide-react';
 import Button from '../components/Button';
 import ProgressBar from '../components/ProgressBar';
 import type { AssessmentBooking } from '../types';
+import OnboardingLayout from '../components/OnboardingLayout';
 
 interface AssessmentBookingScreenProps {
   onBack: () => void;
@@ -28,28 +29,33 @@ export default function AssessmentBookingScreen({ onBack, onConfirm, initialData
   ];
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
-      {/* Device Frame */}
-      <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
-
-        {/* Top Bar */}
-        <header className="flex items-center px-4 py-4 bg-white sticky top-0 z-20">
-          <button
-            onClick={() => setShowConfirmBack(true)}
-            className="p-1 -ml-1 text-text-primary relative z-50"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <div className="flex-1 flex justify-center -ml-6">
-            <h1 className="text-primary font-bold text-xl tracking-tight">WellnessConnect</h1>
-          </div>
-        </header>
-
-        {/* Progress Bar */}
-        <ProgressBar currentStep={3} totalSteps={4} />
-
-        {/* Main Content */}
-        <main className="flex-1 px-6 pb-32 space-y-8 overflow-y-auto scrollbar-hide pt-2">
+    <OnboardingLayout
+      header={
+        <>
+          <header className="flex items-center px-4 py-4 bg-white sticky top-0 z-20">
+            <button
+              onClick={() => setShowConfirmBack(true)}
+              className="p-1 -ml-1 text-text-primary relative z-50"
+            >
+              <ChevronLeft size={24} />
+            </button>
+            <div className="flex-1 flex justify-center -ml-6">
+              <h1 className="text-primary font-bold text-xl tracking-tight">WellnessConnect</h1>
+            </div>
+          </header>
+          <ProgressBar currentStep={3} totalSteps={4} />
+        </>
+      }
+      footer={
+        <Button
+          onClick={() => onConfirm({ preferred_time: preferredTime, status: 'scheduled' })}
+        >
+          Confirm & finish
+        </Button>
+      }
+      useStandardPadding={false}
+    >
+      <div className="space-y-8 pt-2">
 
           {/* Info Card */}
           <section className="bg-white border-l-[3px] border-primary shadow-sm rounded-r-xl p-5 border-y border-r border-border-light">
@@ -128,16 +134,7 @@ export default function AssessmentBookingScreen({ onBack, onConfirm, initialData
             </div>
           </section>
 
-        </main>
-
-        {/* CTA Button */}
-        <div className="absolute bottom-0 w-full p-6 bg-white z-10 rounded-b-[2rem] border-t border-gray-100 pb-10">
-          <Button
-            onClick={() => onConfirm({ preferred_time: preferredTime, status: 'confirmed' })}
-          >
-            Confirm & finish
-          </Button>
-        </div>
+      </div>
 
         {/* Confirmation Modal */}
         <AnimatePresence>
@@ -182,7 +179,6 @@ export default function AssessmentBookingScreen({ onBack, onConfirm, initialData
           )}
         </AnimatePresence>
 
-      </div>
-    </div>
+    </OnboardingLayout>
   );
 }

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  ChevronLeft, Plus, Camera, Trash2, CheckCircle2, Upload,
+  ChevronLeft, Plus, Camera, Trash2, CheckCircle2, Upload, RefreshCw,
 } from 'lucide-react';
 import type { FoodItem, MealLog, NutritionMealEntry } from '../types';
 import { Badge } from "../components/Common";
+import MobileShell from '../components/MobileShell';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -17,13 +18,39 @@ const MEAL_META: Record<MealKind, { label: string; emoji: string; accent: string
   snack: { label: 'Snack', emoji: '🍎', accent: '#A855F7', bg: '#FDF4FF' },
 };
 
-const MOCK_ITEMS: FoodItem[] = [
-  { id: '101', name: 'Grilled Chicken', quantity: 200, unit: 'g', calories: 330, protein: 58, carbs: 0, fat: 9, confidence: 'High' },
-  { id: '102', name: 'Fresh Avocado', quantity: 1, unit: 'pcs', calories: 120, protein: 2, carbs: 6, fat: 12, confidence: 'High' },
-  { id: '103', name: 'Boiled Rice', quantity: 150, unit: 'g', calories: 165, protein: 4, carbs: 35, fat: 1, confidence: 'Medium' },
-];
 
-const CAPTURE_IMAGE = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=400&auto=format&fit=crop';
+/** Detected ingredient shape returned by mock AI extractor */
+interface DetectedIngredient {
+  ingredient_name: string;
+  weight_g: number;
+  calories: number;
+  macros_json: { protein_g: number; carbs_g: number; fat_g: number };
+}
+
+/** Map DetectedIngredient → FoodItem */
+function toFoodItem(d: DetectedIngredient, idx: number): FoodItem {
+  return {
+    id: `det-${idx}-${Date.now()}`,
+    name: d.ingredient_name,
+    quantity: d.weight_g,
+    unit: 'g',
+    calories: d.calories,
+    protein: d.macros_json.protein_g,
+    carbs: d.macros_json.carbs_g,
+    fat: d.macros_json.fat_g,
+    confidence: 'High',
+  };
+}
+
+/** Mock AI extraction — returns DetectedIngredient[] after a delay */
+async function mockExtractIngredients(blob: Blob): Promise<DetectedIngredient[]> {
+  void blob;
+  return [
+    { ingredient_name: 'Grilled Chicken', weight_g: 200, calories: 330, macros_json: { protein_g: 58, carbs_g: 0, fat_g: 9 } },
+    { ingredient_name: 'Fresh Avocado', weight_g: 75, calories: 120, macros_json: { protein_g: 2, carbs_g: 6, fat_g: 12 } },
+    { ingredient_name: 'Boiled Rice', weight_g: 150, calories: 165, macros_json: { protein_g: 4, carbs_g: 35, fat_g: 1 } },
+  ];
+}
 
 // ─── SVG Donut Chart ──────────────────────────────────────────────────────────
 
@@ -65,29 +92,140 @@ interface NutritionLogFlowProps {
 export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlowProps) {
   const [subScreen, setSubScreen] = useState<1 | 2 | 3>(1);
   const [mealKind, setMealKind] = useState<MealKind | null>(null);
-  const [captured, setCaptured] = useState(false);
-  const [scanning, setScanning] = useState(false);
   const [items, setItems] = useState<FoodItem[]>([]);
   const [saved, setSaved] = useState(false);
+
+  // ── Camera states ──
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const galleryObjectUrlRef = useRef<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  // 'live' → showing camera | 'frozen' → confirm/retake | 'processing' → AI spinner
+  type CapturePhase = 'live' | 'frozen' | 'processing';
+  const [capturePhase, setCapturePhase] = useState<CapturePhase>('live');
+  const [frozenDataUrl, setFrozenDataUrl] = useState<string | null>(null);
+
+  // ── Start camera ──
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    setCameraReady(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => setCameraReady(true);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Camera unavailable';
+      setCameraError(msg);
+      console.warn('[NutritionLogFlow] getUserMedia error:', msg);
+    }
+  }, []);
+
+  // ── Stop camera ──
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setCameraReady(false);
+  }, []);
+
+  const revokeGalleryObjectUrl = useCallback(() => {
+    if (galleryObjectUrlRef.current) {
+      URL.revokeObjectURL(galleryObjectUrlRef.current);
+      galleryObjectUrlRef.current = null;
+    }
+  }, []);
+
+  // ── Mount / unmount camera with subScreen 1 ──
+  useEffect(() => {
+    if (subScreen === 1 && capturePhase === 'live') {
+      // Camera startup is an external browser API sync; state updates happen inside the async helper.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => { stopCamera(); };
+  }, [subScreen, capturePhase, startCamera, stopCamera, revokeGalleryObjectUrl]);
+
+  useEffect(() => {
+    return () => { revokeGalleryObjectUrl(); };
+  }, [revokeGalleryObjectUrl]);
+
+  // ── Shutter: freeze frame ──
+  const handleShutter = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const v = videoRef.current;
+    const c = canvasRef.current;
+    c.width = v.videoWidth || 640;
+    c.height = v.videoHeight || 480;
+    c.getContext('2d')?.drawImage(v, 0, 0, c.width, c.height);
+    revokeGalleryObjectUrl();
+    setFrozenDataUrl(c.toDataURL('image/jpeg', 0.85));
+    stopCamera();
+    setCapturePhase('frozen');
+  };
+
+  // ── Retake ──
+  const handleRetake = () => {
+    revokeGalleryObjectUrl();
+    setFrozenDataUrl(null);
+    setCapturePhase('live');
+    startCamera();
+  };
+
+  // ── Confirm → process ──
+  const handleConfirmCapture = async () => {
+    setCapturePhase('processing');
+    const blob = await (async () => {
+      if (canvasRef.current) {
+        return new Promise<Blob>((resolve, reject) => {
+          canvasRef.current!.toBlob(
+            b => b ? resolve(b) : reject(new Error('Unable to capture meal image')),
+            'image/jpeg',
+            0.85
+          );
+        });
+      }
+      return new Blob();
+    })();
+    const [results] = await Promise.all([
+      mockExtractIngredients(blob),
+      new Promise(r => setTimeout(r, 2000)), // ≥2 s processing guarantee
+    ]);
+    setItems((results as DetectedIngredient[]).map(toFoodItem));
+    setCapturePhase('live'); // reset for next time
+    setSubScreen(2);
+  };
+
+  // ── Gallery fallback (file input) ──
+  const handleGallery = () => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      revokeGalleryObjectUrl();
+      const url = URL.createObjectURL(file);
+      galleryObjectUrlRef.current = url;
+      setFrozenDataUrl(url);
+      stopCamera();
+      setCapturePhase('frozen');
+    };
+    input.click();
+  };
 
   // ── Derived macros ──
   const totals = items.reduce(
     (a, i) => ({ cal: a.cal + i.calories, pro: a.pro + i.protein, carb: a.carb + i.carbs, fat: a.fat + i.fat }),
     { cal: 0, pro: 0, carb: 0, fat: 0 }
   );
-
-  // ── Handlers ──
-  const handleCapture = () => {
-    setScanning(true);
-    setCaptured(true);
-    setTimeout(() => {
-      setItems(MOCK_ITEMS.map(i => ({ ...i })));
-      setScanning(false);
-      setSubScreen(2);
-    }, 1800);
-  };
-
-  const handleGallery = () => handleCapture(); // same mock
 
   const handleDeleteItem = (id: string) =>
     setItems(prev => prev.filter(i => i.id !== id));
@@ -115,7 +253,7 @@ export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlo
     console.log('[meal_logs] Saving payload:', payload);
     setSaved(true);
     const entry: NutritionMealEntry = { type: mealKind, time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }), items };
-    setTimeout(() => { onComplete?.({ meals: [entry], totalCalories: totals.cal }); onBack(); }, 1200);
+    setTimeout(() => { onComplete?.({ meals: [entry], totalCalories: totals.cal }); }, 1200);
   };
 
   const meta = mealKind ? MEAL_META[mealKind] : null;
@@ -161,57 +299,102 @@ export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlo
         </div>
 
         {/* Camera viewfinder */}
-        <div className="rounded-2xl overflow-hidden bg-[#0d0d0d] relative" style={{ height: 220 }}>
-          {captured ? (
-            <img src={CAPTURE_IMAGE} className="w-full h-full object-cover" alt="meal" />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-white/20">
-              <Camera size={44} strokeWidth={1} />
-              <p className="text-[12px] font-medium tracking-wide">Frame your meal</p>
-            </div>
-          )}
+        <div className="rounded-2xl overflow-hidden bg-[#0d0d0d] relative" style={{ height: 240 }}>
+          {/* Hidden canvas for frame capture */}
+          <canvas ref={canvasRef} className="hidden" />
 
-          {/* Scanning overlay */}
-          {scanning && (
-            <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-4">
-              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}>
-                <div className="w-10 h-10 rounded-full border-4 border-[#10B981] border-t-transparent" />
-              </motion.div>
-              <p className="text-white text-[13px] font-semibold">Detecting ingredients…</p>
-            </div>
-          )}
-
-          {/* Corner guides */}
-          {!captured && !scanning && (
+          {/* Live video feed */}
+          {capturePhase === 'live' && (
             <>
-              {[['top-3 left-3 border-t-2 border-l-2', ''], ['top-3 right-3 border-t-2 border-r-2', ''],
-              ['bottom-3 left-3 border-b-2 border-l-2', ''], ['bottom-3 right-3 border-b-2 border-r-2', '']
-              ].map(([pos], i) => (
-                <div key={i} className={`absolute w-6 h-6 border-white/60 rounded-sm ${pos}`} />
-              ))}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+              {!cameraReady && !cameraError && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/30">
+                  <Camera size={44} strokeWidth={1} />
+                  <p className="text-[12px] font-medium tracking-wide">Starting camera…</p>
+                </div>
+              )}
+              {cameraError && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4">
+                  <Camera size={32} strokeWidth={1} className="text-white/30" />
+                  <p className="text-white/60 text-[11px] text-center">{cameraError}</p>
+                  <button onClick={startCamera} className="text-[#10B981] text-[12px] font-bold underline">Retry</button>
+                </div>
+              )}
+              {cameraReady && (
+                <>
+                  {[['top-3 left-3 border-t-2 border-l-2'], ['top-3 right-3 border-t-2 border-r-2'],
+                    ['bottom-3 left-3 border-b-2 border-l-2'], ['bottom-3 right-3 border-b-2 border-r-2']
+                  ].map(([pos], i) => (
+                    <div key={i} className={`absolute w-7 h-7 border-white/70 rounded-sm ${pos}`} />
+                  ))}
+                </>
+              )}
             </>
+          )}
+
+          {/* Frozen frame — confirm / retake */}
+          {capturePhase === 'frozen' && frozenDataUrl && (
+            <>
+              <img src={frozenDataUrl} className="w-full h-full object-cover" alt="captured meal" />
+              <div className="absolute inset-0 bg-black/40 flex items-end justify-center pb-4 gap-3">
+                <button
+                  onClick={handleRetake}
+                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-white/20 backdrop-blur text-white text-[13px] font-semibold border border-white/30"
+                >
+                  <RefreshCw size={14} /> Retake
+                </button>
+                <button
+                  onClick={handleConfirmCapture}
+                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-white text-[13px] font-bold"
+                  style={{ backgroundColor: meta?.accent ?? '#10B981' }}
+                >
+                  <CheckCircle2 size={14} /> Confirm
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Processing overlay */}
+          {capturePhase === 'processing' && (
+            <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-4">
+              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}>
+                <div className="w-12 h-12 rounded-full border-[3px] border-[#10B981] border-t-transparent" />
+              </motion.div>
+              <p className="text-white text-[14px] font-semibold tracking-wide">Processing Image…</p>
+              <p className="text-white/50 text-[11px]">AI is analysing your meal</p>
+            </div>
           )}
         </div>
 
         {/* Action buttons */}
         <div className="space-y-3 pb-4">
-          <button
-            onClick={handleCapture}
-            disabled={!mealKind || scanning}
-            className="w-full h-[52px] rounded-xl text-white font-bold text-[15px] flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-40"
-            style={{ backgroundColor: meta?.accent ?? '#10B981', boxShadow: `0 8px 20px ${meta?.accent ?? '#10B981'}44` }}
-          >
-            <Camera size={18} />
-            {scanning ? 'Analysing…' : 'Capture Photo'}
-          </button>
-          <button
-            onClick={handleGallery}
-            disabled={!mealKind || scanning}
-            className="w-full h-[48px] rounded-xl border-2 border-dashed border-[#E5E7EB] text-[#6B7280] font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-[#F3F4F6] transition-colors disabled:opacity-40"
-          >
-            <Upload size={16} />
-            Upload from Gallery
-          </button>
+          {capturePhase === 'live' && (
+            <>
+              <button
+                onClick={handleShutter}
+                disabled={!mealKind || !cameraReady}
+                className="w-full h-[52px] rounded-xl text-white font-bold text-[15px] flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-40"
+                style={{ backgroundColor: meta?.accent ?? '#10B981', boxShadow: `0 8px 20px ${meta?.accent ?? '#10B981'}44` }}
+              >
+                <Camera size={18} />
+                Take Photo
+              </button>
+              <button
+                onClick={handleGallery}
+                disabled={!mealKind}
+                className="w-full h-[48px] rounded-xl border-2 border-dashed border-[#E5E7EB] text-[#6B7280] font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-[#F3F4F6] transition-colors disabled:opacity-40"
+              >
+                <Upload size={16} />
+                Upload from Gallery
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -406,8 +589,7 @@ export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlo
 
   // ─── Return ───────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
+    <MobileShell>
         <div className="flex-1 flex flex-col overflow-hidden relative">
           <AnimatePresence mode="wait">
             {subScreen === 1 && (
@@ -433,7 +615,6 @@ export default function NutritionLogFlow({ onBack, onComplete }: NutritionLogFlo
             )}
           </AnimatePresence>
         </div>
-      </div>
-    </div>
+    </MobileShell>
   );
 }

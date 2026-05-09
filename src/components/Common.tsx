@@ -25,3 +25,25 @@ export function Badge({ text, color = 'gray', size = 'sm' }: BadgeProps) {
     </span>
   );
 }
+
+// ── Avatar ────────────────────────────────────────────────────────────────────
+
+interface AvatarProps {
+  name: string;
+  role?: string;
+  size?: 'sm' | 'md' | 'lg';
+}
+
+export function Avatar({ name, size = 'md' }: AvatarProps) {
+  const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  
+  let sizeClasses = 'w-10 h-10 text-sm';
+  if (size === 'sm') sizeClasses = 'w-8 h-8 text-xs';
+  else if (size === 'lg') sizeClasses = 'w-20 h-20 text-3xl';
+
+  return (
+    <div className={`${sizeClasses} shrink-0 rounded-full bg-[#1D9E75]/10 flex items-center justify-center text-[#1D9E75] font-bold border border-[#1D9E75]/20`}>
+      {initials}
+    </div>
+  );
+}

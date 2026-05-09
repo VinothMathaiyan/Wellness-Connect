@@ -1,3 +1,12 @@
+// src/types/index.ts
+
+export interface SessionExercise {
+  id: string;
+  name: string;
+  instructions: string;
+  client_completed: boolean;
+}
+
 // ─── Training Session (SCR-C05 / HomeScreen) ─────────────────────────────────
 export interface TrainingSession {
   session_id: string;
@@ -8,10 +17,42 @@ export interface TrainingSession {
   duration_minutes: number;
   status: 'upcoming' | 'live' | 'completed' | 'cancelled';
   meeting_url?: string;
+  trainer_note?: string;       // optional pre-session note from trainer
+  exercises?: SessionExercise[]; // ordered exercise list for the session
 }
 
-// ─── Weekly Report Status (SCR-C05 / HomeScreen) ─────────────────────────────
+// ─── Weekly Report (SCR-C10) ─────────────────────────────
 export type WeeklyReportStatus = 'no_data' | 'generating' | 'ready';
+
+export interface WeeklyReport {
+  client_reflection?: string;
+  week_number: number;
+  start_date: string;
+  end_date: string;
+  averages: {
+      readiness: number;
+      sleep_hours: number;
+      water_litres: number;
+      mood_score: number;
+      energy_level: number;
+      pain_score: number;
+      mobility_score: number;
+      steps: number;
+  };
+  trends: {
+      best_day: string;
+      consistent_metric: string;
+      sleep: { day_offset: number; value: number }[];
+      water: { day_offset: number; value: number }[];
+      mood: { day_offset: number; value: number }[];
+      energy: { day_offset: number; value: number }[];
+      pain: { day_offset: number; value: number }[];
+      mobility: { day_offset: number; value: number }[];
+      steps: { day_offset: number; value: number }[];
+  };
+  daily_readiness: { score: number | null }[];
+  trainer_week_note?: string;
+}
 
 // ─── Health Profile (SCR-C02) ─────────────────────────────────────────────────
 export interface HealthProfile {
@@ -29,9 +70,11 @@ export interface HealthProfile {
 }
 
 // ─── Assessment Booking (SCR-C03) ─────────────────────────────────────────────
+export type AssessmentStatus = 'pending' | 'scheduled' | 'completed';
+
 export interface AssessmentBooking {
   preferred_time?: string;
-  status?: string;
+  status?: AssessmentStatus;
 }
 
 // ─── Daily Log (daily_metrics table — SCR-C06 / DailyCheckInScreen) ───────────
@@ -50,6 +93,15 @@ export interface MacrosJson {
   protein_g: number;  // grams of protein
   carbs_g: number;    // grams of carbohydrates
   fat_g: number;      // grams of fat
+}
+
+// ─── Daily Nutrition Aggregate (Phase 8 — HomeScreen live charts) ─────────────
+export interface DailyNutrition {
+  calories: number;   // total kcal consumed today
+  protein_g: number;  // total protein (g)
+  carbs_g: number;    // total carbs (g)
+  fat_g: number;      // total fat (g)
+  mealsLogged: number; // count of meal entries saved today
 }
 
 // ─── Meal Log (meal_logs table — SCR-C07 / MealLogScreen) ────────────────────
@@ -102,6 +154,15 @@ export interface NutritionLog {
 }
 
 // ─── Global App State ─────────────────────────────────────────────────────────
+export interface Notification {
+  id: string;
+  type: 'alert' | 'info' | 'success' | string;
+  message: string;
+  isRead: boolean;
+  time: string;
+  actionType?: string;
+}
+
 export interface WellnessAppState extends HealthProfile, AssessmentBooking {
   // Screen 1: Sign Up
   full_name?: string;
@@ -116,7 +177,7 @@ export interface WellnessAppState extends HealthProfile, AssessmentBooking {
   // Screen 5: Dashboard (mocked until backend integration)
   readinessScore?: number;
   currentWeek?: number;
-  assessmentStatus?: 'pending' | 'scheduled' | 'completed' | null;
+  assessmentStatus?: AssessmentStatus | null;
 
   // Screen 6: Daily Check-in
   dailyLog?: DailyLog;
@@ -124,9 +185,53 @@ export interface WellnessAppState extends HealthProfile, AssessmentBooking {
   // Screen 7: Meal Logger
   mealLogs?: MealLog[];
 
+  // Phase 8: Daily nutrition aggregate (drives HomeScreen live charts)
+  dailyNutrition?: DailyNutrition;
+
   // Habit Progress
   habitProgress?: { done: number; total: number };
 
+  // Alerts / Notifications
+  notifications?: Notification[];
+
+  // Phase 12: Trainers
+  trainers?: User[];
+  assignedTrainerId?: string | null;
+  connections?: TrainerConnection[];
+
   // Forward-compatibility escape hatch — use unknown to avoid disabling type safety
   [key: string]: unknown;
+}
+
+export interface TrainerConnection {
+  trainer_id: string;
+  status: 'pending' | 'active';
+  type?: string;
+}
+
+export interface User {
+  id: string;
+  full_name: string;
+  role: 'trainer' | 'expert' | 'user';
+  specialties?: string[];
+  city?: string;
+  rating?: number;
+  certifications?: string[];
+  available?: boolean;
+  sessionCount?: number | string;
+  availability?: string[];
+  bio?: string;
+}
+
+export interface TrainingProgram {
+  program_id: string;
+  program_name: string;
+  duration_weeks: number;
+  sessions_per_week: number;
+  goals: string[];
+  trainer: {
+    full_name: string;
+    photo_url: string;
+    specialisations: string[];
+  };
 }

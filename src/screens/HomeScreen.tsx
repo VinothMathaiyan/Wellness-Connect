@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ComponentType } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Home, Users, BarChart3, Bell, BarChart2 } from 'lucide-react';
-import type { TrainingSession, WeeklyReportStatus } from './src/types';
+import type { TrainingSession, WeeklyReportStatus, DailyNutrition } from '../types';
+import MobileShell from '../components/MobileShell';
 
 interface HomeScreenProps {
   userData: {
@@ -16,7 +17,9 @@ interface HomeScreenProps {
     unReadAlertsCount?: number;
     mealsLogged?: number;
   };
-  onViewSession: (s: any) => void;
+  /** Phase 8: live daily nutrition aggregate from App.tsx global state */
+  dailyNutrition?: DailyNutrition;
+  onViewSession: (s: TrainingSession) => void;
   onStartCheckIn: () => void;
   onFindTrainer: () => void;
   onReviewGoals: () => void;
@@ -24,6 +27,9 @@ interface HomeScreenProps {
   onTrackNutrition?: () => void;
   onProfileClick?: () => void;
   onViewWeeklyReport?: () => void;
+  onViewAlerts?: () => void;
+  onViewProgress?: () => void;
+  workoutProgress?: { score: number; notes: string };
 }
 
 /* ── Helpers ─────────────────────────────────────────────── */
@@ -34,7 +40,11 @@ const getScoreColor = (s: number) => s >= 70 ? '#1D9E75' : s >= 40 ? '#EF9F27' :
 
 /* ── NavButton ───────────────────────────────────────────── */
 const NavButton = ({ label, icon: Icon, active = false, onClick, badge }: {
-  label: string; icon: any; active?: boolean; onClick?: () => void; badge?: number;
+  label: string;
+  icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; className?: string }>;
+  active?: boolean;
+  onClick?: () => void;
+  badge?: number;
 }) => (
   <button onClick={onClick} className="flex flex-col items-center justify-center gap-[2px] transition-all min-w-[56px]">
     <div className="relative">
@@ -47,30 +57,66 @@ const NavButton = ({ label, icon: Icon, active = false, onClick, badge }: {
   </button>
 );
 
-/* ── NutritionCard ───────────────────────────────────────── */
-const NutritionCard = ({ logged = 0, onClick }: { logged?: number; onClick: () => void }) => (
-  <div
-    onClick={onClick}
-    className="bg-white rounded-[12px] p-[14px] border border-[#E5E7EB] flex items-center gap-[14px] mb-[10px] cursor-pointer active:bg-[#F3F4F6] transition-colors"
-  >
-    <div className="w-[48px] h-[48px] shrink-0 bg-[#FFF3E0] rounded-[10px] flex items-center justify-center text-[24px]">
-      🥗
-    </div>
-    <div className="flex-1 min-w-0">
-      <h4 className="text-[13px] font-semibold text-[#111827]">Log your meal</h4>
-      <p className="text-[12px] text-[#6B7280]">Tap to add breakfast, lunch or dinner</p>
-    </div>
-    <div className="flex flex-col items-end gap-1 shrink-0">
-      <span className="text-[11px] font-semibold text-[#1D9E75]">{logged} of 3 logged</span>
-      <div className="flex gap-[4px]">
-        {[1,2,3].map(i => (
-          <div key={i} className={`w-[8px] h-[8px] rounded-full ${i <= logged ? 'bg-[#1D9E75]' : 'border border-[#D1D5DB]'}`} />
-        ))}
+/* ── NutritionCard ─────────────────────────── */
+const NutritionCard = ({
+  logged = 0, dailyNutrition, onClick,
+}: {
+  logged?: number;
+  dailyNutrition?: DailyNutrition;
+  onClick: () => void;
+}) => {
+  const hasData = !!dailyNutrition && dailyNutrition.calories > 0;
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white rounded-[12px] p-[14px] border border-[#E5E7EB] mb-[10px] cursor-pointer active:bg-[#F3F4F6] transition-colors"
+    >
+      <div className="flex items-center gap-[14px]">
+        <div className="w-[48px] h-[48px] shrink-0 bg-[#FFF3E0] rounded-[10px] flex items-center justify-center text-[24px]">
+          🥗
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="text-[13px] font-semibold text-[#111827]">Log your meal</h4>
+          {hasData ? (
+            <p className="text-[12px] text-[#1D9E75] font-medium">
+              {dailyNutrition!.calories} kcal consumed today
+            </p>
+          ) : (
+            <p className="text-[12px] text-[#6B7280]">Tap to add breakfast, lunch or dinner</p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className="text-[11px] font-semibold text-[#1D9E75]">{logged} of 3 logged</span>
+          <div className="flex gap-[4px]">
+            {[1, 2, 3].map(i => (
+              <div key={i} className={`w-[8px] h-[8px] rounded-full ${i <= logged ? 'bg-[#1D9E75]' : 'border border-[#D1D5DB]'}`} />
+            ))}
+          </div>
+        </div>
+        <div className="text-[16px] text-[#9CA3AF] ml-1">›</div>
       </div>
+
+      {/* Macro pills — appear after first meal is saved */}
+      {hasData && (
+        <div className="flex gap-[6px] mt-[10px]">
+          {[
+            { label: 'P', value: dailyNutrition!.protein_g, color: '#10B981' },
+            { label: 'C', value: dailyNutrition!.carbs_g,   color: '#F59E0B' },
+            { label: 'F', value: dailyNutrition!.fat_g,     color: '#EF4444' },
+          ].map(m => (
+            <span
+              key={m.label}
+              className="flex-1 text-center rounded-[6px] py-[3px] text-[10px] font-bold"
+              style={{ backgroundColor: m.color + '18', color: m.color }}
+            >
+              {m.label} {Math.round(m.value)}g
+            </span>
+          ))}
+        </div>
+      )}
     </div>
-    <div className="text-[16px] text-[#9CA3AF] ml-1">›</div>
-  </div>
-);
+  );
+};
 
 /* ── TrainingCard ────────────────────────────────────────── */
 const TrainingCard = ({ session, onClick }: { session?: TrainingSession; onClick: () => void }) => {
@@ -127,13 +173,13 @@ const TrainingCard = ({ session, onClick }: { session?: TrainingSession; onClick
 };
 
 /* ── WeeklyReportCard ────────────────────────────────────── */
-const WeeklyReportCard = ({ status, weekNumber, teaser, onClick }: {
-  status: WeeklyReportStatus; weekNumber: number; teaser?: { sleep: string; mood: string; energy: string }; onClick: () => void;
+const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingComplete }: {
+  status: WeeklyReportStatus; weekNumber: number; teaser?: { sleep: string; mood: string; energy: string }; onClick: () => void; isTrackingComplete?: boolean;
 }) => {
-  if (status === 'no_data') return (
+  if (!isTrackingComplete || status === 'no_data') return (
     <div className="bg-white rounded-[12px] p-[14px] border border-[#E5E7EB] flex items-center gap-[14px] mb-[10px] opacity-65">
       <div className="w-[48px] h-[48px] shrink-0 bg-[#EEF2FF] rounded-[10px] flex items-center justify-center"><BarChart2 size={24} className="text-[#4F46E5]" /></div>
-      <div className="flex-1"><h4 className="text-[13px] font-semibold text-[#111827]">Weekly Report</h4><p className="text-[12px] text-[#9CA3AF]">Keep logging daily to unlock your first summary</p></div>
+      <div className="flex-1"><h4 className="text-[13px] font-semibold text-[#111827]">Weekly Report</h4><p className="text-[12px] text-[#9CA3AF]">{!isTrackingComplete ? "Complete daily tracking to unlock" : "Keep logging daily to unlock your first summary"}</p></div>
       <div className="px-3 py-0.5 bg-gray-100 rounded-full text-[11px] font-bold text-[#9CA3AF]">Week {weekNumber}</div>
     </div>
   );
@@ -158,9 +204,9 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick }: {
 
 /* ── HomeScreen (Main Export) ────────────────────────────── */
 export default function HomeScreen({
-  userData, onViewSession, onFindTrainer, onTrackToday, onTrackNutrition, onProfileClick, onViewWeeklyReport,
+  userData, dailyNutrition, onViewSession, onFindTrainer, onTrackToday, onTrackNutrition, onProfileClick, onViewWeeklyReport, onViewAlerts, onViewProgress, workoutProgress,
 }: HomeScreenProps) {
-  const [showToast, setShowToast] = useState(false);
+  const [showToast] = useState(false);
   const todayRef = useRef<HTMLDivElement>(null);
 
   const firstName = (userData.full_name || 'User').split(' ')[0];
@@ -170,11 +216,16 @@ export default function HomeScreen({
   const habitsTotal = userData.habitProgress?.total ?? 7;
   const assessmentStatus = userData.assessmentStatus ?? 'pending';
   const mealsLogged = userData.mealsLogged ?? 1;
+  const isTrackingComplete = habitsDone >= habitsTotal;
+
+  // Track adherence for last session
+  const lastSessionAdherence = workoutProgress?.score ?? 0;
+  if (lastSessionAdherence > 0) {
+    console.log(`Phase 10: Last Session Adherence - ${lastSessionAdherence}%`);
+  }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
-      {/* Device Frame */}
-      <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
+    <MobileShell>
 
         {/* Top Bar */}
         <header className="h-[52px] w-full flex items-center justify-between px-[20px] bg-white shrink-0 border-b border-[#F3F4F6]">
@@ -276,13 +327,19 @@ export default function HomeScreen({
             {/* Nutrition Card */}
             <NutritionCard
               logged={mealsLogged}
+              dailyNutrition={dailyNutrition}
               onClick={() => { console.log('Action Triggered: Log your Meal'); onTrackNutrition?.(); }}
             />
 
             {/* Training Card */}
             <TrainingCard
               session={userData.sessions?.[0]}
-              onClick={() => { console.log('Action Triggered: View Session'); onViewSession(userData.sessions?.[0] ?? null); }}
+              onClick={() => {
+                const session = userData.sessions?.[0];
+                if (!session) return;
+                console.log('Action Triggered: View Session');
+                onViewSession(session);
+              }}
             />
 
             {/* Daily Tracking Card */}
@@ -314,20 +371,20 @@ export default function HomeScreen({
               status={userData.weeklyReportStatus ?? 'no_data'}
               weekNumber={userData.currentWeek ?? 1}
               teaser={userData.weeklyReportTeaser}
+              isTrackingComplete={isTrackingComplete}
               onClick={() => { console.log('Action Triggered: View Report'); onViewWeeklyReport?.(); }}
             />
           </section>
         </div>
 
         {/* Bottom Navigation — fixed inside device frame */}
-        <nav className="absolute bottom-0 left-0 right-0 h-[60px] bg-white border-t border-[#E5E7EB] flex items-center justify-around px-[10px] z-50 rounded-b-[2rem]">
+        <nav className="absolute bottom-0 left-0 right-0 h-[60px] bg-white border-t border-[#E5E7EB] flex items-center justify-around px-[10px] z-50">
           <NavButton label="Home" icon={Home} active={true} onClick={() => console.log('Action Triggered: Nav Home')} />
           <NavButton label="Trainers" icon={Users} onClick={() => { console.log('Action Triggered: Nav Trainers'); onFindTrainer(); }} />
-          <NavButton label="Progress" icon={BarChart3} onClick={() => console.log('Action Triggered: Nav Progress')} />
-          <NavButton label="Alerts" icon={Bell} badge={userData.unReadAlertsCount} onClick={() => console.log('Action Triggered: Nav Alerts')} />
+          <NavButton label="Progress" icon={BarChart3} onClick={() => { console.log('Action Triggered: Nav Progress'); onViewProgress?.(); }} />
+          <NavButton label="Alerts" icon={Bell} badge={userData.unReadAlertsCount} onClick={() => { console.log('Action Triggered: Nav Alerts'); onViewAlerts?.(); }} />
         </nav>
 
-      </div>
-    </div>
+    </MobileShell>
   );
 }

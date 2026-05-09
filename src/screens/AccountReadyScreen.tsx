@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import { Copy, Check } from 'lucide-react';
 import Button from "../components/Button";
 import ProgressBar from "../components/ProgressBar";
+import MobileShell from '../components/MobileShell';
 
 interface AccountReadyScreenProps {
   /** full_name is collected in Screen 1 (SignUpScreen) as formData.full_name */
@@ -15,17 +16,19 @@ interface AccountReadyScreenProps {
   onGoToDashboard: (clientId: string) => void;
 }
 
+function generateClientId() {
+  const currentYear = new Date().getFullYear();
+  const randomValues = new Uint32Array(1);
+  crypto.getRandomValues(randomValues);
+  const randomNum = 10000 + (randomValues[0] % 90000);
+  return `WC-${currentYear}-${randomNum}`;
+}
+
 export default function AccountReadyScreen({ userData, onGoToDashboard }: AccountReadyScreenProps) {
   const [copied, setCopied] = useState(false);
 
   const firstName = userData.full_name?.split(' ')[0] || 'User';
-  const currentYear = new Date().getFullYear();
-
-  // Generate a stable mock client ID for this session
-  const clientId = useMemo(() => {
-    const randomNum = Math.floor(10000 + Math.random() * 90000);
-    return `WC-${currentYear}-${randomNum}`;
-  }, [currentYear]);
+  const [clientId] = useState(generateClientId);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(clientId).catch(() => {
@@ -50,10 +53,8 @@ export default function AccountReadyScreen({ userData, onGoToDashboard }: Accoun
   const goals = (userData.goals_json ?? []).filter(Boolean);
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-200 items-center justify-center p-4">
+    <MobileShell>
       {/* Device Frame — matches all other screens */}
-      <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative h-[800px] flex flex-col border-[12px] border-[#1E293B]">
-
         {/* Header — no back button on completion screen */}
         <header className="flex items-center px-4 py-4 bg-white sticky top-0 z-20 justify-center">
           <h1 className="text-primary font-bold text-xl tracking-tight">WellnessConnect</h1>
@@ -153,13 +154,12 @@ export default function AccountReadyScreen({ userData, onGoToDashboard }: Accoun
         </main>
 
         {/* CTA Button */}
-        <div className="absolute bottom-0 w-full p-6 bg-white z-10 rounded-b-[2rem] border-t border-gray-100 pb-10">
+        <div className="absolute bottom-0 w-full p-6 bg-white z-10 border-t border-gray-100 pb-10">
           <Button onClick={handleGoToDashboard}>
             Go to dashboard
           </Button>
         </div>
 
-      </div>
-    </div>
+    </MobileShell>
   );
 }
