@@ -124,7 +124,7 @@ function resolveDestination(
   pendingMap: Map<string, string>,
 ): string {
   const name = extractClientName(title);
-  const activeId  = name ? activeMap.get(name)  : null;
+  const activeId = name ? activeMap.get(name) : null;
   const pendingId = name ? pendingMap.get(name) : null;
   const anyId = activeId ?? pendingId;
 
@@ -152,25 +152,25 @@ function resolveDestination(
 // ─── Style config ─────────────────────────────────────────────────────────────
 
 const TYPE_ICON: Record<NotificationType, React.ElementType> = {
-  new_client_request:   UserPlus,
-  session_reminder:     Clock,
-  checkin_ready:        ClipboardList,
-  risk_flag_red:        AlertTriangle,
-  risk_flag_amber:      AlertTriangle,
+  new_client_request: UserPlus,
+  session_reminder: Clock,
+  checkin_ready: ClipboardList,
+  risk_flag_red: AlertTriangle,
+  risk_flag_amber: AlertTriangle,
   client_goal_approval: CheckCircle,
-  plan_suggestion:      Zap,
-  session_no_show:      XCircle,
+  plan_suggestion: Zap,
+  session_no_show: XCircle,
 };
 
 const TYPE_ICON_STYLE: Record<NotificationType, string> = {
-  new_client_request:   'bg-blue-100 text-blue-600',
-  session_reminder:     'bg-teal-100 text-teal-600',
-  checkin_ready:        'bg-purple-100 text-purple-600',
-  risk_flag_red:        'bg-red-100 text-red-600',
-  risk_flag_amber:      'bg-amber-100 text-amber-700',
+  new_client_request: 'bg-blue-100 text-blue-600',
+  session_reminder: 'bg-teal-100 text-teal-600',
+  checkin_ready: 'bg-purple-100 text-purple-600',
+  risk_flag_red: 'bg-red-100 text-red-600',
+  risk_flag_amber: 'bg-amber-100 text-amber-700',
   client_goal_approval: 'bg-green-100 text-green-600',
-  plan_suggestion:      'bg-teal-100 text-teal-600',
-  session_no_show:      'bg-red-100 text-red-600',
+  plan_suggestion: 'bg-teal-100 text-teal-600',
+  session_no_show: 'bg-red-100 text-red-600',
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -196,11 +196,10 @@ function NotificationRow({
   return (
     <button
       onClick={onTap}
-      className={`w-full flex items-start gap-3 px-4 py-3.5 text-left border-b border-gray-100 last:border-b-0 transition-colors active:bg-gray-50 ${
-        !notification.isRead
+      className={`w-full flex items-start gap-3 px-4 py-3.5 text-left border-b border-gray-100 last:border-b-0 transition-colors active:bg-gray-50 ${!notification.isRead
           ? 'bg-teal-50 border-l-2 border-l-teal-400'
           : 'bg-white'
-      }`}
+        }`}
     >
       {/* Icon circle */}
       <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${iconStyle}`}>
@@ -209,9 +208,8 @@ function NotificationRow({
 
       {/* Text */}
       <div className="flex-1 min-w-0">
-        <p className={`text-[14px] leading-snug truncate ${
-          !notification.isRead ? 'font-bold text-gray-900' : 'font-medium text-gray-800'
-        }`}>
+        <p className={`text-[14px] leading-snug truncate ${!notification.isRead ? 'font-bold text-gray-900' : 'font-medium text-gray-800'
+          }`}>
           {notification.title}
         </p>
         <p className="text-[12px] text-gray-500 mt-0.5 leading-snug line-clamp-2">
@@ -239,7 +237,7 @@ export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
 
   // Real client ID maps — built on mount so navigation targets use actual UUIDs
-  const [activeMap, setActiveMap]   = useState<Map<string, string>>(new Map());
+  const [activeMap, setActiveMap] = useState<Map<string, string>>(new Map());
   const [pendingMap, setPendingMap] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
@@ -256,13 +254,13 @@ export default function NotificationsScreen() {
       }
 
       const pMap = new Map<string, string>();
-      for (const r of pending as Array<{ client: { id: string; full_name: string } | null }>) {
-        if (r.client?.full_name) pMap.set(r.client.full_name, r.client.id);
-      }
+      for (const r of pending as any[]) {
+          if (r.client?.full_name) pMap.set(r.client.full_name, r.client.id);
+        }
 
-      setActiveMap(aMap);
-      setPendingMap(pMap);
-    });
+        setActiveMap(aMap);
+        setPendingMap(pMap);
+      });
   }, [userId]);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -280,7 +278,7 @@ export default function NotificationsScreen() {
     navigate(dest);
   };
 
-  const todayItems   = notifications.filter(n => n.group === 'today');
+  const todayItems = notifications.filter(n => n.group === 'today');
   const earlierItems = notifications.filter(n => n.group === 'earlier');
 
   return (

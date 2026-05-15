@@ -81,7 +81,7 @@ export default function WeeklyPlanScreen() {
       if (profile?.full_name) setClientName(profile.full_name);
       if (currentPlan) {
         const tpl = currentPlan.template as { duration_weeks?: number } | null;
-        const weekNum = computeWeekNumber(currentPlan.created_at ?? new Date().toISOString());
+        const weekNum = computeWeekNumber((currentPlan as any).created_at ?? new Date().toISOString());
         const totalWeeks = tpl?.duration_weeks ?? '?';
         setWeekLabel(`Week ${weekNum} of ${totalWeeks}`);
         if (currentPlan.trainer_note) {
