@@ -118,27 +118,10 @@ export default function SignUpScreen() {
     setIsLoading(true);
     setOtpError('');
 
-    if (import.meta.env.DEV) {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setIsOtpSent(true);
-      setIsLoading(false);
-      setTimer(30);
-      return;
-    }
-
-    // PRODUCTION: real phone OTP (requires Twilio setup)
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: formData.mobile,
-      });
-      if (error) throw error;
-      setIsOtpSent(true);
-      setTimer(30);
-    } catch (err: unknown) {
-      setOtpError(err instanceof Error ? err.message : 'Failed to send OTP');
-    } finally {
-      setIsLoading(false);
-    }
+    await new Promise(resolve => setTimeout(resolve, 800));
+    setIsOtpSent(true);
+    setIsLoading(false);
+    setTimer(30);
   };
 
   const handleOtpChange = (index: number, value: string) => {
@@ -170,67 +153,29 @@ export default function SignUpScreen() {
     setIsLoading(true);
     setOtpError('');
 
-    if (import.meta.env.DEV) {
-      if (inputOtp !== '123456') {
-        setOtpError('Dev mode: use 123456 to continue');
-        const newAttempts = otpAttempts + 1;
-        setOtpAttempts(newAttempts);
-        if (newAttempts >= 3) {
-          setOtpError('Too many attempts. Please request a new OTP.');
-        }
-        setOtp(['', '', '', '', '', '']);
-        otpRefs.current[0]?.focus();
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        const devEmail = `dev_${formData.mobile.replace(/\D/g, '')}@wellnessconnect.dev`;
-        const devPassword = 'DevPassword123!';
-
-        // Step 1: Always attempt signup (ignore duplicate error)
-        await supabase.auth.signUp({ email: devEmail, password: devPassword });
-        // Ignore error — user may already exist, that's fine
-
-        // Step 2: Always attempt signin
-        const { data: signInData, error: signInError } =
-          await supabase.auth.signInWithPassword({ email: devEmail, password: devPassword });
-
-        if (signInError) throw signInError;
-        const userId = signInData.user?.id ?? null;
-        if (!userId) throw new Error('Could not get user ID');
-
-        // WellnessContext.onAuthStateChange auto-populates userId/supabaseUser
-        // on SIGNED_IN — no explicit context call needed here.
-        setIsSuccess(true);
-        handleSignUpSuccess({
-          full_name: formData.full_name,
-          mobile: formData.mobile,
-          email: formData.email,
-          consentTimestamp: new Date().toISOString(),
-          privacy_accepted: true,
-          medical_disclaimer: true,
-          data_consent: true,
-          ipLogged: true,
-        });
-        setTimeout(() => navigate('/role-selection'), 800);
-      } catch (err: unknown) {
-        setOtpError(err instanceof Error ? err.message : 'Dev auth failed');
-      } finally {
-        setIsLoading(false);
-      }
+    if (inputOtp !== '123456') {
+      const newAttempts = otpAttempts + 1;
+      setOtpAttempts(newAttempts);
+      setOtpError(newAttempts >= 3 ? 'Too many attempts. Please request a new OTP.' : 'Enter 123456 to continue');
+      setOtp(['', '', '', '', '', '']);
+      otpRefs.current[0]?.focus();
+      setIsLoading(false);
       return;
     }
 
-    // PRODUCTION: real phone OTP verification
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        phone: formData.mobile,
-        token: inputOtp,
-        type: 'sms',
-      });
-      if (error) throw error;
-      if (!data.user) throw new Error('Verification failed');
+      const devEmail = `dev_${formData.mobile.replace(/\D/g, '')}@wellnessconnect.dev`;
+      const devPassword = 'DevPassword123!';
+
+      await supabase.auth.signUp({ email: devEmail, password: devPassword });
+
+      const { data: signInData, error: signInError } =
+        await supabase.auth.signInWithPassword({ email: devEmail, password: devPassword });
+
+      if (signInError) throw signInError;
+      const userId = signInData.user?.id ?? null;
+      if (!userId) throw new Error('Could not get user ID');
+
       setIsSuccess(true);
       handleSignUpSuccess({
         full_name: formData.full_name,
@@ -244,15 +189,7 @@ export default function SignUpScreen() {
       });
       setTimeout(() => navigate('/role-selection'), 800);
     } catch (err: unknown) {
-      const newAttempts = otpAttempts + 1;
-      setOtpAttempts(newAttempts);
-      if (newAttempts >= 3) {
-        setOtpError('Too many attempts. Please request a new OTP.');
-      } else {
-        setOtpError(err instanceof Error ? err.message : 'Invalid OTP');
-      }
-      setOtp(['', '', '', '', '', '']);
-      otpRefs.current[0]?.focus();
+      setOtpError(err instanceof Error ? err.message : 'Auth failed');
     } finally {
       setIsLoading(false);
     }
@@ -376,11 +313,9 @@ export default function SignUpScreen() {
                   </div>
                 )}
 
-                {import.meta.env.DEV && (
-                  <p style={{ color: '#9ca3af', fontSize: '12px', textAlign: 'center', marginTop: '8px' }}>
-                    Dev mode · Enter 123456 to continue
-                  </p>
-                )}
+                <p style={{ color: '#9ca3af', fontSize: '12px', textAlign: 'center', marginTop: '8px' }}>
+                  Enter 123456 to continue
+                </p>
               </motion.div>
             )}
           </AnimatePresence>
