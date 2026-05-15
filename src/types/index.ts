@@ -79,13 +79,16 @@ export interface AssessmentBooking {
 
 // ─── Daily Log (daily_metrics table — SCR-C06 / DailyCheckInScreen) ───────────
 export interface DailyLog {
-  log_date: string;         // YYYY-MM-DD  — daily_metrics.log_date
-  sleep_hours: number;      // 4–10        — daily_metrics.sleep_hours
-  mood_score: number;       // 1–5         — daily_metrics.mood_score
-  energy_score: number;     // 1–5         — daily_metrics.energy_score
-  water_glasses: number;    // 0–8         — daily_metrics.water_glasses
-  workout_done: boolean;    //             — daily_metrics.workout_done
-  readiness_score?: number; // computed 0–100 — daily_metrics.readiness_score
+  log_date: string;               // YYYY-MM-DD  — daily_metrics.log_date
+  sleep_hours: number;            // 4–10        — daily_metrics.sleep_hours
+  sleep_quality_score: number;    // 1–5         — daily_metrics.sleep_quality_score
+  mood_score: number;             // 1–5         — daily_metrics.mood_score
+  energy_score: number;           // 1–5         — daily_metrics.energy_score
+  water_glasses: number;          // 0–8         — daily_metrics.water_glasses
+  workout_done: boolean;          //             — daily_metrics.workout_done
+  pain_score: number | null;      // 0,2,5,7,10  — daily_metrics.pain_score
+  mobility_score: number;         // 0–10        — daily_metrics.mobility_score
+  readiness_score?: number;       // computed 0–100 — daily_metrics.readiness_score
 }
 
 // ─── Macros (meal_logs.macros_json) ─────────────────────────────────────────
@@ -212,7 +215,9 @@ export interface TrainerConnection {
 export interface User {
   id: string;
   full_name: string;
-  role: 'trainer' | 'expert' | 'user';
+  role: 'client' | 'trainer';
+  phone_number?: string | null;
+  photo_url?: string | null;
   specialties?: string[];
   city?: string;
   rating?: number;
