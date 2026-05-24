@@ -198,7 +198,9 @@ export default function SignUpScreen() {
     // A phone pre-registered via the Admin Portal skips role selection and
     // lands directly on its destination.
     const preRegPhone = normalisePhone(formData.mobile);
+    console.log('[PreReg] Looking up phone:', preRegPhone);
     const preRegRole = await getPreRegisteredRole(preRegPhone);
+    console.log('[PreReg] Result:', preRegRole);
     if (preRegRole === 'assessor') {
       await linkAuthUserToProfile(userId, preRegPhone);
       setUserRole('assessor');
