@@ -1,7 +1,9 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientSession } from '../../../services/supabaseService';
-import type { TrainingSession } from '../../../types';
+import { getSessionDetail, getSessionExercises, getActiveWorkoutPlanId, markSessionComplete } from '../../../services/supabaseService';
+import type { ClientSession } from '../../../types';
+import type { SessionExercise } from '../../../types';
+import { formatDate } from '@/utils/dateUtils';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -9,37 +11,44 @@ import type { TrainingSession } from '../../../types';
 
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { 
-  ChevronLeft, 
-  Check, 
-  Video, 
+import {
+  ChevronLeft,
+  Video,
   CheckCircle2,
-  MessageSquare
+  MessageSquare,
+  XCircle,
+  Loader2,
 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 
 
 
 export default function SessionDetailScreen() {
-  const { appState, activeSession, completedExercises, handleToggleExercise: onToggleExercise, handleSessionComplete } = useWellness();
+  const { appState, userId } = useWellness();
   const navigate = useNavigate();
   const { sessionId } = useParams<{ sessionId: string }>();
 
   // ── Local session state ────────────────────────────────────────────────────
-  // Use context activeSession if it matches the route param (in-app navigation).
-  // Fall back to a DB fetch for direct URL access or page refresh.
-  const contextMatch = activeSession?.session_id === sessionId ? activeSession : null;
-  const [fetchedSession, setFetchedSession] = useState<TrainingSession | null>(null);
-  const [sessionLoading, setSessionLoading]  = useState(!contextMatch);
+  const [fetchedSession, setFetchedSession] = useState<ClientSession | null>(null);
+  const [sessionLoading, setSessionLoading]  = useState(true);
   const [sessionNotFound, setSessionNotFound] = useState(false);
 
+  // ── Exercise + completion state (Phase 4A) ─────────────────────────────────
+  const [exercises, setExercises] = useState<SessionExercise[]>([]);
+  const [loadingExercises, setLoadingExercises] = useState(true);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState('');
+  const [completedSuccess, setCompletedSuccess] = useState(false);
+
+  // ── Fetch session detail ───────────────────────────────────────────────────
   useEffect(() => {
-    if (contextMatch || !sessionId) { setSessionLoading(false); return; }
+    if (!sessionId) { setSessionLoading(false); return; }
 
     let cancelled = false;
     setSessionLoading(true);
 
-    getClientSession(sessionId).then(result => {
+    getSessionDetail(sessionId).then(result => {
       if (cancelled) return;
       if (!result) setSessionNotFound(true);
       else setFetchedSession(result);
@@ -50,11 +59,47 @@ export default function SessionDetailScreen() {
     });
 
     return () => { cancelled = true; };
-  }, [sessionId, contextMatch]);
+  }, [sessionId]);
 
-  const session = contextMatch ?? fetchedSession;
+  // ── Fetch exercises + planId on mount ──────────────────────────────────────
+  useEffect(() => {
+    if (!userId) { setLoadingExercises(false); return; }
 
-  const userInitials = (appState.full_name ?? 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+    let cancelled = false;
+
+    Promise.all([
+      getSessionExercises(userId),
+      getActiveWorkoutPlanId(userId),
+    ]).then(([exs, pid]) => {
+      if (cancelled) return;
+      setExercises(exs);
+      setPlanId(pid);
+    }).catch((err) => {
+      console.error('SessionDetail: exercises fetch failed:', err);
+    }).finally(() => {
+      if (!cancelled) setLoadingExercises(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const session: ClientSession | null = fetchedSession;
+
+  const SESSION_TYPE_LABELS: Record<string, string> = {
+    yoga: 'Yoga Session',
+    strength: 'Strength Training',
+    cardio: 'Cardio Session',
+    recovery: 'Recovery Session',
+    'in-person': 'In-Person Session',
+    video: 'Video Session',
+    phone: 'Phone Session',
+  };
+  const getSessionLabel = (t: string) => SESSION_TYPE_LABELS[t] ?? t;
+
+  // Single initial only — first letter of full_name
+  const getInitial = (name: string | null | undefined): string =>
+    name?.charAt(0).toUpperCase() ?? '?';
+  const userInitials = getInitial(appState.full_name);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [clientNote, setClientNote] = useState('');
@@ -63,6 +108,43 @@ export default function SessionDetailScreen() {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // ── Time-gate logic (Phase 4A) ─────────────────────────────────────────────
+  const sessionPassed = session
+    ? new Date(session.scheduled_at) <= new Date()
+    : false;
+
+  const isAlreadyCompleted =
+    session?.status === 'completed' || completedSuccess;
+
+  // ── Mark Complete handler (Phase 4A) ───────────────────────────────────────
+  const handleMarkComplete = async () => {
+    if (!session || !planId || !userId) return;
+    if (completing) return;
+
+    setCompleting(true);
+    setCompleteError('');
+
+    try {
+      await markSessionComplete(
+        session.id,
+        userId,
+        planId,
+        clientNote
+      );
+      // Update local state to reflect completion immediately
+      setCompletedSuccess(true);
+      setFetchedSession(prev =>
+        prev ? { ...prev, status: 'completed' } : prev
+      );
+    } catch {
+      setCompleteError(
+        'Could not mark session complete. Try again.'
+      );
+    } finally {
+      setCompleting(false);
+    }
+  };
 
   // ── Loading / not-found guards ─────────────────────────────────────────────
   if (sessionLoading) {
@@ -103,24 +185,19 @@ export default function SessionDetailScreen() {
     );
   }
 
-  const exercises = session.exercises || [];
-  const completedCount = completedExercises.length;
-  const totalCount = exercises.length;
-
   const startTime = new Date(session.scheduled_at);
   const endTime = new Date(startTime.getTime() + session.duration_minutes * 60 * 1000);
   const diffMinutes = (startTime.getTime() - currentTime.getTime()) / (1000 * 60);
 
+  const isCancelled = session.status === 'cancelled';
   const isCompleted = session.status === 'completed';
-  const isImminent = !isCompleted && diffMinutes <= 10 && currentTime < endTime;
-  // const isLive = isImminent && currentTime >= startTime;
-  // const isUpcoming = !isCompleted && !isImminent;
+  const isImminent = !isCompleted && !isCancelled && diffMinutes <= 10 && currentTime < endTime;
 
   const formatFullDate = (iso: string) => {
     const d = new Date(iso);
     const today = new Date();
     const isToday = d.toDateString() === today.toDateString();
-    return isToday ? `Today, ${formatTime(iso)}` : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    return isToday ? `Today, ${formatTime(iso)}` : `${formatDate(iso)}, ${formatTime(iso)}`;
   };
 
   const formatTime = (iso: string) => {
@@ -135,17 +212,7 @@ export default function SessionDetailScreen() {
 
     if (d.toDateString() === today.toDateString()) return <span className="bg-[#DCFCE7] text-[#1D9E75] px-2 py-0.5 rounded-full text-[11px] font-bold">Today</span>;
     if (d.toDateString() === tomorrow.toDateString()) return <span className="bg-[#FEF3C7] text-[#EF9F27] px-2 py-0.5 rounded-full text-[11px] font-bold">Tomorrow</span>;
-    return <span className="bg-gray-100 text-[#6B7280] px-2 py-0.5 rounded-full text-[11px] font-bold">{d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}</span>;
-  };
-
-  const handleComplete = () => {
-    const adherenceScore = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-    handleSessionComplete({
-      completedCount,
-      totalCount,
-      adherenceScore: adherenceScore,
-      clientNotes: clientNote
-    }); navigate('/client/dashboard'); //  completedCount, totalCount, adherenceScore, clientNotes: clientNote });
+    return <span className="bg-gray-100 text-[#6B7280] px-2 py-0.5 rounded-full text-[11px] font-bold">{formatDate(d)}</span>;
   };
 
   return (
@@ -162,10 +229,27 @@ export default function SessionDetailScreen() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-6 pb-24">
+        {/* Cancelled banner — shown above everything when session is cancelled */}
+        {isCancelled && (
+          <div style={{
+            backgroundColor: '#FEE2E2',
+            borderRadius: '12px',
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}>
+            <XCircle size={18} style={{ color: '#DC2626', flexShrink: 0 }} />
+            <span style={{ color: '#DC2626', fontWeight: 500, fontSize: 14 }}>
+              This session has been cancelled
+            </span>
+          </div>
+        )}
+
         {/* SECTION 1 — Session Overview card */}
         <section className="bg-white rounded-[12px] p-4 border border-[#E5E7EB] space-y-4 shadow-sm">
           <div className="space-y-1">
-            <h2 className="text-[18px] font-semibold text-[#111827]">{session.session_name}</h2>
+            <h2 className="text-[18px] font-semibold text-[#111827]">{getSessionLabel(session.session_type)}</h2>
             <p className="text-[13px] text-[#6B7280]">
               With {session.trainer_name} · {formatFullDate(session.scheduled_at)} · {session.duration_minutes} min
             </p>
@@ -179,9 +263,16 @@ export default function SessionDetailScreen() {
           </div>
 
           <div className="w-full">
-            {isCompleted ? (
+            {isCancelled ? (
+              <div
+                className="px-3 py-2 rounded-full text-[12px] font-bold flex items-center justify-center"
+                style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
+              >
+                Cancelled
+              </div>
+            ) : isCompleted ? (
               <div className="bg-gray-100 text-[#6B7280] px-3 py-2 rounded-full text-[12px] font-bold flex items-center justify-center">
-                Completed · {new Date(session.scheduled_at).toLocaleDateString()} {formatTime(session.scheduled_at)}
+                Completed · {formatDate(session.scheduled_at)} {formatTime(session.scheduled_at)}
               </div>
             ) : isImminent ? (
               <div className="bg-[#E1F5EE] text-[#1D9E75] px-3 py-2 rounded-full text-[12px] font-bold flex items-center justify-center gap-2">
@@ -211,100 +302,246 @@ export default function SessionDetailScreen() {
           </div>
         )}
 
-        {/* SECTION 3 — Today's Plan */}
-        <section className="space-y-3">
+        {/* SECTION 3 — Today's Plan (hidden for cancelled sessions) */}
+        {!isCancelled && <section className="space-y-3">
           <h3 className="text-[11px] uppercase text-[#6B7280] font-bold tracking-[0.07em]">Today's Plan</h3>
-          <div className="mt-4 space-y-3 max-h-[400px] overflow-y-auto scrollbar-hide pb-20">
-            {exercises.map((ex: any, index: number) => {
-              const isCompleted = completedExercises.includes(ex.id);
-              return (
-              <div 
-                key={ex.id}
-                onClick={() => onToggleExercise(ex.id)}
-                className={`flex items-center justify-between p-4 rounded-xl shadow-sm gap-4 cursor-pointer border transition-all ${
-                  isCompleted ? 'bg-[#F0FDF4] border-[#1D9E75]/20' : 'bg-white border-[#E5E7EB]'
-                }`}
-              >
-                <div className={`w-8 h-8 rounded-[8px] flex items-center justify-center font-bold text-[12px] shrink-0 transition-colors ${
-                  isCompleted ? 'bg-[#1D9E75] text-white' : 'bg-[#E1F5EE] text-[#0F6E56]'
-                }`}>
-                  {index + 1}
-                </div>
-                <div className="flex-1 min-w-0 pr-4">
-                  <h4 className={`text-[13px] font-semibold text-[#111827] truncate ${isCompleted ? 'line-through text-[#9CA3AF]' : ''}`}>
-                    {ex.name}
-                  </h4>
-                  <p className="text-sm text-gray-500 mt-1 break-words leading-relaxed">{ex.instructions}</p>
-                </div>
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${
-                  isCompleted ? 'bg-[#1D9E75] border-[#1D9E75]' : 'border-[#D1D5DB]'
-                }`}>
-                  {isCompleted && <Check size={14} className="text-white" />}
-                </div>
+          <div className="mt-4 space-y-3 max-h-[400px] overflow-y-auto scrollbar-hide pb-4">
+            {/* Exercise list — Phase 4A */}
+            {loadingExercises ? (
+              // Skeleton — 3 placeholder rows
+              <div>
+                {[1,2,3].map(i => (
+                  <div key={i} style={{
+                    height: 48,
+                    backgroundColor: '#F3F4F6',
+                    borderRadius: 8,
+                    marginBottom: 8,
+                  }} />
+                ))}
               </div>
-            );})}
-            <div className="mt-6 px-1 mb-8">
-              <textarea
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm resize-none focus:ring-1 focus:ring-emerald-500 outline-none"
-                rows={4}
-                placeholder="Add notes or feedback for your trainer..."
-                value={clientNote}
-                onChange={(e) => setClientNote(e.target.value)}
-              />
-            </div>
+            ) : exercises.length === 0 ? (
+              // Empty state
+              <div style={{
+                textAlign: 'center',
+                padding: '24px 16px',
+                color: '#6B7280',
+              }}>
+                <p style={{ fontSize: 14 }}>
+                  No exercises assigned yet
+                </p>
+                <p style={{ fontSize: 12, marginTop: 4 }}>
+                  Your trainer will add exercises to your program
+                </p>
+              </div>
+            ) : (
+              // Exercise list
+              exercises.map((ex, index) => (
+                <div key={ex.id} style={{
+                  padding: '12px 16px',
+                  backgroundColor: '#F9FAFB',
+                  borderRadius: 12,
+                  marginBottom: 8,
+                  border: '1px solid #E5E7EB',
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}>
+                    <span style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      color: '#111827',
+                    }}>
+                      {index + 1}. {ex.name}
+                    </span>
+                    <span style={{
+                      fontSize: 12,
+                      color: '#6B7280',
+                      backgroundColor: '#F3F4F6',
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                    }}>
+                      {ex.sets} × {ex.reps}
+                    </span>
+                  </div>
+                  {ex.instructions && (
+                    <p style={{
+                      fontSize: 12,
+                      color: '#6B7280',
+                      marginTop: 4,
+                    }}>
+                      {ex.instructions}
+                    </p>
+                  )}
+                  {ex.rest_seconds && (
+                    <p style={{
+                      fontSize: 11,
+                      color: '#9CA3AF',
+                      marginTop: 2,
+                    }}>
+                      Rest: {ex.rest_seconds}s
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
           </div>
-          <p className="text-[12px] text-[#6B7280] text-center">{completedCount} of {totalCount} exercises done</p>
-          <button
-            onClick={handleComplete}
-            className="w-full h-12 rounded-[12px] bg-[#1D9E75] text-white flex items-center justify-center gap-2 font-bold active:scale-[0.98] transition-transform"
-          >
-            <CheckCircle2 size={18} /> Save session progress
-          </button>
-        </section>
 
-        {/* SECTION 4 — Join Button (state-aware) */}
-        <section className="space-y-4 pt-4">
+          {/* Client notes textarea */}
+          <div className="mt-2 px-1 mb-4">
+            <textarea
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm resize-none focus:ring-1 focus:ring-emerald-500 outline-none"
+              rows={4}
+              placeholder="Add notes or feedback for your trainer..."
+              value={clientNote}
+              onChange={(e) => setClientNote(e.target.value)}
+            />
+          </div>
+
+          {/* Mark Complete button — Phase 4A */}
+          {isAlreadyCompleted ? (
+            // Already done state
+            <div style={{
+              padding: '16px',
+              backgroundColor: '#F0FDF4',
+              borderRadius: 12,
+              textAlign: 'center',
+              color: '#166534',
+              fontWeight: 500,
+            }}>
+              ✓ Session completed
+            </div>
+          ) : !sessionPassed ? (
+            // Future session — button disabled
+            <button
+              disabled
+              style={{
+                width: '100%',
+                padding: '16px',
+                backgroundColor: '#F3F4F6',
+                color: '#9CA3AF',
+                borderRadius: 12,
+                border: 'none',
+                fontSize: 15,
+                cursor: 'not-allowed',
+              }}
+            >
+              Available after session time
+            </button>
+          ) : !planId ? (
+            // No active program
+            <button
+              disabled
+              style={{
+                width: '100%',
+                padding: '16px',
+                backgroundColor: '#F3F4F6',
+                color: '#9CA3AF',
+                borderRadius: 12,
+                border: 'none',
+                fontSize: 15,
+              }}
+            >
+              No active program assigned
+            </button>
+          ) : (
+            // Active + past + can complete
+            <>
+              {completeError && (
+                <p style={{
+                  color: '#DC2626',
+                  fontSize: 13,
+                  marginBottom: 8,
+                  textAlign: 'center',
+                }}>
+                  {completeError}
+                </p>
+              )}
+              <button
+                onClick={handleMarkComplete}
+                disabled={completing}
+                style={{
+                  width: '100%',
+                  padding: '16px',
+                  backgroundColor: completing
+                    ? '#9CA3AF' : '#166534',
+                  color: '#ffffff',
+                  borderRadius: 12,
+                  border: 'none',
+                  fontSize: 15,
+                  fontWeight: 600,
+                  cursor: completing ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                {completing ? (
+                  <>
+                    <Loader2 size={16}
+                      style={{ animation: 'spin 1s linear infinite' }} />
+                    Saving...
+                  </>
+                ) : (
+                  'Mark Session Complete'
+                )}
+              </button>
+            </>
+          )}
+        </section>}
+
+        {/* SECTION 4 — Join Button (hidden for cancelled sessions) */}
+        {!isCancelled && <section className="space-y-4 pt-4">
           {isCompleted ? (
             <div className="space-y-4">
               <div className="bg-[#E1F5EE] text-[#0F6E56] p-3 rounded-[12px] flex items-center justify-center gap-2 text-[12px] font-bold">
                 <CheckCircle2 size={16} /> Great work! Session logged.
               </div>
               <div className="bg-gray-100 text-[#9CA3AF] p-4 rounded-[12px] text-center text-[14px] font-bold">
-                Session completed · {new Date(session.scheduled_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}, {formatTime(session.scheduled_at)}
+                Session completed · {formatDate(session.scheduled_at)}, {formatTime(session.scheduled_at)}
               </div>
             </div>
-          ) : !session.meeting_url ? (
+          ) : session.meeting_url ? (
+            /* meeting_url present — show join button regardless of session type */
+            isImminent ? (
+              <div className="space-y-2">
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  animate={{ boxShadow: ["0 0 0px rgba(29, 158, 117, 0.4)", "0 0 15px rgba(29, 158, 117, 0.4)", "0 0 0px rgba(29, 158, 117, 0.4)"] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  onClick={() => window.open(session.meeting_url!, '_blank')}
+                  className="w-full h-12 rounded-[12px] bg-[#1D9E75] text-white flex items-center justify-center gap-2 font-bold cursor-pointer"
+                >
+                  <Video size={20} /> Join Video Session — Live now
+                </motion.button>
+                <p className="text-[11px] text-[#1D9E75] text-center font-medium">Session is active · Tap to join now</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  onClick={() => window.open(session.meeting_url!, '_blank')}
+                  className="w-full h-12 rounded-[12px] border-2 border-[#1D9E75] text-[#1D9E75] bg-white flex items-center justify-center gap-2 font-bold cursor-pointer active:bg-gray-50 transition-colors"
+                >
+                  <Video size={20} /> Join Video Session
+                </button>
+                <p className="text-[11px] text-[#9CA3AF] text-center">Link will be active 10 minutes before the session.</p>
+              </div>
+            )
+          ) : session.session_type === 'video' ? (
+            /* video session but no meeting_url yet — show muted placeholder */
             <div className="space-y-2">
               <button disabled className="w-full h-12 rounded-[12px] border-2 border-gray-200 text-gray-400 bg-gray-50 flex items-center justify-center gap-2 font-bold opacity-40">
                 <Video size={20} /> Meet link not yet set
               </button>
               <p className="text-[11px] text-[#9CA3AF] text-center">Your trainer will add the link before the session.</p>
             </div>
-          ) : isImminent ? (
-            <div className="space-y-2">
-              <motion.button 
-                whileTap={{ scale: 0.98 }}
-                animate={{ boxShadow: ["0 0 0px rgba(29, 158, 117, 0.4)", "0 0 15px rgba(29, 158, 117, 0.4)", "0 0 0px rgba(29, 158, 117, 0.4)"] }}
-                transition={{ duration: 2, repeat: Infinity }}
-                onClick={() => window.open(session.meeting_url, '_blank')}
-                className="w-full h-12 rounded-[12px] bg-[#1D9E75] text-white flex items-center justify-center gap-2 font-bold cursor-pointer"
-              >
-                <Video size={20} /> Join via Google Meet — Session is live
-              </motion.button>
-              <p className="text-[11px] text-[#1D9E75] text-center font-medium">Session is active · Tap to join now</p>
-            </div>
           ) : (
-            <div className="space-y-2">
-              <button 
-                onClick={() => window.open(session.meeting_url, '_blank')}
-                className="w-full h-12 rounded-[12px] border-2 border-[#1D9E75] text-[#1D9E75] bg-white flex items-center justify-center gap-2 font-bold cursor-pointer active:bg-gray-50 transition-colors"
-              >
-                <Video size={20} /> Join via Google Meet
-              </button>
-              <p className="text-[11px] text-[#9CA3AF] text-center">Link will be active 10 minutes before the session.</p>
-            </div>
+            /* phone or in-person — hide meeting link section entirely */
+            null
           )}
-        </section>
+        </section>}
       </div>
     </MobileShell>
   );

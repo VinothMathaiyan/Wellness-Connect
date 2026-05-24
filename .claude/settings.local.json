@@ -9,7 +9,8 @@
       "Bash(npx tsc *)",
       "Bash(node -e \"const i = require\\('c:/Users/Dell/OneDrive/Wellness-Connect/node_modules/lucide-react'\\); ['Images','ImageIcon','FolderOpen','Library','GalleryHorizontal','CheckCircle2'].forEach\\(n=>console.log\\(n,!!i[n]\\)\\)\")",
       "Bash(node -e \"const l = require\\('./node_modules/lucide-react'\\); ['ShieldCheck','Upload','FileText','X'].forEach\\(n => console.log\\(n, !!l[n]\\)\\)\")",
-      "Bash(Select-String \"AcceptDecline\")"
+      "Bash(Select-String \"AcceptDecline\")",
+      "Bash(curl -s -o NUL -w \"HTTP %{http_code}\\\\n\" http://localhost:5173)"
     ]
   }
 }

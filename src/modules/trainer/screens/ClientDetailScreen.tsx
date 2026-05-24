@@ -1,93 +1,73 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   AlertTriangle,
-  TrendingUp,
-  TrendingDown,
   CheckCircle,
   Clock,
   Edit,
-  ChevronRight,
-  Minus,
   User,
   Calendar,
+  Activity,
+  ClipboardList,
+  StickyNote,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
+import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientDetail, getClientCheckins } from '../../../services/supabaseService';
+import {
+  getClientDetail,
+  getClientSessions,
+  cancelSession,
+  updateSessionNote,
+} from '../../../services/supabaseService';
+import type { TrainerClientSession } from '../../../types';
+import { formatDateLong } from '@/utils/dateUtils';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type RiskLevel = 'red' | 'amber' | 'green' | 'none';
-type RecommendationType = 'advance' | 'review' | 'regress' | 'simplify';
-type SessionStatus = 'Completed' | 'No-show' | 'Cancelled';
-type SessionType = 'Video' | 'In-person' | 'Phone';
 
-interface ClientDetail {
+interface ClientView {
   id: string;
   name: string;
   initials: string;
-  clientRef: string;
-  city: string;
+  city: string | null;
   goals: string[];
-  programWeek: number;
-  programTotal: number;
+  photoUrl: string | null;
   riskLevel: RiskLevel;
-  riskMessage: string;
-  readinessScore: number;
-  readinessDelta: number;
-  adherenceScore: number;
-  adherenceDelta: number;
-  recommendation: RecommendationType;
-  recommendationText: string;
+  riskMessage: string | null;
+  readinessScore: number | null;
+  readinessDelta: number | null;
+  adherenceScore: number | null;
+  adherenceDelta: number | null;
   lastCheckin: {
     date: string;
-    reviewed: boolean;
-    mobility: number;
-    pain: number;
-    energy: number;
-    freeText: string;
-  };
-  sessions: { date: string; type: SessionType; status: SessionStatus }[];
+    mobility: number | null;
+    pain: number | null;
+    energy: number | null;
+  } | null;
   program: {
-    name: string;
-    weekNumber: number;
-    totalWeeks: number;
-    sessionsPerWeek: number;
-    approvalStatus: 'approved' | 'pending' | 'draft';
-  };
-  isSessionToday: boolean;
+    name: string | null;
+    totalWeeks: number | null;
+    sessionsPerWeek: number | null;
+    approvalStatus: string | null;
+    currentWeek: number | null;
+  } | null;
 }
 
 // ─── Config Maps ─────────────────────────────────────────────────────────────
 
-const RECOMMENDATION_CONFIG: Record<
-  RecommendationType,
-  { label: string; bg: string; text: string; border: string; Icon: React.ElementType }
-> = {
-  advance:  { label: 'Advance',  bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-100', Icon: TrendingUp   },
-  review:   { label: 'Review',   bg: 'bg-yellow-50',  text: 'text-yellow-800',  border: 'border-yellow-100',  Icon: AlertTriangle },
-  regress:  { label: 'Regress',  bg: 'bg-red-50',     text: 'text-red-800',     border: 'border-red-100',     Icon: TrendingDown  },
-  simplify: { label: 'Simplify', bg: 'bg-orange-50',  text: 'text-orange-800',  border: 'border-orange-100',  Icon: Minus         },
-};
-
-const STATUS_BADGE: Record<SessionStatus, string> = {
-  'Completed': 'bg-emerald-50 text-emerald-700',
-  'No-show':   'bg-red-50 text-red-600',
-  'Cancelled': 'bg-gray-100 text-gray-500',
-};
-
-const TYPE_CHIP: Record<SessionType, string> = {
-  'Video':     'bg-blue-50 text-blue-700',
-  'In-person': 'bg-teal-50 text-teal-700',
-  'Phone':     'bg-purple-50 text-purple-700',
-};
-
-const APPROVAL_BADGE: Record<'approved' | 'pending' | 'draft', string> = {
+const APPROVAL_BADGE: Record<string, string> = {
   approved: 'bg-emerald-50 text-emerald-700',
   pending:  'bg-amber-50 text-amber-700',
+  pending_review: 'bg-amber-50 text-amber-700',
   draft:    'bg-gray-100 text-gray-500',
 };
 
@@ -101,16 +81,9 @@ function mapSeverityToRisk(severity?: string): RiskLevel {
 }
 
 function formatCheckinDate(logDate?: string): string {
-  if (!logDate) return DEV_MOCK_CLIENT.lastCheckin.date;
-  try {
-    return new Date(logDate).toLocaleDateString('en-US', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    });
-  } catch {
-    return DEV_MOCK_CLIENT.lastCheckin.date;
-  }
+  if (!logDate) return '';
+  const formatted = formatDateLong(logDate);
+  return formatted === '—' ? '' : formatted;
 }
 
 function getInitials(name: string): string {
@@ -120,6 +93,46 @@ function getInitials(name: string): string {
     .join('')
     .toUpperCase()
     .slice(0, 2);
+}
+
+function formatSessionDate(isoString: string): string {
+  return formatDateLong(isoString);
+}
+
+function formatSessionTime(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+const SESSION_TYPE_LABEL: Record<string, string> = {
+  video:      'Video',
+  phone:      'Phone',
+  'in-person': 'In-person',
+};
+
+function scoreColor(score: number): string {
+  if (score >= 70) return 'text-emerald-600';
+  if (score >= 40) return 'text-amber-600';
+  return 'text-red-600';
+}
+
+function calculateProgramWeek(
+  createdAt: string,
+  durationWeeks: number | null,
+): number | null {
+  if (!durationWeeks) return null;
+  const start = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - start.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const week = Math.floor(diffDays / 7) + 1;
+  if (week < 1) return 1;
+  if (week > durationWeeks) return durationWeeks;
+  return week;
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -135,16 +148,6 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
-function DeltaChip({ delta }: { delta: number }) {
-  const positive = delta >= 0;
-  return (
-    <span className={`text-[11px] font-bold flex items-center gap-0.5 ${positive ? 'text-emerald-600' : 'text-red-500'}`}>
-      {positive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-      {positive ? `+${delta}` : `${delta}`}
-    </span>
-  );
-}
-
 function ScoreBar({
   label,
   value,
@@ -152,31 +155,44 @@ function ScoreBar({
   redAbove,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   maxValue?: number;
   redAbove?: number;
 }) {
+  if (value === null) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-[12px] font-medium text-text-secondary w-16 shrink-0">{label}</span>
+        <div className="flex-1 bg-gray-100 rounded-full h-1.5" />
+        <span className="shrink-0 whitespace-nowrap text-right" style={{ color: '#9ca3af', fontSize: '12px' }}>No data</span>
+      </div>
+    );
+  }
   const isRed = redAbove !== undefined && value > redAbove;
+  // Inline hex fallbacks — tailwind.config overrides `red` to a single hex,
+  // so utility classes like `bg-red-400` are not generated. See CLAUDE.md.
+  const fillColor = isRed ? '#f87171' : '#2dd4bf'; // red-400 / teal-400
+  const textColor = isRed ? '#ef4444' : '#1F2937'; // red-500 / text-primary
   return (
     <div className="flex items-center gap-3">
       <span className="text-[12px] font-medium text-text-secondary w-16 shrink-0">{label}</span>
       <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${isRed ? 'bg-red-400' : 'bg-teal-400'}`}
-          style={{ width: `${(value / maxValue) * 100}%` }}
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${(value / maxValue) * 100}%`,
+            backgroundColor: fillColor,
+          }}
         />
       </div>
-      <span className={`text-[12px] font-bold w-5 text-right shrink-0 ${isRed ? 'text-red-500' : 'text-text-primary'}`}>
+      <span
+        className="text-[12px] font-bold w-5 text-right shrink-0"
+        style={{ color: textColor }}
+      >
         {value}
       </span>
     </div>
   );
-}
-
-function scoreColor(score: number): string {
-  if (score >= 70) return 'text-emerald-600';
-  if (score >= 40) return 'text-amber-600';
-  return 'text-red-600';
 }
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
@@ -184,74 +200,426 @@ function scoreColor(score: number): string {
 export default function ClientDetailScreen() {
   const navigate = useNavigate();
   const { clientId } = useParams<{ clientId: string }>();
+  const location = useLocation();
   const { userId } = useWellness();
 
-  const [clientData, setClientData] = useState<any>(null);
-  const [checkins, setCheckins] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [effortScore, setEffortScore] = useState<number | null>(null);
-  const [showFullNote, setShowFullNote] = useState(false);
+  interface DailyMetricsRow {
+    readiness_score: number | null;
+    log_date: string;
+    mobility_score: number | null;
+    pain_score: number | null;
+    energy_score: number | null;
+    mood_score: number | null;
+  }
 
-  useEffect(() => {
-    if (!userId || !clientId) return;
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        const [detail, history] = await Promise.all([
-          getClientDetail(clientId, userId),
-          getClientCheckins(clientId),
-        ]);
-        setClientData(detail);
-        setCheckins(history);
-      } catch (err) {
-        console.error('ClientDetail load error:', err);
-      } finally {
-        setIsLoading(false);
-      }
+  interface ClientDetailResponse {
+    profile: { id: string; full_name: string; city: string | null; specialties: string[] | null; photo_url: string | null } | null;
+    latestMetrics: DailyMetricsRow | null;
+    previousMetrics: DailyMetricsRow | null;
+    activeAlert: { severity: string; message: string } | null;
+    currentPlan: { id: string; status: string; created_at: string; template: { name: string; duration_weeks: number; sessions_per_week: number } | null } | null;
+    clientGoals: string[];
+    adherence: {
+      currentScore: number | null;
+      previousScore: number | null;
+      delta: number | null;
     };
-    load();
+  }
+
+  const [clientData, setClientData] = useState<ClientDetailResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [sessions, setSessions]         = useState<TrainerClientSession[]>([]);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelError, setCancelError]   = useState<string | null>(null);
+
+  const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const [editingNoteSessionId, setEditingNoteSessionId] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+
+  const loadClientData = useCallback(async () => {
+    if (!userId || !clientId) return;
+    setIsLoading(true);
+    try {
+      const detail = await getClientDetail(clientId, userId);
+      setClientData(detail as ClientDetailResponse);
+    } catch (err) {
+      console.error('ClientDetail load error:', err);
+    } finally {
+      setIsLoading(false);
+    }
   }, [userId, clientId]);
 
-  // Build merged client object — DB data overrides mock fallback where available
-  const dbProfile  = clientData?.profile;
-  const dbAlert    = clientData?.activeAlert;
-  const dbMetrics  = clientData?.latestMetrics;
-  const dbPlan     = clientData?.currentPlan;
+  // Initial load + re-load when userId or clientId changes (e.g. auth hydration)
+  useEffect(() => {
+    loadClientData();
+  }, [loadClientData]);
 
-  const client: ClientDetail = {
-    ...DEV_MOCK_CLIENT,
-    ...(dbProfile && {
-      name:     dbProfile.full_name ?? DEV_MOCK_CLIENT.name,
-      initials: getInitials(dbProfile.full_name ?? '') || DEV_MOCK_CLIENT.initials,
-      city:     dbProfile.city ?? DEV_MOCK_CLIENT.city,
-      goals:    dbProfile.specialties ?? DEV_MOCK_CLIENT.goals,
-    }),
-    riskLevel:    dbAlert ? mapSeverityToRisk(dbAlert.severity) : DEV_MOCK_CLIENT.riskLevel,
-    riskMessage:  dbAlert?.message ?? DEV_MOCK_CLIENT.riskMessage,
-    readinessScore: dbMetrics?.readiness_score ?? DEV_MOCK_CLIENT.readinessScore,
-    lastCheckin: {
-      ...DEV_MOCK_CLIENT.lastCheckin,
-      date:     formatCheckinDate(dbMetrics?.log_date),
-      mobility: dbMetrics?.mood_score ?? DEV_MOCK_CLIENT.lastCheckin.mobility,
-      // TODO: add pain_score column to daily_metrics
-      pain:     DEV_MOCK_CLIENT.lastCheckin.pain,
-      energy:   dbMetrics?.energy_score ?? DEV_MOCK_CLIENT.lastCheckin.energy,
-    },
-    program: {
-      ...DEV_MOCK_CLIENT.program,
-      name:            dbPlan?.template?.name ?? DEV_MOCK_CLIENT.program.name,
-      totalWeeks:      dbPlan?.template?.duration_weeks ?? DEV_MOCK_CLIENT.program.totalWeeks,
-      sessionsPerWeek: dbPlan?.template?.sessions_per_week ?? DEV_MOCK_CLIENT.program.sessionsPerWeek,
-      approvalStatus: (() => {
-        if (dbPlan?.status === 'approved') return 'approved';
-        if (dbPlan?.status === 'pending_review') return 'pending';
-        return DEV_MOCK_CLIENT.program.approvalStatus;
-      })(),
-    },
+  // Re-load every time this route is navigated to (location.key changes on each visit)
+  useEffect(() => {
+    if (!clientId || !userId) return;
+    loadClientData();
+  }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!clientId || !userId) return;
+    getClientSessions(clientId, userId).then(setSessions);
+  }, [clientId, userId]);
+
+  const handleCancelConfirm = async (sessionId: string) => {
+    if (!clientId || !userId) return;
+    const trainerId = userId;
+    const cId       = clientId;
+    setCancellingId(sessionId);
+    setCancelError(null);
+    try {
+      await cancelSession(sessionId, trainerId, cId);
+      setSessions(prev =>
+        prev.map(s => s.id === sessionId ? { ...s, status: 'cancelled' } : s),
+      );
+      setConfirmingId(null);
+    } catch {
+      setCancelError('Could not cancel. Try again.');
+    } finally {
+      setCancellingId(null);
+    }
   };
 
-  const rec     = RECOMMENDATION_CONFIG[client.recommendation];
-  const RecIcon = rec.Icon;
+  const beginEditNote = (sessionId: string, currentNote: string | null) => {
+    setEditingNoteSessionId(sessionId);
+    setNoteText(currentNote ?? '');
+    setNoteError(null);
+  };
+
+  const cancelEditNote = () => {
+    setEditingNoteSessionId(null);
+    setNoteText('');
+    setNoteError(null);
+  };
+
+  const saveNote = async (sessionId: string) => {
+    if (!userId) return;
+    setSavingNote(true);
+    setNoteError(null);
+    try {
+      const trimmed = noteText.trim();
+      const payload = trimmed.length > 0 ? trimmed : null;
+      await updateSessionNote(sessionId, userId, payload);
+      setSessions(prev =>
+        prev.map(s =>
+          s.id === sessionId
+            ? { ...s, trainer_note: payload }
+            : s,
+        ),
+      );
+      setEditingNoteSessionId(null);
+      setNoteText('');
+    } catch {
+      setNoteError('Could not save. Try again.');
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const dbProfile          = clientData?.profile ?? null;
+  const dbAlert            = clientData?.activeAlert ?? null;
+  const dbMetrics          = clientData?.latestMetrics ?? null;
+  const dbPreviousMetrics  = clientData?.previousMetrics ?? null;
+  const dbPlan             = clientData?.currentPlan ?? null;
+  const clientGoals        = clientData?.clientGoals ?? [];
+
+  const readinessDelta: number | null = (
+    dbMetrics?.readiness_score != null &&
+    dbPreviousMetrics?.readiness_score != null
+  )
+    ? dbMetrics.readiness_score - dbPreviousMetrics.readiness_score
+    : null;
+
+  const nowMs = Date.now();
+  const upcomingScheduled = sessions
+    .filter(s => s.status === 'scheduled' && new Date(s.scheduled_at).getTime() >= nowMs)
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  const nextUpcomingSession: TrainerClientSession | null = upcomingScheduled[0] ?? null;
+  const moreUpcomingCount = Math.max(upcomingScheduled.length - 1, 0);
+  const pastCount = sessions.filter(
+    s => s.status === 'completed' || s.status === 'cancelled',
+  ).length;
+
+  const client: ClientView = {
+    id: dbProfile?.id ?? clientId ?? '',
+    name: dbProfile?.full_name ?? 'Unknown Client',
+    initials: dbProfile?.full_name ? getInitials(dbProfile.full_name) : '?',
+    city: dbProfile?.city ?? null,
+    goals: clientGoals,
+    photoUrl: dbProfile?.photo_url ?? null,
+    readinessScore: dbMetrics?.readiness_score ?? null,
+    readinessDelta: readinessDelta,
+    adherenceScore: clientData?.adherence?.currentScore ?? null,
+    adherenceDelta: clientData?.adherence?.delta ?? null,
+    riskLevel: dbAlert ? mapSeverityToRisk(dbAlert.severity) : 'none',
+    riskMessage: dbAlert?.message ?? null,
+    lastCheckin: dbMetrics ? {
+      date: formatCheckinDate(dbMetrics.log_date),
+      mobility: dbMetrics.mobility_score ?? null,
+      pain: dbMetrics.pain_score ?? null,
+      energy: dbMetrics.energy_score ?? null,
+    } : null,
+    program: dbPlan ? {
+      name: dbPlan.template?.name ?? null,
+      totalWeeks: dbPlan.template?.duration_weeks ?? null,
+      sessionsPerWeek: dbPlan.template?.sessions_per_week ?? null,
+      approvalStatus: dbPlan.status ?? null,
+      currentWeek: calculateProgramWeek(
+        dbPlan.created_at,
+        dbPlan.template?.duration_weeks ?? null,
+      ),
+    } : null,
+  };
+
+  // ── Inline render helper for a single session card ─────────────────────────
+  const renderSession = (session: TrainerClientSession, isLast: boolean) => {
+    const isScheduled   = session.status === 'scheduled';
+    const isCancelled   = session.status === 'cancelled';
+    const isCompleted   = session.status === 'completed';
+    const isConfirming  = confirmingId === session.id;
+    const isCancelling  = cancellingId === session.id;
+    const isEditingNote = editingNoteSessionId === session.id;
+    const canHaveNote   = isCompleted || isCancelled;
+    const note          = session.trainer_note;
+
+    return (
+      <div
+        key={session.id}
+        style={{
+          padding: '12px 16px',
+          borderBottom: isLast ? 'none' : '1px solid #F9FAFB',
+          opacity: isCancelled ? 0.6 : 1,
+        }}
+      >
+        {/* Row: date/type info + action */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Clock size={13} style={{ color: '#9CA3AF', flexShrink: 0 }} />
+
+          {/* Date + type */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 500, color: '#111827', margin: 0 }}>
+              {formatSessionDate(session.scheduled_at)} · {formatSessionTime(session.scheduled_at)}
+            </p>
+            <p style={{ fontSize: 12, color: '#6B7280', margin: '2px 0 0' }}>
+              {SESSION_TYPE_LABEL[session.session_type] ?? session.session_type} · {session.duration_minutes} min
+            </p>
+          </div>
+
+          {/* Right side — status-dependent action */}
+          {isScheduled && (
+            isConfirming ? (
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  onClick={() => handleCancelConfirm(session.id)}
+                  disabled={isCancelling}
+                  style={{
+                    fontSize: 12,
+                    color: '#ffffff',
+                    backgroundColor: '#DC2626',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '4px 10px',
+                    cursor: isCancelling ? 'default' : 'pointer',
+                    opacity: isCancelling ? 0.6 : 1,
+                  }}
+                >
+                  {isCancelling ? '…' : 'Confirm'}
+                </button>
+                <button
+                  onClick={() => { setConfirmingId(null); setCancelError(null); }}
+                  style={{
+                    fontSize: 12,
+                    color: '#6B7280',
+                    backgroundColor: 'transparent',
+                    border: '1px solid #D1D5DB',
+                    borderRadius: '8px',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Keep
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setConfirmingId(session.id); setCancelError(null); }}
+                style={{
+                  fontSize: 12,
+                  color: '#DC2626',
+                  border: '1px solid #DC2626',
+                  borderRadius: '8px',
+                  padding: '4px 10px',
+                  backgroundColor: 'transparent',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                Cancel
+              </button>
+            )
+          )}
+
+          {isCancelled && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, color: '#9CA3AF' }}>Cancelled</span>
+              <span
+                onClick={() => navigate(`/trainer/schedule-session/${clientId}`)}
+                style={{
+                  fontSize: 12,
+                  color: '#166534',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                Reschedule
+              </span>
+            </div>
+          )}
+
+          {isCompleted && (
+            <span style={{ fontSize: 12, color: '#059669', fontWeight: 600, flexShrink: 0 }}>
+              Completed
+            </span>
+          )}
+        </div>
+
+        {/* Inline cancel error */}
+        {cancelError && isConfirming && (
+          <p style={{ fontSize: 11, color: '#DC2626', marginTop: 4, marginLeft: 23 }}>
+            {cancelError}
+          </p>
+        )}
+
+        {/* Inline trainer note — only on completed/cancelled sessions */}
+        {canHaveNote && !isEditingNote && note === null && (
+          <button
+            type="button"
+            onClick={() => beginEditNote(session.id, null)}
+            style={{
+              marginTop: 8,
+              marginLeft: 23,
+              color: '#166534',
+              fontSize: 12,
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+            }}
+          >
+            + Add note
+          </button>
+        )}
+
+        {canHaveNote && !isEditingNote && note !== null && (
+          <button
+            type="button"
+            onClick={() => beginEditNote(session.id, note)}
+            style={{
+              marginTop: 8,
+              marginLeft: 23,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <StickyNote size={12} style={{ color: '#9CA3AF', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: '#6B7280' }}>
+              {note.length > 60 ? `${note.substring(0, 60)}...` : note}
+            </span>
+          </button>
+        )}
+
+        {canHaveNote && isEditingNote && (
+          <div style={{ marginTop: 8, marginLeft: 23 }}>
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder="Add a note about this session..."
+              style={{
+                width: '100%',
+                fontSize: 13,
+                color: '#111827',
+                border: '1px solid #E5E7EB',
+                borderRadius: 8,
+                padding: '8px 10px',
+                resize: 'vertical',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit',
+              }}
+            />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginTop: 6,
+              }}
+            >
+              <span style={{ fontSize: 11, color: '#9CA3AF' }}>
+                {noteText.length}/500 chars
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={cancelEditNote}
+                  disabled={savingNote}
+                  style={{
+                    fontSize: 12,
+                    color: '#6B7280',
+                    backgroundColor: 'transparent',
+                    border: '1px solid #D1D5DB',
+                    borderRadius: 8,
+                    padding: '4px 10px',
+                    cursor: savingNote ? 'default' : 'pointer',
+                    opacity: savingNote ? 0.6 : 1,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => saveNote(session.id)}
+                  disabled={savingNote}
+                  style={{
+                    fontSize: 12,
+                    color: '#ffffff',
+                    backgroundColor: '#166534',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '4px 10px',
+                    cursor: savingNote ? 'default' : 'pointer',
+                    opacity: savingNote ? 0.6 : 1,
+                  }}
+                >
+                  {savingNote ? '…' : 'Save Note'}
+                </button>
+              </div>
+            </div>
+            {noteError && (
+              <p style={{ fontSize: 11, color: '#DC2626', marginTop: 4 }}>
+                {noteError}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <MobileShell className="bg-[#F2F8F7]">
@@ -267,7 +635,6 @@ export default function ClientDetailScreen() {
         </button>
         <div className="flex-1 min-w-0">
           <p className="text-[17px] font-bold text-text-primary leading-tight truncate">{client.name}</p>
-          <p className="text-[11px] text-text-secondary mt-0.5">{client.clientRef}</p>
         </div>
         {client.riskLevel === 'red' && (
           <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
@@ -299,54 +666,56 @@ export default function ClientDetailScreen() {
             {/* ── 1. Client Profile Header ─────────────────────────────────────────── */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
               <div className="flex items-start gap-3 mb-3">
-                <button
-                  onClick={() => console.log('View full profile')}
-                  className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 text-[15px] font-bold shrink-0 active:scale-95 transition-transform"
-                >
-                  {client.initials || <User size={20} />}
-                </button>
+                {client.photoUrl ? (
+                  <img
+                    src={client.photoUrl}
+                    alt={client.name}
+                    className="w-12 h-12 rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 text-[15px] font-bold shrink-0">
+                    {client.initials || <User size={20} />}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <h2 className="text-[17px] font-bold text-text-primary leading-tight">{client.name}</h2>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className="text-[11px] font-medium text-text-secondary bg-gray-100 px-2 py-0.5 rounded-full">
-                      {client.clientRef}
-                    </span>
-                    <span className="text-[12px] text-text-secondary">{client.city}</span>
-                  </div>
+                  {client.city && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[12px] text-text-secondary">{client.city}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Goal chips */}
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto hide-scrollbar pb-1 mb-2">
-                {client.goals.map(goal => (
-                  <span
-                    key={goal}
-                    className="shrink-0 text-[12px] font-semibold text-teal-700 bg-teal-50 border border-teal-100 px-3 py-1 rounded-full"
-                  >
-                    {goal}
-                  </span>
-                ))}
-              </div>
-
-              <p className="text-[12px] text-text-secondary font-medium">
-                Week {client.programWeek} of {client.programTotal}
-              </p>
+              {/* Goal chips — hide if empty */}
+              {client.goals.length > 0 && (
+                <div className="-mx-1 flex gap-1.5 overflow-x-auto hide-scrollbar pb-1">
+                  {client.goals.map(goal => (
+                    <span
+                      key={goal}
+                      className="shrink-0 text-[12px] font-semibold text-teal-700 bg-teal-50 border border-teal-100 px-3 py-1 rounded-full"
+                    >
+                      {goal}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ── 2. Risk Flag Banner ───────────────────────────────────────────────── */}
             {client.riskLevel === 'red' && (
               <div
-                className="w-full bg-red-500 rounded-2xl p-4 mb-1 cursor-pointer"
+                className="w-full rounded-2xl p-4 mb-1 cursor-pointer"
                 style={{ backgroundColor: '#ef4444' }}
                 onClick={() => navigate(`/trainer/risk-alert/${clientId}`)}
               >
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="text-white mt-0.5 shrink-0" size={20} style={{ color: '#ffffff' }} />
+                  <AlertTriangle className="mt-0.5 shrink-0" size={20} style={{ color: '#ffffff' }} />
                   <div>
-                    <p className="text-white font-bold text-sm" style={{ color: '#ffffff' }}>
+                    <p className="font-bold text-sm" style={{ color: '#ffffff' }}>
                       Immediate Attention Required
                     </p>
-                    <p className="text-red-100 text-sm mt-0.5" style={{ color: '#fecaca' }}>
+                    <p className="text-sm mt-0.5" style={{ color: '#fecaca' }}>
                       {client.riskMessage}
                     </p>
                   </div>
@@ -356,21 +725,33 @@ export default function ClientDetailScreen() {
 
             {client.riskLevel === 'amber' && (
               <div
-                className="w-full bg-amber-400 rounded-2xl p-4 mb-1 cursor-pointer"
+                className="w-full rounded-2xl p-4 mb-1 cursor-pointer"
                 style={{ backgroundColor: '#fbbf24' }}
                 onClick={() => navigate(`/trainer/risk-alert/${clientId}`)}
               >
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="text-amber-900 mt-0.5 shrink-0" size={20} style={{ color: '#78350f' }} />
+                  <AlertTriangle className="mt-0.5 shrink-0" size={20} style={{ color: '#78350f' }} />
                   <div>
-                    <p className="text-amber-900 font-bold text-sm" style={{ color: '#78350f' }}>
+                    <p className="font-bold text-sm" style={{ color: '#78350f' }}>
                       Monitor Closely
                     </p>
-                    <p className="text-amber-800 text-sm mt-0.5" style={{ color: '#92400e' }}>
+                    <p className="text-sm mt-0.5" style={{ color: '#92400e' }}>
                       {client.riskMessage}
                     </p>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {client.riskLevel === 'none' && (
+              <div
+                className="flex items-center gap-3"
+                style={{ backgroundColor: '#F0FDF4', borderRadius: 12, padding: '12px 16px' }}
+              >
+                <CheckCircle size={18} style={{ color: '#166534', flexShrink: 0 }} />
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#166534', margin: 0 }}>
+                  No active alerts
+                </p>
               </div>
             )}
 
@@ -386,183 +767,332 @@ export default function ClientDetailScreen() {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
                 <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider mb-2">Readiness</p>
-                <div className="flex items-end justify-between">
-                  <span className={`text-[28px] font-bold leading-none ${scoreColor(client.readinessScore)}`}>
-                    {client.readinessScore}
+                <div className="flex items-end justify-between gap-2">
+                  <span className={`text-[28px] font-bold leading-none ${client.readinessScore !== null ? scoreColor(client.readinessScore) : 'text-text-secondary'}`}>
+                    {client.readinessScore !== null ? client.readinessScore : <span style={{ color: '#9ca3af', fontSize: '12px' }}>No data</span>}
                   </span>
-                  <DeltaChip delta={client.readinessDelta} />
-                </div>
-              </div>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider mb-2">Adherence</p>
-                <div className="flex items-end justify-between">
-                  <span className={`text-[28px] font-bold leading-none ${scoreColor(client.adherenceScore)}`}>
-                    {client.adherenceScore}%
-                  </span>
-                  <DeltaChip delta={client.adherenceDelta} />
-                </div>
-              </div>
-            </div>
-
-            {/* ── 4. Engine 5.4 Recommendation ─────────────────────────────────────── */}
-            <div className={`rounded-2xl border p-4 ${rec.bg} ${rec.border}`}>
-              <div className="flex items-start gap-3">
-                <div className={`w-8 h-8 rounded-full bg-white/60 flex items-center justify-center shrink-0`}>
-                  <RecIcon size={16} className={rec.text} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[11px] font-bold uppercase tracking-wider ${rec.text} opacity-70`}>
-                      Engine 5.4
+                  {client.readinessDelta !== null && (
+                    <span
+                      style={{
+                        backgroundColor:
+                          client.readinessDelta > 0 ? '#F0FDF4'
+                          : client.readinessDelta < 0 ? '#FEE2E2'
+                          : '#F3F4F6',
+                        color:
+                          client.readinessDelta > 0 ? '#166534'
+                          : client.readinessDelta < 0 ? '#DC2626'
+                          : '#6B7280',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: '2px 6px',
+                        borderRadius: 999,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {client.readinessDelta > 0 && <TrendingUp size={11} />}
+                      {client.readinessDelta < 0 && <TrendingDown size={11} />}
+                      {client.readinessDelta === 0 && <Minus size={11} />}
+                      {client.readinessDelta > 0
+                        ? `+${client.readinessDelta}`
+                        : `${client.readinessDelta}`}
                     </span>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/50 ${rec.text}`}>
-                      {rec.label}
+                  )}
+                </div>
+              </div>
+              {client.adherenceScore === null ? (
+                /* Empty state — no sessions in the last 30 days */
+                <div
+                  className="rounded-2xl shadow-sm border border-gray-100 p-4"
+                  style={{ backgroundColor: '#F9FAFB' }}
+                >
+                  <p
+                    className="text-[11px] font-bold uppercase tracking-wider mb-2"
+                    style={{ color: '#6B7280' }}
+                  >
+                    Adherence
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Activity size={16} style={{ color: '#9CA3AF', flexShrink: 0 }} />
+                    <span
+                      className="text-[13px] font-medium"
+                      style={{ color: '#6B7280' }}
+                    >
+                      Not enough data yet
                     </span>
                   </div>
-                  <p className={`text-[13px] font-semibold leading-snug ${rec.text}`}>
-                    {client.recommendationText}
+                  <p
+                    style={{
+                      fontSize: 11,
+                      color: '#9CA3AF',
+                      marginTop: 4,
+                      marginBottom: 0,
+                    }}
+                  >
+                    Need at least 1 session in the last 30 days
                   </p>
                 </div>
-                <button
-                  onClick={() => console.log('Approve recommendation')}
-                  className={`shrink-0 text-[12px] font-bold px-3 py-1.5 rounded-xl bg-white/70 ${rec.text} active:bg-white transition-colors`}
-                >
-                  Approve
-                </button>
-              </div>
+              ) : (
+                /* Live score — tier-coloured value + optional delta chip */
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                  <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider mb-2">
+                    Adherence
+                  </p>
+                  <div className="flex items-end justify-between gap-2">
+                    <span
+                      className="text-[28px] font-bold leading-none"
+                      style={{
+                        color:
+                          client.adherenceScore >= 80 ? '#166534'
+                          : client.adherenceScore >= 60 ? '#D97706'
+                          : '#DC2626',
+                      }}
+                    >
+                      {client.adherenceScore}%
+                    </span>
+                    {client.adherenceDelta !== null && (
+                      <span
+                        style={{
+                          backgroundColor:
+                            client.adherenceDelta > 0 ? '#F0FDF4'
+                            : client.adherenceDelta < 0 ? '#FEE2E2'
+                            : '#F3F4F6',
+                          color:
+                            client.adherenceDelta > 0 ? '#166534'
+                            : client.adherenceDelta < 0 ? '#DC2626'
+                            : '#6B7280',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '2px 6px',
+                          borderRadius: 999,
+                          marginLeft: 8,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 3,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {client.adherenceDelta > 0 && <TrendingUp size={11} />}
+                        {client.adherenceDelta < 0 && <TrendingDown size={11} />}
+                        {client.adherenceDelta === 0 && <Minus size={11} />}
+                        {client.adherenceDelta > 0
+                          ? `+${client.adherenceDelta}%`
+                          : client.adherenceDelta < 0
+                            ? `${client.adherenceDelta}%`
+                            : '0'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* ── 5. Last Check-in Summary ──────────────────────────────────────────── */}
+            {/* ── 3b. View Full Progress ────────────────────────────────────────────── */}
+            <button
+              onClick={() => navigate(`/trainer/client-progress/${clientId}`)}
+              className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between active:scale-[0.99] transition-transform text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    backgroundColor: '#F0FDFA',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Activity size={18} style={{ color: '#0D9488' }} />
+                </div>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: 0 }}>
+                    View Full Progress
+                  </p>
+                  <p style={{ fontSize: 12, color: '#6B7280', margin: '2px 0 0' }}>
+                    Trends, metric history, readiness chart
+                  </p>
+                </div>
+              </div>
+              <ChevronLeft size={18} style={{ color: '#9CA3AF', transform: 'rotate(180deg)', flexShrink: 0 }} />
+            </button>
+
+            {/* ── 4. Last Check-in Summary ──────────────────────────────────────────── */}
             <div>
               <SectionHeader title="Last Check-In" />
-              <button
-                onClick={() => navigate(`/trainer/checkin-review/${clientId}`)}
-                className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-left active:scale-[0.99] transition-transform"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
+              {client.lastCheckin === null ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
+                  <ClipboardList size={28} style={{ color: '#9CA3AF', margin: '0 auto 8px' }} />
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: 0 }}>
+                    No check-ins yet
+                  </p>
+                  <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                    Client hasn&apos;t submitted a check-in
+                  </p>
+                </div>
+              ) : (
+                <button
+                  onClick={() => navigate(`/trainer/checkin-review/${clientId}`)}
+                  className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 text-left active:scale-[0.99] transition-transform"
+                >
+                  <div className="flex items-center gap-2 mb-3">
                     <Clock size={13} className="text-text-secondary" />
                     <span className="text-[13px] font-semibold text-text-primary">{client.lastCheckin.date}</span>
                   </div>
-                  {!client.lastCheckin.reviewed && (
-                    <span className="text-[11px] font-bold text-orange-600 bg-orange-50 border border-orange-100 px-2 py-0.5 rounded-full">
-                      Unreviewed
-                    </span>
-                  )}
-                </div>
 
-                <div className="space-y-2.5 mb-3">
-                  <ScoreBar label="Mobility" value={client.lastCheckin.mobility} />
-                  <ScoreBar label="Pain"     value={client.lastCheckin.pain}     redAbove={6} />
-                  <ScoreBar label="Energy"   value={client.lastCheckin.energy}   />
-                </div>
-
-                <div>
-                  <p className={`text-[12px] text-text-secondary italic leading-relaxed ${!showFullNote ? 'line-clamp-2' : ''}`}>
-                    "{client.lastCheckin.freeText}"
-                  </p>
-                  {client.lastCheckin.freeText.length > 60 && (
-                    <button
-                      onClick={e => { e.stopPropagation(); setShowFullNote(v => !v); }}
-                      className="text-[11px] font-semibold text-teal-600 mt-1"
-                    >
-                      {showFullNote ? 'Show less' : 'Read more'}
-                    </button>
-                  )}
-                </div>
-              </button>
+                  <div className="space-y-2.5">
+                    <ScoreBar label="Mobility" value={client.lastCheckin.mobility} />
+                    <ScoreBar label="Pain"     value={client.lastCheckin.pain}     redAbove={6} />
+                    <ScoreBar label="Energy"   value={client.lastCheckin.energy}   />
+                  </div>
+                </button>
+              )}
             </div>
 
             {/* ── 6. Session History ────────────────────────────────────────────────── */}
             <div>
-              <SectionHeader title="Sessions — Last 4 Weeks" />
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                {client.sessions.map((session, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex items-center gap-3 px-4 py-3 ${idx < client.sessions.length - 1 ? 'border-b border-gray-50' : ''}`}
-                  >
-                    <Clock size={13} className="text-text-secondary shrink-0" />
-                    <p className="text-[13px] font-medium text-text-primary flex-1 min-w-0 truncate">
-                      {session.date}
-                    </p>
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${TYPE_CHIP[session.type]}`}>
-                      {session.type}
-                    </span>
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${STATUS_BADGE[session.status]}`}>
-                      {session.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ── 7. Training Program Quick View ───────────────────────────────────── */}
-            <div>
-              <SectionHeader title="Current Program" />
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <p className="text-[14px] font-bold text-text-primary leading-snug flex-1">
-                    {client.program.name}
-                  </p>
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${APPROVAL_BADGE[client.program.approvalStatus]}`}>
-                    {client.program.approvalStatus.charAt(0).toUpperCase() + client.program.approvalStatus.slice(1)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-[12px] text-text-secondary font-medium mb-3">
-                  <span>Week {client.program.weekNumber} of {client.program.totalWeeks}</span>
-                  <span className="w-1 h-1 rounded-full bg-gray-300" />
-                  <span>{client.program.sessionsPerWeek}×/week</span>
-                </div>
-                <button
-                  onClick={() => navigate(`/trainer/program-builder/${clientId}`)}
-                  className="flex items-center gap-1.5 text-[13px] font-semibold text-teal-600 bg-teal-50 border border-teal-100 px-4 py-2 rounded-xl active:bg-teal-100 transition-colors"
-                >
-                  <Edit size={14} /> Edit Program
-                </button>
-              </div>
-            </div>
-
-            {/* ── 8. Log Session Note + Trainer Effort Score ────────────────────────── */}
-            <div className="space-y-3">
               <button
-                onClick={() => console.log('Log Session Note')}
-                disabled={!client.isSessionToday}
-                className="w-full py-3.5 rounded-2xl text-[15px] font-bold bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-sm shadow-teal-200 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                type="button"
+                onClick={() => setSessionsExpanded(prev => !prev)}
+                aria-expanded={sessionsExpanded}
+                className="w-full flex items-center gap-2 mb-3 bg-transparent border-0 p-0"
+                style={{ cursor: 'pointer' }}
               >
-                Log Session Note
+                <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider whitespace-nowrap">
+                  SESSIONS
+                </span>
+                <div className="flex-1 h-px bg-gray-100" />
+                {sessionsExpanded
+                  ? <ChevronUp size={16} className="text-text-secondary shrink-0" />
+                  : <ChevronDown size={16} className="text-text-secondary shrink-0" />
+                }
               </button>
+
+              {sessions.length === 0 ? (
+                /* No sessions at all — preserve existing empty state */
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div style={{ padding: '20px 16px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 13, color: '#9CA3AF' }}>No sessions yet</p>
+                  </div>
+                </div>
+              ) : sessionsExpanded ? (
+                /* Expanded — full list */
+                <>
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    {sessions.map((session, idx) =>
+                      renderSession(session, idx === sessions.length - 1),
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSessionsExpanded(false)}
+                    style={{
+                      marginTop: 8,
+                      color: '#166534',
+                      fontSize: 13,
+                      background: 'transparent',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Show less ▲
+                  </button>
+                </>
+              ) : nextUpcomingSession ? (
+                /* Collapsed — only the next upcoming session */
+                <>
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    {renderSession(nextUpcomingSession, true)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSessionsExpanded(true)}
+                    style={{
+                      marginTop: 8,
+                      color: '#166534',
+                      fontSize: 13,
+                      background: 'transparent',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {moreUpcomingCount} more upcoming, {pastCount} past · View all ›
+                  </button>
+                </>
+              ) : (
+                /* Collapsed — no upcoming session */
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
+                  <Calendar size={28} style={{ color: '#9CA3AF', margin: '0 auto 8px' }} />
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: 0 }}>
+                    No upcoming sessions
+                  </p>
+                </div>
+              )}
+
+              {/* Schedule Session button — always visible inside Sessions */}
               <button
                 onClick={() => navigate(`/trainer/schedule-session/${clientId}`)}
-                className="w-full py-3.5 rounded-2xl text-[15px] font-bold border-2 border-teal-600 text-teal-600 bg-white active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                className="mt-3 w-full py-3.5 rounded-2xl text-[15px] font-bold border-2 border-teal-600 text-teal-600 bg-white active:scale-[0.98] transition-all flex items-center justify-center gap-2"
               >
                 <Calendar size={17} />
                 Schedule Session
               </button>
+            </div>
 
-              {client.isSessionToday && (
+            {/* ── 6. Training Program Quick View ───────────────────────────────────── */}
+            <div>
+              <SectionHeader title="Current Program" />
+              {client.program === null ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: 0 }}>No program assigned</p>
+                  <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4, marginBottom: 12 }}>Create a workout program for this client</p>
+                  <button
+                    onClick={() => navigate(`/trainer/program-builder/${clientId}`)}
+                    className="mx-auto flex items-center gap-1.5 text-[13px] font-semibold text-teal-600 bg-teal-50 border border-teal-100 px-4 py-2 rounded-xl active:bg-teal-100 transition-colors"
+                  >
+                    <Edit size={14} /> Create Program
+                  </button>
+                </div>
+              ) : (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                  <p className="text-[12px] font-bold text-text-secondary uppercase tracking-wider mb-3">
-                    Rate today's effort
-                  </p>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4, 5].map(score => (
-                      <button
-                        key={score}
-                        onClick={() => {
-                          setEffortScore(score);
-                          console.log('Effort score:', score);
-                        }}
-                        className={`flex-1 h-10 rounded-xl text-[14px] font-bold transition-all active:scale-95 ${
-                          effortScore === score
-                            ? 'bg-teal-500 text-white shadow-sm shadow-teal-200'
-                            : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-                        }`}
-                      >
-                        {score}
-                      </button>
-                    ))}
+                  <div className="flex items-start justify-between gap-3 mb-1">
+                    <p className="text-[14px] font-bold text-text-primary leading-snug flex-1">
+                      {client.program.name ?? 'Untitled Program'}
+                    </p>
+                    {client.program.approvalStatus && (
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${APPROVAL_BADGE[client.program.approvalStatus] ?? 'bg-gray-100 text-gray-500'}`}>
+                        {client.program.approvalStatus.charAt(0).toUpperCase() + client.program.approvalStatus.slice(1).replace('_', ' ')}
+                      </span>
+                    )}
                   </div>
+                  {client.program.currentWeek !== null && client.program.totalWeeks !== null && (
+                    <p style={{ fontSize: 13, color: '#6B7280', margin: '0 0 12px' }}>
+                      Week {client.program.currentWeek} of {client.program.totalWeeks}
+                    </p>
+                  )}
+                  {client.program.sessionsPerWeek !== null && (
+                    <div className="flex items-center gap-3 text-[12px] text-text-secondary font-medium mb-3">
+                      <span>{client.program.sessionsPerWeek}×/week</span>
+                      {client.program.totalWeeks !== null && (
+                        <>
+                          <span className="w-1 h-1 rounded-full bg-gray-300" />
+                          <span>{client.program.totalWeeks} weeks</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => navigate(`/trainer/program-builder/${clientId}`)}
+                    className="flex items-center gap-1.5 text-[13px] font-semibold text-teal-600 bg-teal-50 border border-teal-100 px-4 py-2 rounded-xl active:bg-teal-100 transition-colors"
+                  >
+                    <Edit size={14} /> Edit Program
+                  </button>
                 </div>
               )}
             </div>
@@ -570,48 +1100,7 @@ export default function ClientDetailScreen() {
           </motion.div>
         )}
       </div>
+      <TrainerBottomNav />
     </MobileShell>
   );
 }
-
-// DEV FALLBACK — remove after real client data exists
-const DEV_MOCK_CLIENT: ClientDetail = {
-  id: '2',
-  name: 'Sarah Chen',
-  initials: 'SC',
-  clientRef: 'CL-2024-0042',
-  city: 'Chennai',
-  goals: ['Rehabilitation', 'Mobility'],
-  programWeek: 4,
-  programTotal: 12,
-  riskLevel: 'red',
-  riskMessage: 'Immediate attention required — pain levels elevated',
-  readinessScore: 34,
-  readinessDelta: -8,
-  adherenceScore: 61,
-  adherenceDelta: -5,
-  recommendation: 'regress',
-  recommendationText: 'Reduce load. Client showing stress indicators.',
-  lastCheckin: {
-    date: 'Mon, 12 May',
-    reviewed: false,
-    mobility: 5,
-    pain: 8,
-    energy: 3,
-    freeText: "Knee feels tight after yesterday's session. Struggled with the lunges.",
-  },
-  sessions: [
-    { date: 'Mon 5 May · 9:00 AM',  type: 'Video',     status: 'Completed' },
-    { date: 'Wed 7 May · 9:00 AM',  type: 'Video',     status: 'No-show'   },
-    { date: 'Mon 28 Apr · 9:00 AM', type: 'In-person', status: 'Completed' },
-    { date: 'Wed 30 Apr · 9:00 AM', type: 'Video',     status: 'Cancelled' },
-  ],
-  program: {
-    name: '12-Week Rehabilitation Foundation',
-    weekNumber: 4,
-    totalWeeks: 12,
-    sessionsPerWeek: 3,
-    approvalStatus: 'approved',
-  },
-  isSessionToday: true,
-};

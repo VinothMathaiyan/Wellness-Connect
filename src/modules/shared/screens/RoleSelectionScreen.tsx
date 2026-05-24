@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Activity, Users, Check, Loader2 } from 'lucide-react';
@@ -6,6 +6,7 @@ import MobileShell from '../../../components/MobileShell';
 import Button from '../../../components/Button';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
+import { isTrainerOnboardingComplete } from '../../../services/supabaseService';
 
 type SelectedRole = 'client' | 'trainer';
 
@@ -28,17 +29,28 @@ const ROLES = [
 
 export default function RoleSelectionScreen() {
   const navigate = useNavigate();
-  const { setAppState, userId, appState } = useWellness();
+  const { setAppState, userId, userRole, appState } = useWellness();
   const [selectedRole, setSelectedRole] = useState<SelectedRole | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Redirect assessors before the role-selection UI ever renders.
+  // Uses userRole from WellnessContext (set by SignUpScreen at login time
+  // via setUserRole('assessor')) instead of querying profiles directly —
+  // a direct profiles SELECT triggers the recursive RLS policy and 500s.
+  useEffect(() => {
+    if (!userId) return;
+    if (userRole === 'assessor') {
+      navigate('/assessment/dashboard', { replace: true });
+    }
+  }, [userId, userRole, navigate]);
 
   const handleRoleSelect = async (role: SelectedRole) => {
     const target = ROLES.find(r => r.id === role)!;
     setIsLoading(true);
 
     try {
-      console.log('Upserting profile:', { 
-        id: userId, role, full_name: appState.full_name 
+      console.log('Upserting profile:', {
+        id: userId, role, full_name: appState.full_name
       });
 
       const { error } = await supabase
@@ -53,6 +65,14 @@ export default function RoleSelectionScreen() {
       if (error) throw error;
 
       setAppState(prev => ({ ...prev, userRole: role }));
+
+      // Trainers who already completed onboarding go straight to the dashboard.
+      // New trainers (or those with an incomplete profile) continue to /trainer/welcome.
+      if (role === 'trainer' && userId) {
+        const complete = await isTrainerOnboardingComplete(userId);
+        navigate(complete ? '/trainer/dashboard' : target.destination);
+        return;
+      }
     } catch (err) {
       console.error('Failed to save role:', err);
       // Still navigate — dev flow must not be blocked by a DB write failure

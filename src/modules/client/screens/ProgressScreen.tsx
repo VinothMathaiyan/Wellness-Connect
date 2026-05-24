@@ -17,6 +17,7 @@ import {
     Home,
     Users,
     BarChart3,
+    MessageSquare,
     Bell,
     CheckCircle2,
     AlertTriangle,
@@ -123,7 +124,8 @@ export default function ProgressScreen() {
   void navigate;
   const { appState, userId } = useWellness();
   const unreadAlertsCount = (appState.notifications ?? []).filter(n => !n.isRead).length;
-    const { userData, weightData, isLoading } = useProgressData(userId);
+    const { userData, weightData, isLoading, fetchError } = useProgressData(userId);
+    const hasData = userData.readinessHistory.length > 0;
 
     const getScoreColor = (score: number) => {
         if (score >= 70) return 'text-[#1D9E75]';
@@ -131,7 +133,7 @@ export default function ProgressScreen() {
         return 'text-[#E24B4A]';
     };
 
-    const initial = (userData.full_name || 'V').split(' ')[0][0].toUpperCase();
+    const initial = (appState.full_name || 'U').split(' ')[0][0].toUpperCase();
 
     return (
         <MobileShell>
@@ -162,14 +164,30 @@ export default function ProgressScreen() {
                     </div>
                 )}
 
-                {/* Sections hidden while loading */}
-                {!isLoading && <>
+                {/* Error state */}
+                {!isLoading && fetchError && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700 font-medium">
+                        {fetchError}
+                    </div>
+                )}
+
+                {/* Empty state */}
+                {!isLoading && !fetchError && !hasData && (
+                    <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                        <span className="text-[40px] mb-3">📊</span>
+                        <h3 className="text-[16px] font-bold text-[#111827] mb-1">No data yet</h3>
+                        <p className="text-[13px] text-[#6B7280]">Start logging your check-ins to see your progress here.</p>
+                    </div>
+                )}
+
+                {/* Sections hidden while loading or when no data */}
+                {!isLoading && !fetchError && hasData && <>
 
                 {/* SECTION 1: Score summary row */}
                 <div className="grid grid-cols-2 gap-3">
                     {[
-                        { label: 'Readiness Score', val: userData.readinessScore, delta: '+6 from last week', unit: '' },
-                        { label: 'Adherence Score', val: userData.adherenceScore, delta: '+3 from last week', unit: '%' }
+                        { label: 'Readiness Score', val: userData.readinessScore, delta: userData.readinessDelta, unit: '' },
+                        { label: 'Adherence Score', val: userData.adherenceScore, delta: userData.adherenceDelta, unit: '%' }
                     ].map((score, i) => (
                         <div key={i} className="bg-white border border-[#E5E7EB] rounded-xl p-4 space-y-3 shadow-sm">
                             <div className="flex items-center justify-between">
@@ -192,7 +210,9 @@ export default function ProgressScreen() {
                                 <h4 className={`text-[24px] font-bold ${getScoreColor(score.val)} leading-none`}>
                                     {score.val}{score.unit}
                                 </h4>
-                                <p className="text-[11px] text-[#1D9E75] font-medium">↑ {score.delta}</p>
+                                <p className="text-[11px] text-[#1D9E75] font-medium">
+                                    {score.delta != null ? `↑ ${score.delta} from last week` : '-- from last week'}
+                                </p>
                             </div>
                         </div>
                     ))}
@@ -255,7 +275,7 @@ export default function ProgressScreen() {
                     {[
                         { label: `${userData.sessionsDone} sessions completed`, icon: '✓' },
                         { label: `${userData.weeksActive} weeks active`, icon: '🔥' },
-                        { label: '4-day streak', icon: '⚡' }
+                        { label: `${userData.streak}-day streak`, icon: '⚡' }
                     ].map((stat, i) => (
                         <div key={i} className="whitespace-nowrap bg-[#F3F4F6] text-[#111827] rounded-full px-3 py-2 flex items-center gap-1.5 text-[11px] font-bold border border-transparent">
                             <span className="text-[#111827]">{stat.icon}</span>
@@ -272,6 +292,7 @@ export default function ProgressScreen() {
                 <NavButton label="Home" icon={Home} onClick={() => navigate('/client/dashboard')} />
                 <NavButton label="Trainers" icon={Users} onClick={() => navigate('/client/trainers')} />
                 <NavButton label="Progress" icon={BarChart3} active={true} />
+                <NavButton label="Messages" icon={MessageSquare} onClick={() => navigate('/client/messages')} />
                 <NavButton label="Alerts" icon={Bell} onClick={() => navigate('/client/alerts')} badgeContent={unreadAlertsCount} />
             </nav>
         </MobileShell>

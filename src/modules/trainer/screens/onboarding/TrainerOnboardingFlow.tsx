@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useTrainerOnboarding,
   TOTAL_STEPS,
 } from '../../hooks/useTrainerOnboarding';
+import { useWellness } from '../../../../context/WellnessContext';
+import { isTrainerOnboardingComplete } from '../../../../services/supabaseService';
 import TrainerProfileStep from './TrainerProfileStep';
 import TrainerExpertiseStep from './TrainerExpertiseStep';
 import TrainerAvailabilityStep from './TrainerAvailabilityStep';
@@ -16,7 +19,17 @@ export type {
 
 export default function TrainerOnboardingFlow() {
   const navigate = useNavigate();
+  const { userId } = useWellness();
   const { step, data, updateData, nextStep, prevStep } = useTrainerOnboarding();
+
+  // Guard: redirect completed trainers who navigate directly to /trainer/onboarding.
+  useEffect(() => {
+    if (!userId) return;
+    isTrainerOnboardingComplete(userId).then(complete => {
+      if (complete) navigate('/trainer/dashboard', { replace: true });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   const goBack = () => {
     if (step > 1) prevStep();
@@ -40,6 +53,8 @@ export default function TrainerOnboardingFlow() {
                 specialisations: data.specialisations,
                 photoUrl: data.photoUrl,
                 city: data.city,
+                bio: data.bio,
+                yearsOfExperience: data.yearsOfExperience,
               },
             }),
   };

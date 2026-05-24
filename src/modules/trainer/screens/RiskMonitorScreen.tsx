@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { ChevronRight, Shield, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
+import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import {
   getTrainerAllRiskAlerts,
+  markAlertRead,
   type TrainerRiskAlert,
 } from '../../../services/supabaseService';
 
@@ -205,15 +207,30 @@ export default function RiskMonitorScreen() {
 
   const [riskClients, setRiskClients] = useState<RiskClient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
-    getTrainerAllRiskAlerts(userId).then(alerts => {
-      const deduped = dedupeByClient(alerts);
-      setRiskClients(deduped.map(alertToRiskClient));
-      setIsLoading(false);
-    });
+    setFetchError(null);
+    getTrainerAllRiskAlerts(userId)
+      .then(alerts => {
+        const deduped = dedupeByClient(alerts);
+        setRiskClients(deduped.map(alertToRiskClient));
+      })
+      .catch(err => {
+        console.error('RiskMonitorScreen:', err);
+        setFetchError(err instanceof Error ? err.message : 'Failed to load alerts');
+      })
+      .finally(() => setIsLoading(false));
   }, [userId]);
+
+  const handleAlertTap = async (client: RiskClient) => {
+    // Mark the alert as read (non-blocking — navigate immediately)
+    markAlertRead(client.alert.id).catch(() => {});
+    navigate(`/trainer/risk-alert/${client.id}`, {
+      state: { alert: client.alert },
+    });
+  };
 
   const redClients   = riskClients.filter(c => c.riskLevel === 'red');
   const amberClients = riskClients.filter(c => c.riskLevel === 'amber');
@@ -263,7 +280,14 @@ export default function RiskMonitorScreen() {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-10">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
+
+          {/* Error state */}
+          {!isLoading && fetchError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700 font-medium mb-4">
+              {fetchError}
+            </div>
+          )}
 
           {isLoading ? (
             /* ── Skeleton ──────────────────────────────────────────────────── */
@@ -291,11 +315,7 @@ export default function RiskMonitorScreen() {
                     <ClientRiskRow
                       key={client.id}
                       client={client}
-                      onTap={() =>
-                        navigate(`/trainer/risk-alert/${client.id}`, {
-                          state: { alert: client.alert },
-                        })
-                      }
+                      onTap={() => handleAlertTap(client)}
                     />
                   ))}
                 </div>
@@ -340,6 +360,7 @@ export default function RiskMonitorScreen() {
           )}
         </div>
       </div>
+      <TrainerBottomNav />
     </MobileShell>
   );
 }

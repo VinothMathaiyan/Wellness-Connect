@@ -6,12 +6,15 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
-  Users
+  Users,
+  RefreshCw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
+import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
-import { getTrainerClients } from '../../../services/supabaseService';
+import { getTrainerClients, getPendingClientRequests } from '../../../services/supabaseService';
+import type { TrainerClient } from '../../../services/supabaseService';
 
 type RiskLevel = 'red' | 'amber' | 'green';
 type SortOption = 'name' | 'readiness' | 'lastActive';
@@ -25,6 +28,7 @@ interface Client {
   riskLevel: RiskLevel;
   lastActive: string;
   goal: string;
+  hasPendingCheckin: boolean;
 }
 
 const RISK_ORDER: Record<RiskLevel, number> = { red: 0, amber: 1, green: 2 };
@@ -102,45 +106,76 @@ const FILTER_CHIP_ACTIVE_STYLE: Record<FilterRisk, React.CSSProperties> = {
 
 const FILTER_CHIP_INACTIVE_STYLE: React.CSSProperties = { backgroundColor: '#f3f4f6', color: '#4b5563' };
 
-const getInitials = (name: string) =>
-  name.split(' ')
-    .map((n: string) => n[0] ?? '')
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+// Single initial only — first letter of full_name
+const getInitials = (name: string): string =>
+  name?.charAt(0).toUpperCase() ?? '?';
+
+function readinessToRisk(score: number | null): RiskLevel {
+  if (score === null) return 'green';
+  if (score < 40) return 'red';
+  if (score < 65) return 'amber';
+  return 'green';
+}
+
+function formatLastActive(logDate: string | null): string {
+  if (!logDate) return 'No data';
+  const today = new Date();
+  const date  = new Date(logDate);
+  // Compare calendar dates only
+  const todayStr = today.toISOString().split('T')[0];
+  const diff = Math.floor(
+    (new Date(todayStr).getTime() - new Date(logDate).getTime()) / (1000 * 60 * 60 * 24)
+  );
+  if (diff === 0) return 'Today';
+  if (diff === 1) return '1 day ago';
+  return `${diff} days ago`;
+}
 
 export default function MyClientsScreen() {
   const navigate = useNavigate();
   const { userId } = useWellness();
 
-  const [clients, setClients] = useState<Client[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [clients, setClients]           = useState<Client[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [isLoading, setIsLoading]       = useState(true);
+  const [error, setError]               = useState('');
   const [searchQuery, setSearchQuery]   = useState('');
   const [filterRisk, setFilterRisk]     = useState<FilterRisk>('all');
   const [sortBy, setSortBy]             = useState<SortOption | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  useEffect(() => {
+  const loadClients = async () => {
     if (!userId) return;
-    getTrainerClients(userId)
-      .then((data: any[]) => {
-        if (import.meta.env.DEV && (!data || data.length === 0)) {
-          setClients(DEV_MOCK_CLIENTS);
-          return;
-        }
-        const mapped = (data ?? []).map((link: any) => ({
-          id: link.profile?.id ?? link.client?.id ?? '',
-          name: link.profile?.full_name ?? link.client?.full_name ?? 'Unknown',
-          initials: getInitials(link.profile?.full_name ?? link.client?.full_name ?? ''),
-          readinessScore: 0,
-          riskLevel: 'green' as const,
-          lastActive: 'Recently',
-          goal: 'General',
-        }));
-        setClients(mapped);
-      })
-      .catch((err: unknown) => console.error('MyClients error:', err))
-      .finally(() => setIsLoading(false));
+    setIsLoading(true);
+    setError('');
+    try {
+      const [data, pendingData] = await Promise.all([
+        getTrainerClients(userId),
+        getPendingClientRequests(userId).catch(() => []),
+      ]);
+      const mapped: Client[] = data.map((c) => ({
+        id:                 c.id,
+        name:               c.full_name,
+        initials:           getInitials(c.full_name),
+        readinessScore:     c.latest_readiness ?? 0,
+        riskLevel:          readinessToRisk(c.latest_readiness),
+        lastActive:         formatLastActive(c.last_active),
+        goal:               c.city ?? 'General',
+        hasPendingCheckin:  c.has_pending_checkin,
+      }));
+      setClients(mapped);
+      setPendingRequests(pendingData);
+    } catch (err: unknown) {
+      console.error('MyClients error:', err);
+      setError('Could not load clients.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadClients();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const activeFilterCount = (filterRisk !== 'all' ? 1 : 0) + (sortBy !== null ? 1 : 0);
@@ -186,7 +221,9 @@ export default function MyClientsScreen() {
           <div className="flex-1">
             <h1 className="text-[18px] font-bold text-text-primary leading-tight">My Clients</h1>
             <p className="text-[12px] text-text-secondary mt-0.5">
-              {clients.length} active clients
+              {pendingRequests.length > 0
+                ? `${clients.length} active · ${pendingRequests.length} pending`
+                : `${clients.length} active clients`}
             </p>
           </div>
         </div>
@@ -244,7 +281,7 @@ export default function MyClientsScreen() {
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32">
         {isLoading ? (
           <div className="space-y-2">
-            {[1, 2, 3, 4].map(i => (
+            {[1, 2, 3].map(i => (
               <div
                 key={i}
                 style={{
@@ -256,6 +293,35 @@ export default function MyClientsScreen() {
               />
             ))}
           </div>
+        ) : error ? (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20 text-center gap-4"
+          >
+            <Users size={40} className="text-gray-300" />
+            <p className="text-[15px] font-semibold text-text-primary">{error}</p>
+            <button
+              onClick={loadClients}
+              className="flex items-center gap-2 px-5 py-3 rounded-xl text-[14px] font-semibold"
+              style={{ backgroundColor: '#F0FDF4', color: '#166634', border: '1px solid #BBF7D0' }}
+            >
+              <RefreshCw size={15} />
+              Retry
+            </button>
+          </motion.div>
+        ) : clients.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20 text-center"
+          >
+            <Users size={40} className="text-gray-300 mb-3" />
+            <p className="text-[15px] font-semibold text-text-primary">No active clients yet</p>
+            <p className="text-[13px] text-text-secondary mt-1">
+              Clients who connect with you will appear here
+            </p>
+          </motion.div>
         ) : visibleClients.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -269,54 +335,140 @@ export default function MyClientsScreen() {
             </p>
           </motion.div>
         ) : (
-          <div className="space-y-2">
-            {visibleClients.map((client, idx) => (
-              <motion.button
-                key={client.id}
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.035 }}
-                onClick={() => navigate(`/trainer/client/${client.id}`)}
-                className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 flex items-stretch overflow-hidden text-left active:scale-[0.985] transition-transform"
-              >
-                {/* Colored risk stripe */}
-                <div
-                  className={`w-1.5 shrink-0 ${RISK_STRIPE[client.riskLevel]}`}
-                  style={RISK_STRIPE_STYLE[client.riskLevel]}
-                />
-
-                <div className="flex-1 flex items-center gap-3 px-3.5 py-3.5">
-                  {/* Initials avatar */}
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 ${RISK_INITIALS_BG[client.riskLevel]}`}
-                    style={RISK_INITIALS_STYLE[client.riskLevel]}
-                  >
-                    {client.initials}
-                  </div>
-
-                  {/* Name + last active */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-bold text-text-primary leading-tight truncate">
-                      {client.name}
-                    </p>
-                    <p className="text-[12px] text-text-secondary mt-0.5">
-                      Last active {client.lastActive}
-                    </p>
-                  </div>
-
-                  {/* Readiness score + chevron */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span
-                      className={`text-[12px] font-bold px-2.5 py-0.5 rounded-full ${RISK_SCORE_BADGE[client.riskLevel]}`}
-                      style={RISK_SCORE_STYLE[client.riskLevel]}
-                    >
-                      {client.readinessScore}
-                    </span>
-                    <ChevronRight size={15} className="text-gray-300" />
-                  </div>
+          <div>
+            {/* ─── Pending Requests ─────────────────────────────────────────────────── */}
+            {pendingRequests.length > 0 && (
+              <div className="mb-6">
+                <h2 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
+                  Pending Requests
+                </h2>
+                <div className="space-y-2">
+                  {pendingRequests.map((req) => {
+                    const clientName = req.client?.full_name ?? 'Unknown Client';
+                    const initials = getInitials(clientName);
+                    return (
+                      <motion.button
+                        key={req.client_id}
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        onClick={() => navigate(`/trainer/client-request/${req.client_id}`)}
+                        className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 flex items-stretch overflow-hidden text-left active:scale-[0.985] transition-transform"
+                      >
+                        <div
+                          className="w-1.5 shrink-0"
+                          style={{ backgroundColor: '#f59e0b' }}
+                        />
+                        <div className="flex-1 flex items-center gap-3 px-3.5 py-3.5">
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0"
+                            style={{ backgroundColor: '#fef3c7', color: '#92400e' }}
+                          >
+                            {initials}
+                          </div>
+                          <div className="flex-1 min-w-0 flex flex-col justify-center">
+                            <p className="text-[14px] font-bold text-text-primary leading-tight truncate">
+                              {clientName}
+                            </p>
+                            <span style={{ fontSize: '12px', color: '#d97706', fontWeight: 600, marginTop: '2px' }}>
+                              Pending approval
+                            </span>
+                          </div>
+                          <ChevronRight size={18} className="text-gray-300 shrink-0" />
+                        </div>
+                      </motion.button>
+                    );
+                  })}
                 </div>
-              </motion.button>
-            ))}
+              </div>
+            )}
+
+            {/* ─── Active Clients ───────────────────────────────────────────────────── */}
+            {visibleClients.length > 0 && (
+              <>
+                {pendingRequests.length > 0 && (
+                  <h2 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
+                    Active Clients
+                  </h2>
+                )}
+                <div className="space-y-2">
+                  {visibleClients.map((client, idx) => (
+
+                    <motion.button
+                      key={client.id}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.035 }}
+                      onClick={() => navigate(`/trainer/client/${client.id}`)}
+                      className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 flex items-stretch overflow-hidden text-left active:scale-[0.985] transition-transform"
+                    >
+                      {/* Colored risk stripe */}
+                      <div
+                        className={`w-1.5 shrink-0 ${RISK_STRIPE[client.riskLevel]}`}
+                        style={RISK_STRIPE_STYLE[client.riskLevel]}
+                      />
+
+                      <div className="flex-1 flex items-center gap-3 px-3.5 py-3.5">
+                        {/* Initials avatar */}
+                        <div
+                          className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 ${RISK_INITIALS_BG[client.riskLevel]}`}
+                          style={RISK_INITIALS_STYLE[client.riskLevel]}
+                        >
+                          {client.initials}
+                        </div>
+
+                        {/* Name + last active */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <p className="text-[14px] font-bold text-text-primary leading-tight truncate">
+                              {client.name}
+                            </p>
+                            {client.lastActive === 'No data' ? (
+                              <span style={{
+                                fontSize: 11,
+                                backgroundColor: '#F3F4F6',
+                                color: '#6B7280',
+                                borderRadius: 999,
+                                padding: '2px 8px',
+                                fontWeight: 600,
+                                flexShrink: 0,
+                              }}>
+                                No check-ins yet
+                              </span>
+                            ) : client.hasPendingCheckin ? (
+                              <span style={{
+                                fontSize: 11,
+                                backgroundColor: '#FEF3C7',
+                                color: '#D97706',
+                                borderRadius: 999,
+                                padding: '2px 8px',
+                                fontWeight: 600,
+                                flexShrink: 0,
+                              }}>
+                                Check-in pending
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-[12px] text-text-secondary mt-0.5">
+                            Last active {client.lastActive}
+                          </p>
+                        </div>
+
+                        {/* Readiness score + chevron */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span
+                            className={`text-[12px] font-bold px-2.5 py-0.5 rounded-full ${RISK_SCORE_BADGE[client.riskLevel]}`}
+                            style={RISK_SCORE_STYLE[client.riskLevel]}
+                          >
+                            {client.readinessScore}
+                          </span>
+                          <ChevronRight size={18} className="text-gray-300 shrink-0 ml-1" />
+                        </div>
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -405,16 +557,8 @@ export default function MyClientsScreen() {
         )}
       </AnimatePresence>
 
+      <TrainerBottomNav />
     </MobileShell>
   );
 }
 
-// DEV FALLBACK — remove after real client data exists
-const DEV_MOCK_CLIENTS: Client[] = [
-  { id: '1', name: 'Alex Johnson',   initials: 'AJ', readinessScore: 88, riskLevel: 'green', lastActive: '1 day ago',  goal: 'Strength'      },
-  { id: '2', name: 'Sarah Chen',     initials: 'SC', readinessScore: 34, riskLevel: 'red',   lastActive: '3 days ago', goal: 'Rehabilitation' },
-  { id: '3', name: 'Michael Torres', initials: 'MT', readinessScore: 52, riskLevel: 'amber', lastActive: '2 days ago', goal: 'Weight Loss'    },
-  { id: '4', name: 'Priya Sharma',   initials: 'PS', readinessScore: 76, riskLevel: 'green', lastActive: 'Today',      goal: 'Yoga'           },
-  { id: '5', name: 'Ravi Kumar',     initials: 'RK', readinessScore: 41, riskLevel: 'amber', lastActive: '5 days ago', goal: 'Cardio'         },
-  { id: '6', name: 'Ananya Bose',    initials: 'AB', readinessScore: 29, riskLevel: 'red',   lastActive: '6 days ago', goal: 'Nutrition'      },
-];

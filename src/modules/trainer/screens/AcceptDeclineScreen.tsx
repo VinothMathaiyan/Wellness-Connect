@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import {
   UserPlus,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
   Users,
   ChevronLeft,
+  Phone,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
@@ -13,6 +12,7 @@ import { useWellness } from '../../../context/WellnessContext';
 import {
   updateClientLinkStatus,
   getPendingClientRequests,
+  getActiveClientCount,
 } from '../../../services/supabaseService';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -22,6 +22,7 @@ interface PendingClient {
   name: string;
   initials: string;
   city: string;
+  phoneNumber: string;
   fitnessLevel: string;
   healthConditions: string[];
   goals: string[];
@@ -30,7 +31,28 @@ interface PendingClient {
   maxClients: number;
 }
 
-type ScreenState = 'default' | 'decline-form' | 'accepted' | 'declined' | 'loading';
+interface PendingClientProfile {
+  id: string;
+  full_name: string | null;
+  city: string | null;
+  specialties: string[] | null;
+  photo_url: string | null;
+  phone_number: string | null;
+}
+
+interface PendingClientRequest {
+  client_id: string | null;
+  client: PendingClientProfile | PendingClientProfile[] | null;
+}
+
+type ScreenState = 'default' | 'decline-form' | 'loading';
+
+function firstPendingClient(
+  client: PendingClientProfile | PendingClientProfile[] | null,
+): PendingClientProfile | null {
+  if (Array.isArray(client)) return client[0] ?? null;
+  return client;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -57,6 +79,18 @@ function ClientProfilePreview({ client }: { client: PendingClient }) {
           <p className="text-sm text-gray-500">{client.city}</p>
         </div>
       </div>
+
+      {/* Phone Number */}
+      {client.phoneNumber && (
+        <a
+          href={`tel:${client.phoneNumber}`}
+          className="flex items-center gap-2 mb-3 px-3 py-2 bg-teal-50 border border-teal-200 rounded-xl active:bg-teal-100 transition-colors"
+        >
+          <Phone size={14} className="text-teal-600 flex-shrink-0" />
+          <span className="text-sm font-semibold text-teal-700">{client.phoneNumber}</span>
+          <span className="text-xs text-teal-500 ml-auto">Tap to call</span>
+        </a>
+      )}
 
       <div className="flex flex-wrap gap-2 mb-3">
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
@@ -121,14 +155,7 @@ function AssessmentSummary({ notes }: { notes: string }) {
   );
 }
 
-function ClientLoadIndicator({ current, max }: { current: number; max: number }) {
-  const pct = max > 0 ? (current / max) * 100 : 0;
-  const atCapacity = current >= max;
-
-  let barColor = 'bg-green-500';
-  if (pct >= 100) barColor = 'bg-red-500';
-  else if (pct >= 80) barColor = 'bg-amber-400';
-
+function ClientLoadIndicator({ count }: { count: number }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 mb-3">
       <div className="flex items-center gap-2 mb-2">
@@ -137,26 +164,9 @@ function ClientLoadIndicator({ current, max }: { current: number; max: number })
           Current Client Load
         </p>
       </div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-gray-800">
-          {current} of {max} clients
-        </span>
-        <span className="text-xs text-gray-500">{Math.round(pct)}%</span>
-      </div>
-      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${barColor}`}
-          style={{ width: `${Math.min(pct, 100)}%` }}
-        />
-      </div>
-      {atCapacity && (
-        <div className="mt-2 flex items-center gap-1.5">
-          <AlertTriangle size={13} className="text-red-500" />
-          <p className="text-xs text-red-600 font-medium">
-            You've reached your maximum client capacity
-          </p>
-        </div>
-      )}
+      <span className="text-sm font-medium text-gray-800">
+        {count} active client{count === 1 ? '' : 's'}
+      </span>
     </div>
   );
 }
@@ -164,7 +174,6 @@ function ClientLoadIndicator({ current, max }: { current: number; max: number })
 // ─── Action Zone ─────────────────────────────────────────────────────────────
 
 function ActionZone({
-  clientId,
   atCapacity,
   screenState,
   onAccept,
@@ -172,59 +181,17 @@ function ActionZone({
   onConfirmDecline,
   onCancelDecline,
 }: {
-  clientId: string;
   atCapacity: boolean;
   screenState: ScreenState;
   onAccept: () => void;
   onStartDecline: () => void;
-  onConfirmDecline: (reason: string) => void;
+  onConfirmDecline: () => void;
   onCancelDecline: () => void;
 }) {
-  const navigate = useNavigate();
-  const [declineReason, setDeclineReason] = useState('');
-
   if (screenState === 'loading') {
     return (
       <div className="bg-white rounded-2xl shadow-sm p-5 flex items-center justify-center">
         <p className="text-sm text-gray-500 font-medium">Saving…</p>
-      </div>
-    );
-  }
-
-  if (screenState === 'accepted') {
-    return (
-      <div className="bg-green-50 border border-green-200 rounded-2xl p-5 text-center">
-        <CheckCircle size={32} className="text-green-500 mx-auto mb-2" />
-        <p className="font-semibold text-green-800 text-sm mb-1">
-          Client accepted.
-        </p>
-        <p className="text-green-700 text-xs mb-4">
-          A program template has been sent.
-        </p>
-        <button
-          onClick={() => navigate(`/trainer/client/${clientId}`)}
-          className="w-full bg-teal-600 text-white text-sm font-semibold py-3 rounded-xl"
-        >
-          Go to Client Detail
-        </button>
-      </div>
-    );
-  }
-
-  if (screenState === 'declined') {
-    return (
-      <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 text-center">
-        <XCircle size={32} className="text-gray-400 mx-auto mb-2" />
-        <p className="font-semibold text-gray-700 text-sm mb-1">
-          Client request declined.
-        </p>
-        <div className="h-px bg-gray-200 my-3" />
-        <button
-          onClick={() => navigate('/trainer')}
-          className="w-full bg-gray-200 text-gray-800 text-sm font-semibold py-3 rounded-xl"
-        >
-          Back to Dashboard
-        </button>
       </div>
     );
   }
@@ -235,62 +202,50 @@ function ActionZone({
         className="bg-white rounded-2xl shadow-sm p-4"
         style={{ animation: 'fadeIn 0.18s ease' }}
       >
-        <p className="text-sm font-semibold text-gray-800 mb-2">
-          Reason for Declining
+        <p className="text-sm font-semibold text-gray-800 mb-1">
+          Decline this request?
         </p>
-        <textarea
-          className="w-full border border-gray-200 rounded-xl p-3 text-sm text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-red-300 placeholder:text-gray-400"
-          rows={4}
-          maxLength={200}
-          placeholder="Please provide a reason for declining (required)"
-          value={declineReason}
-          onChange={(e) => setDeclineReason(e.target.value)}
-        />
-        <div className="text-right text-xs text-gray-400 mb-3">
-          {declineReason.length}/200
-        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          This action cannot be undone.
+        </p>
         <button
-          onClick={() => onConfirmDecline(declineReason)}
-          disabled={declineReason.trim().length === 0}
-          className="w-full bg-red-500 text-white text-sm font-semibold py-3 rounded-xl mb-2"
-          style={{
-            opacity: declineReason.trim().length === 0 ? 0.5 : 1,
-            cursor: declineReason.trim().length === 0 ? 'not-allowed' : 'pointer',
-          }}
+          type="button"
+          onClick={onConfirmDecline}
+          className="w-full text-sm font-semibold py-3 rounded-xl mb-2"
+          style={{ backgroundColor: '#ef4444', color: '#ffffff' }}
         >
-          Confirm Decline
+          Yes, Decline
         </button>
-        <div className="text-center">
-          <button
-            onClick={onCancelDecline}
-            className="text-sm text-gray-400 underline underline-offset-2"
-          >
-            Cancel
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onCancelDecline}
+          className="w-full bg-gray-100 text-gray-700 text-sm font-semibold py-3 rounded-xl"
+        >
+          Cancel
+        </button>
       </div>
     );
   }
 
   // default state
   return (
-    <div>
+    <div className="flex flex-col gap-3">
       <button
+        type="button"
         onClick={onAccept}
         disabled={atCapacity}
-        className="w-full bg-teal-600 text-white text-sm font-semibold py-3.5 rounded-xl mb-3 flex items-center justify-center gap-2 disabled:opacity-50"
+        className="w-full bg-teal-600 text-white text-sm font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
       >
         <UserPlus size={16} />
         Accept Client
       </button>
-      <div className="text-center">
-        <button
-          onClick={onStartDecline}
-          className="text-sm text-gray-400 underline underline-offset-2"
-        >
-          Decline
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onStartDecline}
+        className="w-full bg-gray-100 text-gray-700 text-sm font-semibold py-3.5 rounded-xl flex items-center justify-center"
+      >
+        Decline Request
+      </button>
     </div>
   );
 }
@@ -298,44 +253,63 @@ function ActionZone({
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function AcceptDeclineScreen() {
-  const { clientId } = useParams<{ clientId: string }>();
+  const { clientId: routeClientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const { userId } = useWellness();
 
   const [screenState, setScreenState] = useState<ScreenState>('default');
-  const [pendingClient, setPendingClient] = useState<any>(null);
+  const [pendingClient, setPendingClient] = useState<PendingClientProfile | null>(null);
   const [isLoadingClient, setIsLoadingClient] = useState(true);
+  // The real client ID resolved from the pending request (may differ from mock route param)
+  const [realClientId, setRealClientId] = useState<string | null>(null);
+  // Real active client count fetched from DB
+  const [activeClientCount, setActiveClientCount] = useState(0);
 
   useEffect(() => {
     if (!userId) return;
-    getPendingClientRequests(userId)
-      .then(requests => {
-        const match = requests.find(
-          (r: any) => r.client_id === clientId || r.client?.id === clientId
-        );
-        if (match) setPendingClient(match.client);
+    Promise.all([
+      getPendingClientRequests(userId),
+      getActiveClientCount(userId),
+    ])
+      .then(([requests, clientCount]) => {
+        setActiveClientCount(clientCount);
+        const typedRequests = requests as unknown as PendingClientRequest[];
+        // Try exact match first; if the route param is the mock "pending-001",
+        // fall back to the first pending request so the screen works end-to-end.
+        const match = typedRequests.find(request => {
+          const client = firstPendingClient(request.client);
+          return request.client_id === routeClientId || client?.id === routeClientId;
+        }) ?? (typedRequests.length > 0 ? typedRequests[0] : null);
+        if (match) {
+          const client = firstPendingClient(match.client);
+          setPendingClient(client);
+          setRealClientId(match.client_id ?? client?.id ?? null);
+        }
       })
       .catch(err => console.error('Pending load:', err))
       .finally(() => setIsLoadingClient(false));
-  }, [userId, clientId]);
+  }, [userId, routeClientId]);
+
+  // Use the resolved real client ID for DB operations, falling back to route param
+  const effectiveClientId = realClientId ?? routeClientId;
 
   const handleAccept = async () => {
-    if (!userId || !clientId) return;
+    if (!userId || !effectiveClientId) return;
     setScreenState('loading');
-    const success = await updateClientLinkStatus(userId, clientId, 'active');
+    const success = await updateClientLinkStatus(userId, effectiveClientId, 'active');
     if (success) {
-      setScreenState('accepted');
+      navigate('/trainer/clients');
     } else {
       setScreenState('default');
     }
   };
 
-  const handleDecline = async (reason: string) => {
-    if (!userId || !clientId) return;
+  const handleDecline = async () => {
+    if (!userId || !effectiveClientId) return;
     setScreenState('loading');
-    const success = await updateClientLinkStatus(userId, clientId, 'inactive');
+    const success = await updateClientLinkStatus(userId, effectiveClientId, 'declined');
     if (success) {
-      setScreenState('declined');
+      navigate('/trainer/clients');
     } else {
       setScreenState('default');
     }
@@ -344,15 +318,15 @@ export default function AcceptDeclineScreen() {
   // Build display object — merge real data over mock fallback
   const display: PendingClient = pendingClient ? {
     ...mockPendingClient,
-    id:       pendingClient.id       ?? mockPendingClient.id,
-    name:     pendingClient.full_name ?? mockPendingClient.name,
-    initials: getInitials(pendingClient.full_name ?? '') || mockPendingClient.initials,
-    city:     pendingClient.city      ?? mockPendingClient.city,
-    goals:    pendingClient.specialties ?? mockPendingClient.goals,
+    id:          pendingClient.id           ?? mockPendingClient.id,
+    name:        pendingClient.full_name    ?? mockPendingClient.name,
+    initials:    getInitials(pendingClient.full_name ?? '') || mockPendingClient.initials,
+    city:        pendingClient.city         ?? mockPendingClient.city,
+    phoneNumber: pendingClient.phone_number ?? '',
+    goals:       pendingClient.specialties  ?? mockPendingClient.goals,
   } : mockPendingClient;
 
-  const atCapacity      = display.currentClients >= display.maxClients;
-  const resolvedClientId = clientId ?? display.id;
+  const atCapacity = false; // no defined max — never block accept
 
   return (
     <MobileShell>
@@ -380,15 +354,11 @@ export default function AcceptDeclineScreen() {
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-8">
           <ClientProfilePreview client={display} />
           <AssessmentSummary notes={display.assessmentNotes} />
-          <ClientLoadIndicator
-            current={display.currentClients}
-            max={display.maxClients}
-          />
+          <ClientLoadIndicator count={activeClientCount} />
 
           {/* Action Zone */}
           <div className="mt-2">
             <ActionZone
-              clientId={resolvedClientId}
               atCapacity={atCapacity}
               screenState={screenState}
               onAccept={handleAccept}
@@ -416,6 +386,7 @@ const mockPendingClient: PendingClient = {
   name: 'Kavya Reddy',
   initials: 'KR',
   city: 'Chennai',
+  phoneNumber: '',
   fitnessLevel: 'Beginner',
   healthConditions: ['Knee injury', 'Lower back pain'],
   goals: ['Rehabilitation', 'Flexibility'],

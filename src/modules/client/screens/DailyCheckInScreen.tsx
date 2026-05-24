@@ -2,7 +2,7 @@ import { useState, useRef, type ComponentType } from 'react';
 import { motion } from 'motion/react';
 import { 
   ChevronLeft, Calendar, Minus, Plus, Moon, Zap, Check,
-  Home, Users, BarChart3, Bell
+  Home, Users, BarChart3, MessageSquare, Bell
 } from 'lucide-react';
 import OnboardingLayout from '../components/OnboardingLayout';
 import type { DailyLog } from '../../../types';
@@ -10,6 +10,7 @@ import type { DailyLog } from '../../../types';
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
 import { upsertDailyMetrics } from '../../../services/supabaseService';
+import { formatDateLong } from '@/utils/dateUtils';
 
 interface Props {
   existingLog?: DailyLog | null;
@@ -156,10 +157,7 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
   const waterConsumed = log.water_litres || 0;
   const waterProgress = Math.min((waterConsumed / waterGoal) * 100, 100);
 
-  const formatDateLabel = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-  };
+  const formatDateLabel = (dateStr: string) => formatDateLong(dateStr);
 
   return (
     <OnboardingLayout
@@ -234,6 +232,7 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
           <NavButton label="Home" icon={Home} active={false} onClick={() => navigate('/client/dashboard')} />
           <NavButton label="Trainers" icon={Users} onClick={() => console.log('Nav: Trainers')} />
           <NavButton label="Progress" icon={BarChart3} onClick={() => console.log('Nav: Progress')} />
+          <NavButton label="Messages" icon={MessageSquare} onClick={() => navigate('/client/messages')} />
           <NavButton label="Alerts" icon={Bell} onClick={() => console.log('Nav: Alerts')} />
         </nav>
       }

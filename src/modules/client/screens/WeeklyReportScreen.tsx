@@ -4,6 +4,7 @@ import { ChevronLeft, Share2 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import { getWeeklyLogs } from '../../../services/supabaseService';
 import type { DailyLog } from '../../../types';
+import { formatDate } from '@/utils/dateUtils';
 
 
 
@@ -109,11 +110,27 @@ export default function WeeklyReportScreen() {
   const [reflection, setReflection] = useState('');
   const [activeTooltip, setActiveTooltip] = useState<number | null>(null);
   const [weeklyLogs, setWeeklyLogs] = useState<DailyLog[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // ── Fetch real weekly logs using userId from context ──────────────────────
   useEffect(() => {
     if (!userId) return;
-    getWeeklyLogs(userId).then(setWeeklyLogs).catch(console.error);
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+    getWeeklyLogs(userId)
+      .then(logs => {
+        if (!cancelled) setWeeklyLogs(logs);
+      })
+      .catch(err => {
+        console.error('WeeklyReportScreen getWeeklyLogs:', err);
+        if (!cancelled) setError('Could not load your weekly report. Please try again.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [userId]);
 
   // ── Derive real averages from fetched logs ────────────────────────────────
@@ -157,7 +174,7 @@ export default function WeeklyReportScreen() {
   monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
-  const fmtShort = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const fmtShort = (d: Date) => formatDate(d);
 
   // ── Compose final report — null when no data, no hardcoded fallbacks ──────
   const report = {
@@ -207,8 +224,27 @@ export default function WeeklyReportScreen() {
 
             <main className="flex-1 overflow-y-auto px-4 pb-[100px] scrollbar-hide">
 
+                {/* LOADING STATE */}
+                {isLoading && (
+                  <section className="mt-8 flex flex-col items-center text-center px-4">
+                    <div className="w-8 h-8 border-2 border-[#E5E7EB] border-t-[#1D9E75] rounded-full animate-spin mb-3" />
+                    <p className="text-[13px] text-[#6B7280]">Loading your weekly report…</p>
+                  </section>
+                )}
+
+                {/* ERROR STATE */}
+                {!isLoading && error && (
+                  <section className="mt-8 flex flex-col items-center text-center px-4">
+                    <div className="text-[48px] mb-3">⚠️</div>
+                    <h3 className="text-[16px] font-semibold text-[#111827] mb-2">Couldn't load report</h3>
+                    <p className="text-[13px] text-[#6B7280] leading-relaxed max-w-[260px]">
+                      {error}
+                    </p>
+                  </section>
+                )}
+
                 {/* NO DATA STATE */}
-                {!hasData && (
+                {!isLoading && !error && !hasData && (
                   <section className="mt-8 flex flex-col items-center text-center px-4">
                     <div className="text-[48px] mb-3">📋</div>
                     <h3 className="text-[16px] font-semibold text-[#111827] mb-2">No data this week</h3>
@@ -337,6 +373,7 @@ export default function WeeklyReportScreen() {
                 )}
 
                 {/* SECTION: Daily Logs */}
+                {!isLoading && !error && (
                 <section className="mt-8">
                     <h3 className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-[0.07em] mb-3">DAILY LOGS</h3>
                     <div className="bg-white border-[0.5px] border-[#E5E7EB] rounded-[12px] p-[14px]">
@@ -354,6 +391,7 @@ export default function WeeklyReportScreen() {
                         )}
                     </div>
                 </section>
+                )}
 
                 {/* SECTION 4 — Trainer's Week Note (hidden until DB-wired) */}
                 {report.trainer_week_note && (

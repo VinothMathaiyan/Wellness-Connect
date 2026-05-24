@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { WellnessProvider } from '../../../context/WellnessContext';
 import { useWellness } from '../../../context/WellnessContext';
 import ErrorBoundary from '../../../components/ErrorBoundary';
@@ -13,9 +14,13 @@ import DailyCheckInScreen from '../../client/screens/DailyCheckInScreen';
 import NutritionLogFlow from '../../client/screens/NutritionLogFlow';
 import ProgressScreen from '../../client/screens/ProgressScreen';
 import SessionDetailScreen from '../../client/screens/SessionDetailScreen';
+import UpcomingSessionsScreen from '../../client/screens/UpcomingSessionsScreen';
+import ProgramApprovalScreen from '../../client/screens/ProgramApprovalScreen';
 import WeeklyReportScreen from '../../client/screens/WeeklyReportScreen';
 import AlertsScreen from './AlertsScreen';
 import TrainersScreen from '../../client/screens/TrainersScreen';
+import ClientMessagesScreen from '../../client/screens/ClientMessagesScreen';
+import ClientMessageThreadScreen from '../../client/screens/ClientMessageThreadScreen';
 import TrainerDashboard from '../../trainer/screens/TrainerDashboard';
 import TrainerOnboardingFlow from '../../trainer/screens/onboarding/TrainerOnboardingFlow';
 import TrainerWelcomeScreen from '../../trainer/screens/TrainerWelcomeScreen';
@@ -31,10 +36,59 @@ import RiskMonitorScreen from '../../trainer/screens/RiskMonitorScreen';
 import RiskAlertScreen from '../../trainer/screens/RiskAlertScreen';
 import NotificationsScreen from '../../trainer/screens/NotificationsScreen';
 import ScheduleSessionScreen from '../../trainer/screens/ScheduleSessionScreen';
+import ClientProgressView from '../../trainer/screens/ClientProgressView';
+import DailyCheckinSummaryScreen from '../../trainer/screens/DailyCheckinSummaryScreen';
+import TrainerMessagesScreen from '../../trainer/screens/TrainerMessagesScreen';
+import TrainerMessageThreadScreen from '../../trainer/screens/TrainerMessageThreadScreen';
+import AssessmentDashboardScreen from '../../assessment/screens/AssessmentDashboardScreen';
+import NewClientQueueScreen from '../../assessment/screens/NewClientQueueScreen';
+import ClientAssessmentFormScreen from '../../assessment/screens/ClientAssessmentFormScreen';
+import TrainerApprovalQueueScreen from '../../assessment/screens/TrainerApprovalQueueScreen';
+import EscalationsScreen from '../../assessment/screens/EscalationsScreen';
+import MessagesScreen from '../../assessment/screens/MessagesScreen';
+import MessageThreadScreen from '../../assessment/screens/MessageThreadScreen';
+import MonthlyReviewQueueScreen from '../../assessment/screens/MonthlyReviewQueueScreen';
+import AssessmentNotificationsScreen from '../../assessment/screens/AssessmentNotificationsScreen';
 import DevNav from '../../../components/DevNav';
 
 function AppRoutes() {
-  const { isAuthLoading } = useWellness();
+  const { isAuthLoading, userId, userRole } = useWellness();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    // Wait for auth to hydrate
+    if (isAuthLoading) return;
+
+    const path = location.pathname;
+
+    // Public routes — never redirect
+    const publicPrefixes = ['/signup', '/role-selection', '/onboarding'];
+    if (publicPrefixes.some(p => path.startsWith(p))) return;
+
+    // Not logged in — send to signup
+    if (!userId) {
+      navigate('/signup', { replace: true });
+      return;
+    }
+
+    // Wait for role to resolve
+    if (!userRole) return;
+
+    // Role-based path enforcement
+    if (userRole === 'assessor' && !path.startsWith('/assessment')) {
+      navigate('/assessment/dashboard', { replace: true });
+      return;
+    }
+    if (userRole === 'trainer' && !path.startsWith('/trainer') && !path.startsWith('/onboarding')) {
+      navigate('/trainer/dashboard', { replace: true });
+      return;
+    }
+    if (userRole === 'client' && !path.startsWith('/client') && !path.startsWith('/onboarding')) {
+      navigate('/client/dashboard', { replace: true });
+      return;
+    }
+  }, [userId, userRole, isAuthLoading, location.pathname, navigate]);
 
   if (isAuthLoading) {
     return (
@@ -55,9 +109,13 @@ function AppRoutes() {
       <Route path="/client/check-in" element={<DailyCheckInScreen existingLog={null} />} />
       <Route path="/client/nutrition" element={<NutritionLogFlow />} />
       <Route path="/client/session/:sessionId" element={<SessionDetailScreen />} />
+      <Route path="/client/sessions" element={<UpcomingSessionsScreen />} />
+      <Route path="/client/program-approval/:planId" element={<ProgramApprovalScreen />} />
       <Route path="/client/trainers" element={<TrainersScreen />} />
       <Route path="/client/alerts" element={<AlertsScreen />} />
       <Route path="/client/progress" element={<ProgressScreen />} />
+      <Route path="/client/messages" element={<ClientMessagesScreen />} />
+      <Route path="/client/messages/:userId" element={<ClientMessageThreadScreen />} />
       <Route path="/client/report/:weekId" element={<WeeklyReportScreen />} />
       <Route path="/trainer/welcome" element={<TrainerWelcomeScreen />} />
       <Route path="/trainer/onboarding" element={<TrainerOnboardingFlow />} />
@@ -75,6 +133,19 @@ function AppRoutes() {
       <Route path="/trainer/notifications" element={<NotificationsScreen />} />
       <Route path="/trainer/schedule-session" element={<ScheduleSessionScreen />} />
       <Route path="/trainer/schedule-session/:clientId" element={<ScheduleSessionScreen />} />
+      <Route path="/trainer/client-progress/:clientId" element={<ClientProgressView />} />
+      <Route path="/trainer/daily-summary/:date" element={<DailyCheckinSummaryScreen />} />
+      <Route path="/trainer/messages" element={<TrainerMessagesScreen />} />
+      <Route path="/trainer/messages/:userId" element={<TrainerMessageThreadScreen />} />
+      <Route path="/assessment/dashboard" element={<AssessmentDashboardScreen />} />
+      <Route path="/assessment/clients/queue" element={<NewClientQueueScreen />} />
+      <Route path="/assessment/assess/:clientId" element={<ClientAssessmentFormScreen />} />
+      <Route path="/assessment/trainer-approvals" element={<TrainerApprovalQueueScreen />} />
+      <Route path="/assessment/escalations" element={<EscalationsScreen />} />
+      <Route path="/assessment/messages" element={<MessagesScreen />} />
+      <Route path="/assessment/messages/:userId" element={<MessageThreadScreen />} />
+      <Route path="/assessment/monthly-reviews" element={<MonthlyReviewQueueScreen />} />
+      <Route path="/assessment/notifications" element={<AssessmentNotificationsScreen />} />
       <Route path="*" element={<Navigate to="/signup" replace />} />
     </Routes>
   );

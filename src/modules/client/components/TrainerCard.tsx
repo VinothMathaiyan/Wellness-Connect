@@ -51,28 +51,55 @@ export const TrainerCard = React.memo(({ trainer, isActive = false, onPrimaryAct
             </div>
 
             {/* CTAs */}
-            <div className="flex gap-3 pt-2">
-                <button 
-                    onClick={onSecondaryAction}
-                    className="flex-1 bg-white border-2 border-gray-100 hover:border-gray-200 text-gray-700 font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors text-[13px]"
-                >
-                    <MessageSquare size={16} className="text-gray-400" />
-                    {isActive ? 'Message Trainer' : 'Request Info'}
-                </button>
-                <button 
-                    onClick={onPrimaryAction}
-                    className="flex-1 bg-[#1D9E75] hover:bg-[#15825F] text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors text-[13px] shadow-sm shadow-[#1D9E75]/20"
-                >
-                    {isActive ? (
-                        <>
-                            <ClipboardList size={16} />
-                            View Plan
-                        </>
-                    ) : (
-                        'Connect'
-                    )}
-                </button>
-            </div>
+            {isActive ? (
+                /* Assigned trainer — stacked full-width buttons: View Plan (primary)
+                   with a proper Message Trainer secondary button beneath it. */
+                <div className="flex flex-col gap-2.5 pt-2">
+                    <button
+                        onClick={onPrimaryAction}
+                        className="w-full bg-[#1D9E75] hover:bg-[#15825F] text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors text-[13px] shadow-sm shadow-[#1D9E75]/20"
+                    >
+                        <ClipboardList size={16} />
+                        View Plan
+                    </button>
+                    <button
+                        onClick={onSecondaryAction}
+                        style={{
+                            width: '100%',
+                            padding: '10px',
+                            border: '1px solid #1D9E75',
+                            borderRadius: '8px',
+                            background: 'transparent',
+                            color: '#1D9E75',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                        }}
+                    >
+                        <MessageSquare size={16} /> Message Trainer
+                    </button>
+                </div>
+            ) : (
+                <div className="flex gap-3 pt-2">
+                    <button
+                        onClick={onSecondaryAction}
+                        className="flex-1 bg-white border-2 border-gray-100 hover:border-gray-200 text-gray-700 font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors text-[13px]"
+                    >
+                        <MessageSquare size={16} className="text-gray-400" />
+                        Request Info
+                    </button>
+                    <button
+                        onClick={onPrimaryAction}
+                        className="flex-1 bg-[#1D9E75] hover:bg-[#15825F] text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors text-[13px] shadow-sm shadow-[#1D9E75]/20"
+                    >
+                        Connect
+                    </button>
+                </div>
+            )}
         </div>
     );
 });

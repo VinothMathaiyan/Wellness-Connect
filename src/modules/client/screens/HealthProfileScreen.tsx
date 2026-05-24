@@ -286,11 +286,11 @@ export default function HealthProfileScreen() {
       };
       console.log('[HealthProfile] Saving to Supabase:', { userId, payload, city: formData.city });
 
-      const ok = await upsertClientProfile(userId, payload, formData.city || null);
+      const result = await upsertClientProfile(userId, payload, formData.city || null);
 
-      if (!ok) {
+      if (!result.ok) {
         setIsSaving(false);
-        setSaveError('Could not save your profile. Please check your connection and try again.');
+        setSaveError(`Save failed: ${result.errorMessage ?? 'Unknown error'}`);
         return;
       }
     } else {

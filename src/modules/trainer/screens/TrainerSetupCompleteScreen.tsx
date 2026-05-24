@@ -17,6 +17,8 @@ interface CompletionState {
   specialisations?: string[];
   photoUrl?: string | null;
   city?: string;
+  bio?: string;
+  yearsOfExperience?: string;
 }
 
 export default function TrainerSetupCompleteScreen() {
@@ -37,19 +39,19 @@ export default function TrainerSetupCompleteScreen() {
     }
 
     saveTrainerOnboarding(userId, {
-      photoUrl: state.photoUrl ?? null,
+      photoUrl:          state.photoUrl ?? null,
       certificationName: state.certificationName ?? '',
-      specialisations: state.specialisations ?? [],
-      city: state.city ?? '',
-      // fields not collected on this screen — defaults only
-      yearsOfExperience: '',
-      bio: '',
-      sessionTypes: [],
-      languages: [],
-      otherLanguage: '',
-      availabilitySlots: state.availabilitySlots ?? [],
-      certificationDocument: null,
-      selfieWithCertificate: null,
+      specialisations:   state.specialisations ?? [],
+      city:              state.city ?? '',
+      bio:               state.bio ?? '',
+      yearsOfExperience: state.yearsOfExperience ?? '',
+      // fields not forwarded via navigation state — defaults only
+      sessionTypes:           [],
+      languages:              [],
+      otherLanguage:          '',
+      availabilitySlots:      state.availabilitySlots ?? [],
+      certificationDocument:  null,
+      selfieWithCertificate:  null,
     }).then(({ error }) => {
       if (error) {
         console.error('Trainer onboarding save failed:', error);

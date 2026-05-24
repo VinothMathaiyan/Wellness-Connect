@@ -11,10 +11,12 @@ import MobileShell from '../../../components/MobileShell';
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
+import { isTrainerOnboardingComplete } from '../../../services/supabaseService';
+import { IS_DEV_OTP, normalisePhone, validatePhone, validateOtp } from '@/utils/otpUtils';
 
 export default function SignUpScreen() {
   const navigate = useNavigate();
-  const { appState, handleSignUpSuccess } = useWellness();
+  const { appState, handleSignUpSuccess, setUserRole } = useWellness();
   const initialData = appState;
   // Form State
   const [formData, setFormData] = useState({
@@ -34,6 +36,7 @@ export default function SignUpScreen() {
   const [otpError, setOtpError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [resendConfirm, setResendConfirm] = useState(false);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -104,6 +107,14 @@ export default function SignUpScreen() {
       return;
     }
 
+    // Phone-shape validation before attempting to send
+    const phoneError = validatePhone(formData.mobile);
+    if (phoneError) {
+      setIsTouched(prev => ({ ...prev, mobile: true }));
+      setErrors(prev => ({ ...prev, mobile: phoneError }));
+      return;
+    }
+
     if (canSkipOtp) {
       setIsLoading(true);
       await new Promise(resolve => setTimeout(resolve, 500)); // Brief simulated loading
@@ -115,13 +126,42 @@ export default function SignUpScreen() {
       return;
     }
 
+    const phone = normalisePhone(formData.mobile);
+
     setIsLoading(true);
     setOtpError('');
 
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Dev bypass — no real SMS; "123456" is accepted on the OTP step
+    if (IS_DEV_OTP) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setIsOtpSent(true);
+      setIsLoading(false);
+      setTimer(60);
+      return;
+    }
+
+    // Real Twilio SMS via Supabase Phone Auth
+    const { error } = await supabase.auth.signInWithOtp({ phone });
+    if (error) {
+      let message: string;
+      if (error.message.includes('Invalid phone')) {
+        message = "This number isn't valid. Check and try again.";
+      } else if (error.message.includes('rate limit') || error.status === 429) {
+        message = 'Too many attempts. Please wait a few minutes.';
+      } else if (error.message.includes('SMS')) {
+        message = "Couldn't send SMS. Check the number and try again.";
+      } else {
+        message = 'Something went wrong. Please try again.';
+      }
+      setIsTouched(prev => ({ ...prev, mobile: true }));
+      setErrors(prev => ({ ...prev, mobile: message }));
+      setIsLoading(false);
+      return;
+    }
+
     setIsOtpSent(true);
     setIsLoading(false);
-    setTimer(30);
+    setTimer(60);
   };
 
   const handleOtpChange = (index: number, value: string) => {
@@ -149,51 +189,162 @@ export default function SignUpScreen() {
     }
   };
 
+  // ── Shared post-auth navigation — identical for dev bypass and real Twilio ──
+  // Fetch existing profile to determine where this user belongs:
+  // New users have no profile row → role-selection.
+  // Returning trainers/clients/assessors → skip role-selection entirely.
+  const completeSignIn = async (userId: string) => {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, full_name, city, specialties')
+      .eq('id', userId)
+      .maybeSingle();
+
+    // Decide destination before triggering the success animation
+    let destination = '/role-selection';
+    if (profile?.role === 'trainer') {
+      const complete = await isTrainerOnboardingComplete(userId);
+      destination = complete ? '/trainer/dashboard' : '/trainer/onboarding';
+      setUserRole('trainer');
+    } else if (profile?.role === 'client') {
+      destination = '/client/dashboard';
+      setUserRole('client');
+    } else if (profile?.role === 'assessor') {
+      destination = '/assessment/dashboard';
+      setUserRole('assessor');
+    }
+    // else: no profile row (new user) — stays '/role-selection', userRole stays null
+
+    setIsLoading(false);
+    setIsSuccess(true);
+    handleSignUpSuccess({
+      full_name: formData.full_name,
+      mobile: formData.mobile,
+      email: formData.email,
+      consentTimestamp: new Date().toISOString(),
+      privacy_accepted: true,
+      medical_disclaimer: true,
+      data_consent: true,
+      ipLogged: true,
+    });
+    setTimeout(() => navigate(destination, { replace: true }), 800);
+  };
+
   const handleVerifyOtp = async (inputOtp: string) => {
     setIsLoading(true);
     setOtpError('');
 
-    if (inputOtp !== '123456') {
-      const newAttempts = otpAttempts + 1;
-      setOtpAttempts(newAttempts);
-      setOtpError(newAttempts >= 3 ? 'Too many attempts. Please request a new OTP.' : 'Enter 123456 to continue');
-      setOtp(['', '', '', '', '', '']);
-      otpRefs.current[0]?.focus();
+    // OTP format validation
+    const otpFormatError = validateOtp(inputOtp);
+    if (otpFormatError) {
+      setOtpError(otpFormatError);
       setIsLoading(false);
       return;
     }
 
+    const phone = normalisePhone(formData.mobile);
+
+    // Dev bypass — accept "123456" and sign in via a dev email user
+    if (IS_DEV_OTP) {
+      if (inputOtp !== '123456') {
+        const newAttempts = otpAttempts + 1;
+        setOtpAttempts(newAttempts);
+        setOtpError(newAttempts >= 3 ? 'Too many attempts. Please request a new OTP.' : 'Enter 123456 to continue');
+        setOtp(['', '', '', '', '', '']);
+        otpRefs.current[0]?.focus();
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const devEmail = `dev_${formData.mobile.replace(/\D/g, '')}@wellnessconnect.dev`;
+        const devPassword = 'DevPassword123!';
+
+        await supabase.auth.signUp({ email: devEmail, password: devPassword });
+
+        const { data: signInData, error: signInError } =
+          await supabase.auth.signInWithPassword({ email: devEmail, password: devPassword });
+
+        if (signInError) throw signInError;
+        const userId = signInData.user?.id ?? null;
+        if (!userId) throw new Error('Could not get user ID');
+
+        await completeSignIn(userId);
+      } catch (err: unknown) {
+        setOtpError(err instanceof Error ? err.message : 'Auth failed');
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Real Twilio SMS verification via Supabase Phone Auth
     try {
-      const devEmail = `dev_${formData.mobile.replace(/\D/g, '')}@wellnessconnect.dev`;
-      const devPassword = 'DevPassword123!';
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone,
+        token: inputOtp,
+        type: 'sms',
+      });
+      if (error) {
+        if (error.message.includes('expired')) {
+          setOtpError('OTP has expired. Go back and request a new one.');
+        } else if (error.message.includes('invalid') || error.message.includes('Invalid')) {
+          setOtpError('Incorrect OTP. Please check and try again.');
+        } else if (error.message.includes('rate limit') || error.status === 429) {
+          setOtpError('Too many attempts. Please wait a few minutes.');
+        } else {
+          setOtpError('Verification failed. Please try again.');
+        }
+        setOtp(['', '', '', '', '', '']);
+        otpRefs.current[0]?.focus();
+        setIsLoading(false);
+        return;
+      }
 
-      await supabase.auth.signUp({ email: devEmail, password: devPassword });
-
-      const { data: signInData, error: signInError } =
-        await supabase.auth.signInWithPassword({ email: devEmail, password: devPassword });
-
-      if (signInError) throw signInError;
-      const userId = signInData.user?.id ?? null;
+      const userId = data.user?.id ?? data.session?.user?.id ?? null;
       if (!userId) throw new Error('Could not get user ID');
 
-      setIsSuccess(true);
-      handleSignUpSuccess({
-        full_name: formData.full_name,
-        mobile: formData.mobile,
-        email: formData.email,
-        consentTimestamp: new Date().toISOString(),
-        privacy_accepted: true,
-        medical_disclaimer: true,
-        data_consent: true,
-        ipLogged: true,
-      });
-      setTimeout(() => navigate('/role-selection'), 800);
+      await completeSignIn(userId);
     } catch (err: unknown) {
-      setOtpError(err instanceof Error ? err.message : 'Auth failed');
-    } finally {
+      setOtpError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
       setIsLoading(false);
     }
   };
+
+  // ── Resend OTP — re-sends only (never runs skip/navigation), resets 60s timer ──
+  const handleResendOtp = async () => {
+    if (timer > 0 || isLoading) return;
+    setOtpError('');
+    setResendConfirm(false);
+    setOtp(['', '', '', '', '', '']);
+    setOtpAttempts(0);
+
+    const phone = normalisePhone(formData.mobile);
+
+    if (IS_DEV_OTP) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setTimer(60);
+      setResendConfirm(true);
+      return;
+    }
+
+    setIsLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({ phone });
+    setIsLoading(false);
+    if (error) {
+      setOtpError(
+        error.status === 429 || error.message.includes('rate limit')
+          ? 'Too many attempts. Please wait a few minutes.'
+          : "Couldn't resend OTP. Please try again.",
+      );
+      return;
+    }
+    setTimer(60);
+    setResendConfirm(true);
+  };
+
+  // Countdown display helper — "1:00", "0:45", etc.
+  const formatTimer = (seconds: number) =>
+    `${Math.floor(seconds / 60)}:${seconds % 60 < 10 ? `0${seconds % 60}` : seconds % 60}`;
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -202,6 +353,10 @@ export default function SignUpScreen() {
     }
     return () => clearInterval(interval);
   }, [isOtpSent, timer]);
+
+  // Masked phone for the OTP panel — keep country code + last 4 visible, hide the rest
+  const normalisedPhone = normalisePhone(formData.mobile);
+  const maskedPhone = `${normalisedPhone.slice(0, 3)} ${'•'.repeat(Math.max(0, normalisedPhone.length - 7))}${normalisedPhone.slice(-4)}`;
 
   return (
     <MobileShell>
@@ -227,7 +382,7 @@ export default function SignUpScreen() {
 
           <Input
             type="tel"
-            placeholder="10-digit mobile number"
+            placeholder="10-digit mobile number (+91)"
             value={formData.mobile}
             onChange={(e) => handleChange('mobile', e.target.value)}
             onBlur={() => handleBlur('mobile')}
@@ -275,7 +430,7 @@ export default function SignUpScreen() {
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden bg-[#E6F3F0] p-5 rounded-xl space-y-4 mt-6"
               >
-                <p className="text-[13px] text-text-primary text-center font-medium">Enter 6-digit OTP sent to your mobile</p>
+                <p className="text-[13px] text-text-primary text-center font-medium">We sent a code to {maskedPhone}</p>
                 <div className="flex justify-between gap-2 px-1">
                   {otp.map((digit, i) => (
                     <input
@@ -294,15 +449,18 @@ export default function SignUpScreen() {
 
                 <div className="text-center">
                   {timer > 0 ? (
-                    <p className="text-xs text-text-secondary">Resend OTP in 0:{timer < 10 ? `0${timer}` : timer}</p>
+                    <p className="text-xs text-text-secondary">Resend OTP in {formatTimer(timer)}</p>
                   ) : (
                     <button
-                      onClick={handleSendOtp}
+                      onClick={handleResendOtp}
                       className="text-primary text-xs font-semibold hover:underline"
                       disabled={isLoading || otpAttempts >= 3}
                     >
                       Resend OTP
                     </button>
+                  )}
+                  {resendConfirm && (
+                    <p className="text-primary text-[11px] font-medium mt-1">OTP resent ✓</p>
                   )}
                 </div>
 
@@ -313,9 +471,11 @@ export default function SignUpScreen() {
                   </div>
                 )}
 
-                <p style={{ color: '#9ca3af', fontSize: '12px', textAlign: 'center', marginTop: '8px' }}>
-                  Enter 123456 to continue
-                </p>
+                {IS_DEV_OTP && (
+                  <p style={{ color: '#9ca3af', fontSize: '12px', textAlign: 'center', marginTop: '8px' }}>
+                    Enter 123456 to continue
+                  </p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

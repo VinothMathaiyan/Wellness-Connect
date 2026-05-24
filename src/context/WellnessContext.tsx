@@ -28,10 +28,11 @@ interface WellnessContextType {
   // Auth state
   supabaseUser: SupabaseUser | null;
   userId: string | null;
-  userRole: 'client' | 'trainer' | null;
+  userRole: 'client' | 'trainer' | 'assessor' | null;
   isAuthLoading: boolean;
 
   setAppState: React.Dispatch<React.SetStateAction<WellnessAppState>>;
+  setUserRole: React.Dispatch<React.SetStateAction<'client' | 'trainer' | 'assessor' | null>>;
   setActiveSession: React.Dispatch<React.SetStateAction<TrainingSession | null>>;
   setCompletedExercises: React.Dispatch<React.SetStateAction<string[]>>;
   setWorkoutProgress: React.Dispatch<React.SetStateAction<WorkoutProgress>>;
@@ -46,6 +47,7 @@ interface WellnessContextType {
   handleMarkAlertRead: (id: string) => void;
   handleMarkAllAlertsRead: () => void;
   handleToggleExercise: (id: string) => void;
+  logout: () => Promise<void>;
 }
 
 const WellnessContext = createContext<WellnessContextType | undefined>(undefined);
@@ -79,26 +81,59 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
   // Auth state
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<'client' | 'trainer' | null>(null);
+  const [userRole, setUserRole] = useState<'client' | 'trainer' | 'assessor' | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setSupabaseUser(session.user);
-        setUserId(session.user.id);
-        const role = session.user.user_metadata?.role as 'client' | 'trainer' | undefined;
-        setUserRole(role ?? null);
+    // Resolve the role: prefer user_metadata.role (fast, no network), but fall
+    // back to the profiles table when it's empty — user_metadata.role is not
+    // written at signup (known gap), so without this fallback the role is lost
+    // on a hard refresh and role-based route guards can't enforce.
+    const resolveRole = async (
+      user: SupabaseUser,
+    ): Promise<'client' | 'trainer' | 'assessor' | null> => {
+      const metaRole = user.user_metadata?.role as
+        | 'client'
+        | 'trainer'
+        | 'assessor'
+        | undefined;
+      if (metaRole) return metaRole;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+      return (profile?.role as 'client' | 'trainer' | 'assessor' | null) ?? null;
+    };
+
+    // Initial session restore.
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      try {
+        if (session?.user) {
+          setSupabaseUser(session.user);
+          setUserId(session.user.id);
+          setUserRole(await resolveRole(session.user));
+        }
+      } catch (err) {
+        console.error('WellnessContext session restore:', err);
+      } finally {
+        setIsAuthLoading(false);
       }
-      setIsAuthLoading(false);
     });
 
+    // Subsequent auth events (sign-in, sign-out, token refresh).
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        setSupabaseUser(session.user);
-        setUserId(session.user.id);
-        const role = session.user.user_metadata?.role as 'client' | 'trainer' | undefined;
-        setUserRole(role ?? null);
+        const user = session.user;
+        setSupabaseUser(user);
+        setUserId(user.id);
+        // Defer the role lookup — awaiting another Supabase call directly
+        // inside the auth callback can deadlock.
+        setTimeout(() => {
+          void resolveRole(user)
+            .then(setUserRole)
+            .catch(err => console.error('WellnessContext auth change:', err));
+        }, 0);
       } else {
         setSupabaseUser(null);
         setUserId(null);
@@ -199,9 +234,30 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const handleToggleExercise = (id: string) => {
-    setCompletedExercises(prev => 
+    setCompletedExercises(prev =>
       prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]
     );
+  };
+
+  /**
+   * Signs the user out of Supabase and resets all local context state.
+   * Navigation after logout is handled by the calling component so it can
+   * use navigate(..., { replace: true }) to clear browser history.
+   *
+   * Note: onAuthStateChange already clears userId / userRole / supabaseUser
+   * when a SIGNED_OUT event fires, but we also explicitly reset the rest of
+   * the app state so stale data does not persist for the next session.
+   */
+  const logout = async (): Promise<void> => {
+    await supabase.auth.signOut();
+    setAppState({
+      notifications: MOCK_NOTIFICATIONS,
+      trainers: MOCK_TRAINERS,
+      connections: [{ trainer_id: 't1', status: 'active', type: 'yoga' }],
+    });
+    setActiveSession(null);
+    setCompletedExercises([]);
+    setWorkoutProgress({ score: 0, notes: '' });
   };
 
   return (
@@ -216,6 +272,7 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
         userRole,
         isAuthLoading,
         setAppState,
+        setUserRole,
         setActiveSession,
         setCompletedExercises,
         setWorkoutProgress,
@@ -228,7 +285,8 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
         handleWeeklyReportSave,
         handleMarkAlertRead,
         handleMarkAllAlertsRead,
-        handleToggleExercise
+        handleToggleExercise,
+        logout,
       }}
     >
       {children}

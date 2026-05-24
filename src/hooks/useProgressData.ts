@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
-import { getWeeklyLogs } from '../services/supabaseService';
-import type { DailyLog } from '../types';
+import { getClientProgress } from '../services/supabaseService';
+import type { ClientProgressRow } from '../services/supabaseService';
 
 export interface ProgressData {
     userData: {
         full_name: string;
         id?: string;
         readinessScore: number;
+        readinessDelta: string | null; // e.g. "+6" or null when no prior-week data
         adherenceScore: number;
+        adherenceDelta: string | null;
         sessionsDone: number;
         weeksActive: number;
+        streak: number;
         progressBreakdown?: {
             mobility: number;
             sleepRecovery: number;
@@ -24,14 +27,10 @@ export interface ProgressData {
     };
     weightData: { date: string; weight: number }[];
     isLoading: boolean;
+    fetchError: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function avg(values: number[]): number {
-    if (values.length === 0) return 0;
-    return values.reduce((a, b) => a + b, 0) / values.length;
-}
 
 function deriveRiskStatus(readiness: number): 'green' | 'yellow' | 'red' {
     if (readiness >= 70) return 'green';
@@ -42,6 +41,76 @@ function deriveRiskStatus(readiness: number): 'green' | 'yellow' | 'red' {
 /** Day abbreviation from a YYYY-MM-DD string */
 function dayLabel(dateStr: string): string {
     return new Date(dateStr).toLocaleDateString('en', { weekday: 'short' });
+}
+
+/** Today as YYYY-MM-DD in local time */
+function todayStr(): string {
+    return new Date().toISOString().split('T')[0];
+}
+
+/**
+ * Compute the streak: count of consecutive days ending today where a log exists.
+ * Rows must be sorted by log_date ASC.
+ */
+function computeStreak(rows: ClientProgressRow[]): number {
+    if (rows.length === 0) return 0;
+
+    const logDates = new Set(rows.map(r => r.log_date));
+    const today = new Date(todayStr());
+    let streak = 0;
+    const cursor = new Date(today);
+
+    while (true) {
+        const key = cursor.toISOString().split('T')[0];
+        if (logDates.has(key)) {
+            streak++;
+            cursor.setDate(cursor.getDate() - 1);
+        } else {
+            break;
+        }
+    }
+    return streak;
+}
+
+/**
+ * Compute a signed delta string ("+6", "-3") between current-week and
+ * prior-week average readiness. Returns null when the prior-week window
+ * has zero entries.
+ */
+function computeWeeklyDelta(
+    rows: ClientProgressRow[],
+    field: 'readiness_score',
+): string | null {
+    const today = new Date(todayStr());
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const fourteenDaysAgo = new Date(today);
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    const currentWeek: number[] = [];
+    const priorWeek: number[] = [];
+
+    for (const r of rows) {
+        const d = new Date(r.log_date);
+        const val = r[field];
+        if (val == null) continue;
+
+        if (d >= sevenDaysAgo && d <= today) {
+            currentWeek.push(val);
+        } else if (d >= fourteenDaysAgo && d < sevenDaysAgo) {
+            priorWeek.push(val);
+        }
+    }
+
+    if (priorWeek.length === 0) return null;
+    if (currentWeek.length === 0) return null;
+
+    const avgCurrent = Math.round(currentWeek.reduce((a, b) => a + b, 0) / currentWeek.length);
+    const avgPrior = Math.round(priorWeek.reduce((a, b) => a + b, 0) / priorWeek.length);
+    const diff = avgCurrent - avgPrior;
+
+    if (diff >= 0) return `+${diff}`;
+    return `${diff}`;
 }
 
 // ─── Static fallbacks (shown while loading or when no data exists) ─────────────
@@ -57,12 +126,15 @@ const MOCK_WEIGHT_DATA = [
     { date: 'Today',  weight: 73.2 },
 ];
 
-const MOCK_USER_DATA: ProgressData['userData'] = {
+const EMPTY_USER_DATA: ProgressData['userData'] = {
     full_name: '',
     readinessScore: 0,
-    adherenceScore: 92,   // mock — no adherence table yet
+    readinessDelta: null,
+    adherenceScore: 0,
+    adherenceDelta: null,
     sessionsDone: 0,
     weeksActive: 0,
+    streak: 0,
     riskStatus: 'green',
     readinessHistory: [],
 };
@@ -70,8 +142,9 @@ const MOCK_USER_DATA: ProgressData['userData'] = {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useProgressData(userId: string | null): ProgressData {
-    const [weeklyLogs, setWeeklyLogs]   = useState<DailyLog[]>([]);
+    const [rows, setRows]               = useState<ClientProgressRow[]>([]);
     const [isLoading, setIsLoading]     = useState(true);
+    const [fetchError, setFetchError]   = useState<string | null>(null);
 
     useEffect(() => {
         if (!userId) {
@@ -79,40 +152,78 @@ export function useProgressData(userId: string | null): ProgressData {
             return;
         }
         setIsLoading(true);
-        getWeeklyLogs(userId)
-            .then(setWeeklyLogs)
-            .catch(err => console.error('useProgressData:', err))
+        setFetchError(null);
+
+        getClientProgress(userId, 30)
+            .then(result => {
+                if (result.error) {
+                    setFetchError(result.error);
+                } else {
+                    setRows(result.data);
+                }
+            })
+            .catch(err => {
+                console.error('useProgressData:', err);
+                setFetchError(err instanceof Error ? err.message : 'Unknown error');
+            })
             .finally(() => setIsLoading(false));
     }, [userId]);
 
-    // ── Derive real values from fetched logs ────────────────────────────────
+    // ── Derive real values from fetched rows ────────────────────────────────
 
-    const scores = weeklyLogs
-        .map(l => l.readiness_score)
+    const scores = rows
+        .map(r => r.readiness_score)
         .filter((s): s is number => typeof s === 'number');
 
     const latestReadiness = scores.length > 0 ? scores[scores.length - 1] : 0;
 
-    // Build readiness history from daily logs (last 7 days as individual bars)
-    const readinessHistory: { week: string; score: number }[] = weeklyLogs.map(log => ({
-        week: dayLabel(log.log_date),
-        score: log.readiness_score ?? 0,
+    // Readiness delta (current week avg vs prior week avg)
+    const readinessDelta = computeWeeklyDelta(rows, 'readiness_score');
+
+    // Readiness history — show last 7 entries as individual day bars
+    const recentRows = rows.slice(-7);
+    const readinessHistory: { week: string; score: number }[] = recentRows.map(row => ({
+        week: dayLabel(row.log_date),
+        score: row.readiness_score ?? 0,
     }));
 
+    // Adherence: % of logged days where workout_done === true
+    const workoutDays = rows.filter(r => r.workout_done).length;
+    const adherenceScore = rows.length > 0 ? Math.round((workoutDays / rows.length) * 100) : 0;
+
+    // Sessions done = total workouts completed in the window
+    const sessionsDone = workoutDays;
+
+    // Streak: consecutive days ending today with a log
+    const streak = computeStreak(rows);
+
+    // Weeks active = number of distinct ISO weeks with at least one log
+    const weekSet = new Set(rows.map(r => {
+        const d = new Date(r.log_date);
+        // ISO week number calculation
+        const jan1 = new Date(d.getFullYear(), 0, 1);
+        const dayOfYear = Math.floor((d.getTime() - jan1.getTime()) / 86400000) + 1;
+        return `${d.getFullYear()}-W${Math.ceil(dayOfYear / 7)}`;
+    }));
+    const weeksActive = weekSet.size;
+
     const userData: ProgressData['userData'] = {
-        ...MOCK_USER_DATA,
+        ...EMPTY_USER_DATA,
         readinessScore: latestReadiness,
+        readinessDelta,
+        adherenceScore,
+        adherenceDelta: null, // no separate adherence history to compare against yet
+        sessionsDone,
+        weeksActive,
+        streak,
         riskStatus: deriveRiskStatus(latestReadiness),
-        readinessHistory: readinessHistory.length > 0 ? readinessHistory : MOCK_USER_DATA.readinessHistory,
-        // adherenceScore / sessionsDone / weeksActive stay as mock until workout_logs is wired
-        adherenceScore: 92,
-        sessionsDone: 0,
-        weeksActive: Math.ceil(weeklyLogs.length / 7),
+        readinessHistory,
     };
 
     return {
         userData,
         weightData: MOCK_WEIGHT_DATA, // no weight tracking table yet
         isLoading,
+        fetchError,
     };
 }

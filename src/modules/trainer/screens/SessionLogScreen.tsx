@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Save, Clock, AlertTriangle, CheckCircle, X, ChevronLeft } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
+import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { insertSessionLog } from '../../../services/supabaseService';
 
@@ -219,7 +220,7 @@ export default function SessionLogScreen() {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-10 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3">
 
           {/* Draft restored banner */}
           {restoredAt && (
@@ -424,6 +425,7 @@ export default function SessionLogScreen() {
 
         </div>
       </div>
+      <TrainerBottomNav />
     </MobileShell>
   );
 }

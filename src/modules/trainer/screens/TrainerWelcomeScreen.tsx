@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Users, User, Activity, Clock, Check } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import Button from '../../../components/Button';
+import { useWellness } from '../../../context/WellnessContext';
+import { isTrainerOnboardingComplete } from '../../../services/supabaseService';
 
 const SETUP_STEPS = [
   {
@@ -31,6 +34,17 @@ const CAPABILITIES = [
 
 export default function TrainerWelcomeScreen() {
   const navigate = useNavigate();
+  const { userId } = useWellness();
+
+  // Guard: if this trainer already completed onboarding (e.g. direct URL navigation
+  // or a back-button press after submission), skip straight to the dashboard.
+  useEffect(() => {
+    if (!userId) return;
+    isTrainerOnboardingComplete(userId).then(complete => {
+      if (complete) navigate('/trainer/dashboard', { replace: true });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   return (
     <MobileShell>

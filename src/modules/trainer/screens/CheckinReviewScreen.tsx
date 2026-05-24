@@ -1,9 +1,21 @@
-import { useState, useEffect } from 'react';
-import { CheckCircle, AlertTriangle, MessageSquare, ChevronLeft } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  CheckCircle,
+  AlertTriangle,
+  ChevronLeft,
+  ClipboardList,
+  Loader2,
+} from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
+import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientCheckins } from '../../../services/supabaseService';
+import {
+  getCheckinReview,
+  addTrainerFeedback,
+} from '../../../services/supabaseService';
+import type { CheckinReviewData } from '../../../types';
+import { formatDate } from '@/utils/dateUtils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -14,29 +26,38 @@ function readinessColor(score: number): string {
 }
 
 function formatWeekOf(logDate: string): string {
-  try {
-    const d = new Date(logDate);
-    return `Week of ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
-  } catch {
-    return 'Recent check-in';
-  }
+  const formatted = formatDate(logDate);
+  return formatted === '—' ? 'Recent check-in' : `Week of ${formatted}`;
 }
 
 // ─── Sub-component ────────────────────────────────────────────────────────────
 
-function ScoreBar({ label, value, isRed }: { label: string; value: number; isRed: boolean }) {
+function ScoreBar({
+  label,
+  value,
+  isRed,
+}: {
+  label: string;
+  value: number | null;
+  isRed: boolean;
+}) {
+  const fillColor = isRed ? '#ef4444' : '#0d9488';
+  const widthPct = value !== null ? (value / 10) * 100 : 0;
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-sm font-medium text-gray-700">{label}</span>
-        <span className={`text-sm font-bold ${isRed ? 'text-red-500' : 'text-gray-700'}`}>
-          {value}/10
+        <span
+          className="text-sm font-bold"
+          style={{ color: isRed ? '#ef4444' : '#374151' }}
+        >
+          {value !== null ? `${value}/10` : '--'}
         </span>
       </div>
       <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${isRed ? 'bg-red-400' : 'bg-teal-400'}`}
-          style={{ width: `${(value / 10) * 100}%`, backgroundColor: isRed ? '#ef4444' : '#0d9488' }}
+          className="h-full rounded-full transition-all"
+          style={{ width: `${widthPct}%`, backgroundColor: fillColor }}
         />
       </div>
     </div>
@@ -50,56 +71,85 @@ export default function CheckinReviewScreen() {
   const navigate = useNavigate();
   const { userId } = useWellness();
 
-  const [checkin, setCheckin] = useState<any>(null);
+  const [data, setData] = useState<CheckinReviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [trainerResponse, setTrainerResponse] = useState('');
+  const [savingReview, setSavingReview] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isReviewed, setIsReviewed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!clientId) return;
-    getClientCheckins(clientId, 1)
-      .then(data => {
-        if (data.length > 0) setCheckin(data[0]);
-      })
-      .catch(err => console.error('Checkin load:', err))
-      .finally(() => setIsLoading(false));
-  }, [clientId]);
+  const load = useCallback(async () => {
+    if (!clientId || !userId) return;
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const result = await getCheckinReview(clientId, userId);
+      setData(result);
+    } catch {
+      setLoadError('Could not load check-in data.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [clientId, userId]);
 
-  // Map DB row → display values, falling back to mock where DB has no column yet
-  const raw = checkin ?? DEV_MOCK_CHECKIN;
-  const displayData = {
-    clientName:     DEV_MOCK_CHECKIN.clientName, // TODO: load from profiles join
-    weekOf:         checkin?.log_date ? formatWeekOf(checkin.log_date) : DEV_MOCK_CHECKIN.weekOf,
-    readinessScore: raw.readiness_score ?? DEV_MOCK_CHECKIN.readinessScore,
-    readinessDelta: DEV_MOCK_CHECKIN.readinessDelta, // requires 2 records to compute
-    mobility:       raw.mood_score ?? DEV_MOCK_CHECKIN.mobility,
-    // TODO: add pain_score column to daily_metrics
-    pain:           0,
-    energy:         raw.energy_score ?? DEV_MOCK_CHECKIN.energy,
-    clientNote:     DEV_MOCK_CHECKIN.clientNote, // TODO: add client_note to daily_metrics
-  };
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleMarkReviewed = () => {
-    setIsReviewed(true);
-    showToast('Check-in marked as reviewed');
-    setTimeout(() => navigate(-1), 2000);
+  const handleMarkReviewed = async () => {
+    if (!clientId || !userId) return;
+    if (!data?.logDate) {
+      // Nothing to mark — guard against the empty-state case
+      return;
+    }
+    setSavingReview(true);
+    setSaveError(null);
+    try {
+      // No `reviewed` column exists on daily_metrics yet — use the
+      // trainer_feedback table as the persistent review marker.
+      // (Trainer's text response is also stored here.)
+      await addTrainerFeedback(
+        userId,
+        clientId,
+        data.logDate,
+        trainerResponse.trim(),
+      );
+      setIsReviewed(true);
+      showToast('Check-in marked as reviewed');
+      setTimeout(() => navigate(-1), 1500);
+    } catch {
+      setSaveError('Could not save. Try again.');
+    } finally {
+      setSavingReview(false);
+    }
   };
 
-  const painIsElevated = displayData.pain > 6;
-  const deltaAbs       = Math.abs(displayData.readinessDelta);
-  const deltaDown      = displayData.readinessDelta < 0;
+  // ─── Derived values ─────────────────────────────────────────────────────────
+  const clientName    = data?.clientName ?? 'Unknown Client';
+  const readinessScore = data?.readinessScore ?? null;
+  const readinessDelta = data?.readinessDelta ?? null;
+  const mobilityScore = data?.mobilityScore ?? null;
+  const painScore     = data?.painScore ?? null;
+  const energyScore   = data?.energyScore ?? null;
+  const painIsElevated = painScore !== null && painScore > 6;
+  const hasCheckin = data?.logDate != null;
 
   return (
     <MobileShell>
       {/* Toast */}
       {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium pointer-events-none">
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium pointer-events-none"
+          style={{ backgroundColor: '#16a34a' }}
+        >
           <CheckCircle size={15} />
           {toast}
         </div>
@@ -122,7 +172,7 @@ export default function CheckinReviewScreen() {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-10 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3">
 
           {isLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -133,6 +183,30 @@ export default function CheckinReviewScreen() {
                 />
               ))}
             </div>
+          ) : loadError ? (
+            <div className="bg-white rounded-2xl shadow-sm p-6 text-center">
+              <AlertTriangle size={28} style={{ color: '#dc2626', margin: '0 auto 8px' }} />
+              <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: 0 }}>
+                {loadError}
+              </p>
+              <button
+                onClick={load}
+                className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-teal-600 bg-teal-50 border border-teal-100 px-4 py-2 rounded-xl active:bg-teal-100 transition-colors"
+              >
+                Try again
+              </button>
+            </div>
+          ) : !hasCheckin ? (
+            /* No check-in exists yet — explicit empty state */
+            <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+              <ClipboardList size={32} style={{ color: '#9CA3AF', margin: '0 auto 10px' }} />
+              <p style={{ fontSize: 15, fontWeight: 600, color: '#374151', margin: 0 }}>
+                No check-in submitted yet
+              </p>
+              <p style={{ fontSize: 13, color: '#9CA3AF', marginTop: 4 }}>
+                Client hasn&apos;t submitted a check-in
+              </p>
+            </div>
           ) : (
             <>
               {/* ── Client & Week header ──────────────────────────────────────────── */}
@@ -140,9 +214,11 @@ export default function CheckinReviewScreen() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h2 className="text-[18px] font-bold text-gray-900 leading-tight">
-                      {displayData.clientName}
+                      {clientName}
                     </h2>
-                    <p className="text-sm text-gray-500 mt-0.5">{displayData.weekOf}</p>
+                    {data?.logDate && (
+                      <p className="text-sm text-gray-500 mt-0.5">{formatWeekOf(data.logDate)}</p>
+                    )}
                   </div>
                   {isReviewed ? (
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex-shrink-0">
@@ -162,58 +238,58 @@ export default function CheckinReviewScreen() {
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
                   Readiness Score
                 </p>
-                <span className={`text-[64px] font-bold leading-none ${readinessColor(displayData.readinessScore)}`}>
-                  {displayData.readinessScore}
+                <span
+                  className={`text-[64px] font-bold leading-none ${readinessScore !== null ? readinessColor(readinessScore) : 'text-text-secondary'}`}
+                >
+                  {readinessScore !== null ? readinessScore : '--'}
                 </span>
-                {displayData.readinessDelta !== 0 && (
-                  <p
-                    className={`text-sm font-semibold mt-3 ${deltaDown ? 'text-red-500' : 'text-emerald-600'}`}
-                    style={{ color: deltaDown ? '#dc2626' : '#059669' }}
-                  >
-                    {deltaDown ? '↓' : '↑'} {deltaAbs} from last week
-                  </p>
+                {readinessDelta !== null && (
+                  readinessDelta === 0 ? (
+                    <p className="text-sm font-semibold mt-3" style={{ color: '#6B7280' }}>
+                      No change from last check-in
+                    </p>
+                  ) : (
+                    <p
+                      className="text-sm font-semibold mt-3"
+                      style={{ color: readinessDelta < 0 ? '#dc2626' : '#059669' }}
+                    >
+                      {readinessDelta < 0 ? '↓' : '↑'} {Math.abs(readinessDelta)} from last check-in
+                    </p>
+                  )
                 )}
               </div>
 
               {/* ── Score Bars ────────────────────────────────────────────────────── */}
               <div className="bg-white rounded-2xl shadow-sm p-4 space-y-5">
-                <ScoreBar label="Mobility" value={displayData.mobility} isRed={false} />
+                <ScoreBar label="Mobility" value={mobilityScore} isRed={false} />
 
                 <div>
-                  <ScoreBar label="Pain" value={displayData.pain} isRed={painIsElevated} />
+                  <ScoreBar label="Pain" value={painScore} isRed={painIsElevated} />
                   {painIsElevated && (
                     <div className="mt-2 flex items-center gap-1.5">
-                      <AlertTriangle size={12} className="text-red-500 flex-shrink-0" />
-                      <p className="text-xs text-red-600 font-medium" style={{ color: '#dc2626' }}>
+                      <AlertTriangle size={12} className="flex-shrink-0" style={{ color: '#ef4444' }} />
+                      <p className="text-xs font-medium" style={{ color: '#dc2626' }}>
                         Elevated pain — review carefully
                       </p>
                     </div>
                   )}
                 </div>
 
-                <ScoreBar label="Energy" value={displayData.energy} isRed={false} />
-              </div>
-
-              {/* ── Client's Note ─────────────────────────────────────────────────── */}
-              <div className="bg-white rounded-2xl shadow-sm p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <MessageSquare size={14} className="text-gray-400" />
-                  <span className="text-sm font-medium text-gray-700">Client's Note</span>
-                </div>
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-500 italic leading-relaxed">
-                    "{displayData.clientNote}"
-                  </p>
-                </div>
+                <ScoreBar label="Energy" value={energyScore} isRed={false} />
               </div>
 
               {/* ── Trainer Response ──────────────────────────────────────────────── */}
+              {/*
+                Client's Note section is intentionally hidden — daily_metrics
+                has no client_note column yet. Re-enable here once a column
+                exists or once the client note is captured elsewhere.
+              */}
               <div className="bg-white rounded-2xl shadow-sm p-4">
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
                   Your Response to Client
                 </label>
                 <p className="text-xs text-gray-400 mb-2">
-                  This will be visible to the client in their weekly report
+                  Saved to trainer_feedback when you mark this check-in as reviewed
                 </p>
                 <textarea
                   rows={4}
@@ -221,11 +297,19 @@ export default function CheckinReviewScreen() {
                   onChange={e => setTrainerResponse(e.target.value)}
                   placeholder="Write a response for the client to see in their weekly report..."
                   className="w-full rounded-xl border border-gray-200 p-3 text-sm text-gray-900 placeholder:text-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  disabled={savingReview || isReviewed}
                 />
                 <p className="text-xs text-gray-400 text-right mt-1.5">
                   {trainerResponse.length} characters
                 </p>
               </div>
+
+              {/* ── Save error ────────────────────────────────────────────────────── */}
+              {saveError && (
+                <p className="text-xs font-medium" style={{ color: '#dc2626' }}>
+                  {saveError}
+                </p>
+              )}
 
               {/* ── Mark as Reviewed ──────────────────────────────────────────────── */}
               <div className="pt-1">
@@ -237,10 +321,25 @@ export default function CheckinReviewScreen() {
                 ) : (
                   <button
                     onClick={handleMarkReviewed}
-                    className="w-full bg-teal-600 text-white text-sm font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-opacity active:opacity-80"
+                    disabled={savingReview}
+                    className="w-full text-white text-sm font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-opacity active:opacity-80"
+                    style={{
+                      backgroundColor: '#0d9488',
+                      opacity: savingReview ? 0.6 : 1,
+                      cursor: savingReview ? 'default' : 'pointer',
+                    }}
                   >
-                    <CheckCircle size={16} />
-                    Mark as Reviewed
+                    {savingReview ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle size={16} />
+                        Mark as Reviewed
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -248,21 +347,7 @@ export default function CheckinReviewScreen() {
           )}
         </div>
       </div>
+      <TrainerBottomNav />
     </MobileShell>
   );
 }
-
-// DEV FALLBACK — remove after real client data exists
-const DEV_MOCK_CHECKIN = {
-  clientId:       '2',
-  clientName:     'Sarah Chen',
-  weekOf:         'Week of 7 Apr',
-  isReviewed:     false,
-  readinessScore: 34,
-  readinessDelta: -8,
-  mobility:       5,
-  pain:           8,
-  energy:         3,
-  clientNote:
-    "Knee feels tight after yesterday's session. Struggled with the lunges. Not sure if I should push through or rest tomorrow.",
-};

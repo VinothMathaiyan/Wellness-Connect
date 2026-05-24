@@ -1,14 +1,14 @@
 import { useRef, useState, useEffect, type ComponentType } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Users, BarChart3, Bell, BarChart2 } from 'lucide-react';
-import type { TrainingSession, WeeklyReportStatus } from '../../../types';
+import { Home, Users, BarChart3, MessageSquare, Bell, BarChart2, Phone, MapPin, Video, LogOut } from 'lucide-react';
+import type { ClientSession, WeeklyReportStatus } from '../../../types';
 import MobileShell from '../../../components/MobileShell';
+import { formatDateLong } from '@/utils/dateUtils';
 
 
 
 /* ── Helpers ─────────────────────────────────────────────── */
-const formatDateShort = () =>
-  new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date());
+const formatDateShort = () => formatDateLong(new Date());
 
 const getScoreColor = (s: number) => s >= 70 ? '#1D9E75' : s >= 40 ? '#EF9F27' : '#E24B4A';
 
@@ -93,10 +93,21 @@ const NutritionCard = ({
 };
 
 /* ── TrainingCard ────────────────────────────────────────── */
-const TrainingCard = ({ session, onClick }: { session?: TrainingSession; onClick: () => void }) => {
-  const getEmoji = (t: string) => ({ yoga:'🧘', strength:'🏋️', cardio:'🏃', recovery:'💆' }[t] ?? '🏋️');
+const SESSION_TYPE_LABELS: Record<string, string> = {
+  yoga: 'Yoga Session',
+  strength: 'Strength Training',
+  cardio: 'Cardio Session',
+  recovery: 'Recovery Session',
+  'in-person': 'In-Person Session',
+  video: 'Video Session',
+  phone: 'Phone Session',
+};
+
+const TrainingCard = ({ session, onClick }: { session?: ClientSession; onClick: () => void }) => {
+  const getEmoji = (t: string) => ({ yoga:'🧘', strength:'🏋️', cardio:'🏃', recovery:'💆', video:'📹', 'in-person':'🏟️', phone:'📞' }[t] ?? '🏋️');
+  const getLabel = (t: string) => SESSION_TYPE_LABELS[t] ?? t;
   const fmtTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' ', '');
+    new Date(iso).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true });
 
   if (!session) return (
     <div onClick={onClick} className="bg-white rounded-[12px] p-[14px] border border-[#E5E7EB] flex items-center gap-[14px] mb-[10px] cursor-pointer active:bg-[#F3F4F6] transition-colors">
@@ -118,7 +129,7 @@ const TrainingCard = ({ session, onClick }: { session?: TrainingSession; onClick
       <div className="flex items-center gap-[14px]">
         <div className="w-[48px] h-[48px] shrink-0 bg-white rounded-[10px] flex items-center justify-center text-[24px]">{getEmoji(session.session_type)}</div>
         <div className="flex-1">
-          <h4 className="text-[14px] font-semibold text-[#111827]">{session.session_name}</h4>
+          <h4 className="text-[14px] font-semibold text-[#111827]">{getLabel(session.session_type)}</h4>
           <p className="text-[12px] text-[#6B7280]">{session.trainer_name} · {fmtTime(session.scheduled_at)} · {session.duration_minutes} min</p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -126,10 +137,27 @@ const TrainingCard = ({ session, onClick }: { session?: TrainingSession; onClick
           <span className="text-[12px] font-semibold text-[#1D9E75]">{isLive ? 'Live now' : 'Starting soon'}</span>
         </div>
       </div>
-      <button onClick={e => { e.stopPropagation(); console.log('Action Triggered: Join Session'); if (session.meeting_url) window.open(session.meeting_url, '_blank'); }}
-        className="w-full h-[40px] bg-[#1D9E75] text-white text-[13px] font-semibold rounded-[8px] mt-[10px] active:scale-[0.98] transition-transform">
-        Join Session
-      </button>
+      {session.session_type === 'video' && session.meeting_url ? (
+        <button
+          onClick={e => { e.stopPropagation(); window.open(session.meeting_url!, '_blank'); }}
+          className="w-full h-[40px] bg-[#1D9E75] text-white text-[13px] font-semibold rounded-[8px] mt-[10px] active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+        >
+          <Video size={14} /> Join Session
+        </button>
+      ) : session.session_type === 'video' ? (
+        /* video but no link yet */
+        <div className="w-full h-[40px] bg-gray-100 text-gray-400 text-[13px] font-semibold rounded-[8px] mt-[10px] flex items-center justify-center gap-2">
+          <Video size={14} /> Meet link not yet added
+        </div>
+      ) : session.session_type === 'phone' ? (
+        <div className="w-full h-[40px] rounded-[8px] mt-[10px] flex items-center justify-center gap-2 text-[13px] font-semibold" style={{ backgroundColor: '#EFF6FF', color: '#2563EB' }}>
+          <Phone size={14} /> Call your trainer at session time
+        </div>
+      ) : session.session_type === 'in-person' ? (
+        <div className="w-full h-[40px] rounded-[8px] mt-[10px] flex items-center justify-center gap-2 text-[13px] font-semibold" style={{ backgroundColor: '#FFF7ED', color: '#C2410C' }}>
+          <MapPin size={14} /> In-person session
+        </div>
+      ) : null}
     </div>
   );
 
@@ -137,7 +165,7 @@ const TrainingCard = ({ session, onClick }: { session?: TrainingSession; onClick
     <div onClick={onClick} className="bg-white rounded-[12px] p-[14px] border border-[#E5E7EB] flex items-center gap-[14px] mb-[10px] cursor-pointer active:bg-[#F3F4F6] transition-colors">
       <div className="w-[48px] h-[48px] shrink-0 bg-[#F0F9FF] rounded-[10px] flex items-center justify-center text-[24px]">{getEmoji(session.session_type)}</div>
       <div className="flex-1">
-        <h4 className="text-[14px] font-semibold text-[#111827]">{session.session_name}</h4>
+        <h4 className="text-[14px] font-semibold text-[#111827]">{getLabel(session.session_type)}</h4>
         <p className="text-[12px] text-[#6B7280]">{session.trainer_name} · {fmtTime(session.scheduled_at)} · {session.duration_minutes} min</p>
       </div>
       <div className="px-3 py-1 border border-[#1D9E75] rounded-full text-[12px] font-bold text-[#1D9E75]">Today</div>
@@ -179,16 +207,24 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingCompl
 /* ── HomeScreen (Main Export) ────────────────────────────── */
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientReadiness, getClientTodaySession } from '../../../services/supabaseService';
+import { getClientReadiness, getTodaySession, getClientUnreadCount } from '../../../services/supabaseService';
+import { supabase } from '../../../lib/supabaseClient';
 export default function HomeScreen() {
   const navigate = useNavigate();
-  const { appState, userId, workoutProgress, setActiveSession } = useWellness();
+  const { appState, userId, workoutProgress, logout } = useWellness();
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   // ── Live Supabase state ────────────────────────────────────────────────────
   const [readinessScore,    setReadinessScore]    = useState<number | null>(null);
-  const [todaySession,      setTodaySession]      = useState<TrainingSession | null>(null);
+  const [todaySession,      setTodaySession]      = useState<ClientSession | null>(null);
   const [homeDataLoading,   setHomeDataLoading]   = useState(true);
   const [fetchError,        setFetchError]        = useState<'offline' | 'error' | null>(null);
+
+  // ── Live unread alert badge — same source as AlertsScreen ─────────────────
+  const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
+
+  // ── Real assessment status — replaces the mock onboarding progress banner ──
+  const [assessmentInProgress, setAssessmentInProgress] = useState(false);
 
   useEffect(() => {
     if (!userId) { setHomeDataLoading(false); return; }
@@ -199,11 +235,13 @@ export default function HomeScreen() {
 
     Promise.all([
       getClientReadiness(userId),
-      getClientTodaySession(userId),
-    ]).then(([readiness, session]) => {
+      getTodaySession(userId),
+      getClientUnreadCount(userId),
+    ]).then(([readiness, session, unreadCount]) => {
       if (cancelled) return;
       setReadinessScore(readiness);
       setTodaySession(session);
+      setUnreadAlertsCount(unreadCount);
     }).catch(err => {
       if (cancelled) return;
       console.error('HomeScreen data fetch:', err);
@@ -215,6 +253,37 @@ export default function HomeScreen() {
     return () => { cancelled = true; };
   }, [userId]);
 
+  // Fetch the client's real assessment status to decide whether to show a banner.
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    supabase
+      .from('assessments')
+      .select('status, clearance_status')
+      .eq('client_id', userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        // Show the amber banner only while the assessment is still being worked on.
+        setAssessmentInProgress(
+          data.status === 'pending' || data.status === 'in_progress',
+        );
+      });
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  // Re-fetch badge when tab becomes visible again (e.g. returning from AlertsScreen)
+  useEffect(() => {
+    if (!userId) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        getClientUnreadCount(userId).then(setUnreadAlertsCount).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [userId]);
+
   // ── Remaining fields still from context (not in scope for this task) ───────
   const userData = {
     full_name: appState.full_name ?? '',
@@ -224,7 +293,6 @@ export default function HomeScreen() {
     mealsLogged: (appState as any).dailyNutrition?.mealsLogged ?? (appState.mealLogs ?? []).length,
     weeklyReportStatus: 'ready' as any,
     weeklyReportTeaser: { sleep: '6.5h', mood: '4.2', energy: '7.5' },
-    unReadAlertsCount: (appState.notifications ?? []).filter(n => !n.isRead).length,
   };
 
   const [showToast] = useState(false);
@@ -234,7 +302,6 @@ export default function HomeScreen() {
   const initial = firstName[0].toUpperCase();
   const habitsDone = userData.habitProgress?.done ?? 1;
   const habitsTotal = userData.habitProgress?.total ?? 7;
-  const assessmentStatus = userData.assessmentStatus ?? 'pending';
   const mealsLogged = userData.mealsLogged ?? 1;
   const isTrackingComplete = habitsDone >= habitsTotal;
 
@@ -244,6 +311,12 @@ export default function HomeScreen() {
     console.log(`Phase 10: Last Session Adherence - ${lastSessionAdherence}%`);
   }
 
+  const handleLogout = async () => {
+    setShowProfileMenu(false);
+    await logout();
+    navigate('/', { replace: true });
+  };
+
   return (
     <MobileShell>
 
@@ -251,12 +324,71 @@ export default function HomeScreen() {
         <header className="h-[52px] w-full flex items-center justify-between px-[20px] bg-white shrink-0 border-b border-[#F3F4F6]">
           <div className="w-[36px]" />
           <h1 className="text-[16px] font-bold text-[#111827]">WellnessConnect</h1>
-          <button
-            onClick={() => { console.log('Action Triggered: Profile'); navigate('/client/dashboard'); }}
-            className="w-[36px] h-[36px] rounded-full bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-bold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors"
-          >
-            {initial}
-          </button>
+
+          {/* Avatar — tap to open profile / logout menu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowProfileMenu(prev => !prev)}
+              className="w-[36px] h-[36px] rounded-full bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-bold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors"
+              aria-label="Profile menu"
+            >
+              {initial}
+            </button>
+
+            <AnimatePresence>
+              {showProfileMenu && (
+                <>
+                  {/* Backdrop — closes menu on outside tap */}
+                  <div
+                    onClick={() => setShowProfileMenu(false)}
+                    style={{
+                      position: 'fixed',
+                      inset: 0,
+                      zIndex: 99,
+                      backgroundColor: 'transparent',
+                    }}
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                    transition={{ duration: 0.12 }}
+                    style={{
+                      position: 'fixed',
+                      top: '60px',
+                      right: '16px',
+                      zIndex: 100,
+                      backgroundColor: '#ffffff',
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                      minWidth: '200px',
+                      overflow: 'hidden',
+                      border: '1px solid #E5E7EB',
+                    }}
+                  >
+                    {/* Name row */}
+                    <div className="px-4 py-3 border-b border-gray-100">
+                      <p className="text-[13px] font-semibold text-[#111827] truncate">
+                        {userData.full_name || 'My Account'}
+                      </p>
+                      <p className="text-[11px] text-[#6B7280] mt-0.5">Client</p>
+                    </div>
+
+                    {/* Log out */}
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-left active:bg-red-50 transition-colors"
+                    >
+                      <LogOut size={15} style={{ color: '#DC2626', flexShrink: 0 }} />
+                      <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>
+                        Log out
+                      </span>
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
         </header>
 
         {/* Scrollable Content */}
@@ -340,37 +472,15 @@ export default function HomeScreen() {
             </button>
           </section>
 
-          {/* Assessment Card (amber) */}
-          {assessmentStatus !== 'completed' && (
+          {/* Assessment in-progress banner — driven by real Supabase status */}
+          {assessmentInProgress && (
             <div className="px-[16px] mb-[16px]">
               <div className="bg-[#FEF3C7] border-[1.5px] border-[#FCD34D] rounded-[12px] p-[14px] shadow-sm">
-                <div className="flex items-center gap-[10px] mb-[6px]">
+                <div className="flex items-center gap-[10px]">
                   <div className="w-[36px] h-[36px] bg-[#FDE68A] rounded-[8px] flex items-center justify-center text-[18px]">🕐</div>
-                  <h4 className="text-[14px] font-semibold text-[#111827]">
-                    {assessmentStatus === 'pending' ? 'Assessment call pending' : 'Assessment scheduled'}
-                  </h4>
-                </div>
-                <p className="text-[12px] text-[#6B7280] leading-[1.5]">
-                  {assessmentStatus === 'pending'
-                    ? 'Our team will call you within 24 hours to complete your health review.'
-                    : 'Assessment scheduled — we\'ll call you at your preferred time.'}
-                </p>
-                {/* 3-step progress tracker */}
-                <div className="mt-[12px] flex items-center text-[10px] font-medium">
-                  <div className="flex flex-col items-center">
-                    <div className="w-[8px] h-[8px] rounded-full bg-[#1D9E75]" />
-                    <span className="mt-[4px] text-[#0F6E56]">Profile created</span>
-                  </div>
-                  <div className="flex-1 h-[1px] bg-[#1D9E75] mx-[-4px]" />
-                  <div className="flex flex-col items-center">
-                    <div className="w-[8px] h-[8px] rounded-full bg-[#EF9F27]" />
-                    <span className="mt-[4px] text-[#854F0B] font-bold">Assessment call</span>
-                  </div>
-                  <div className="flex-1 h-[1px] bg-[#D1D5DB] mx-[-4px]" />
-                  <div className="flex flex-col items-center">
-                    <div className="w-[8px] h-[8px] rounded-full bg-[#D1D5DB]" />
-                    <span className="mt-[4px] text-[#9CA3AF]">Trainer matched</span>
-                  </div>
+                  <p className="text-[13px] text-[#92400E] leading-[1.5]">
+                    Your assessment is in progress. The team will contact you shortly.
+                  </p>
                 </div>
               </div>
             </div>
@@ -396,10 +506,25 @@ export default function HomeScreen() {
               onClick={() => {
                 if (!todaySession) return;
                 console.log('Action Triggered: View Session');
-                setActiveSession(todaySession);
-                navigate('/client/session/' + todaySession.session_id);
+                navigate('/client/session/' + todaySession.id);
               }}
             />
+
+            {/* View all sessions link — only when there is a session today */}
+            {todaySession && (
+              <div
+                onClick={() => navigate('/client/sessions')}
+                style={{
+                  textAlign: 'center',
+                  fontSize: 13,
+                  color: '#166534',
+                  padding: '8px',
+                  cursor: 'pointer',
+                }}
+              >
+                View all upcoming sessions ›
+              </div>
+            )}
 
             {/* Daily Tracking Card */}
             <div onClick={() => { console.log('Action Triggered: Track Today'); navigate('/client/check-in'); }}
@@ -441,7 +566,8 @@ export default function HomeScreen() {
           <NavButton label="Home" icon={Home} active={true} onClick={() => console.log('Action Triggered: Nav Home')} />
           <NavButton label="Trainers" icon={Users} onClick={() => { console.log('Action Triggered: Nav Trainers'); navigate('/client/trainers'); }} />
           <NavButton label="Progress" icon={BarChart3} onClick={() => { console.log('Action Triggered: Nav Progress'); navigate('/client/progress'); }} />
-          <NavButton label="Alerts" icon={Bell} badge={userData.unReadAlertsCount} onClick={() => { console.log('Action Triggered: Nav Alerts'); navigate('/client/alerts'); }} />
+          <NavButton label="Messages" icon={MessageSquare} onClick={() => { console.log('Action Triggered: Nav Messages'); navigate('/client/messages'); }} />
+          <NavButton label="Alerts" icon={Bell} badge={unreadAlertsCount} onClick={() => { console.log('Action Triggered: Nav Alerts'); navigate('/client/alerts'); }} />
         </nav>
 
     </MobileShell>

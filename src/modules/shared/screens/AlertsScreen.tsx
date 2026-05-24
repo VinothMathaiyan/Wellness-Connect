@@ -21,9 +21,15 @@ import {
     Bell,
     AlertTriangle,
     CheckCircle2,
-    ChevronRight
+    ChevronRight,
+    ClipboardList,
+    XCircle,
+    Calendar,
+    MessageSquare,
+    ShieldAlert,
 } from 'lucide-react';
-import type { Notification } from '../../../types';
+import type { LucideIcon } from 'lucide-react';
+import type { ClientNotification, Notification } from '../../../types';
 
 
 
@@ -91,7 +97,16 @@ const AlertItem = React.memo(({
 
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { getRiskAlerts, markAlertRead } from '../../../services/supabaseService';
+import {
+  getClientNotifications,
+  getLatestPendingPlan,
+  getRiskAlerts,
+  markAlertRead,
+  markClientNotificationRead,
+  sendAssessmentMessage,
+  createEscalation,
+  getAssessorId,
+} from '../../../services/supabaseService';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -105,14 +120,125 @@ function relativeTime(isoString: string): string {
   return `${diffDays}d ago`;
 }
 
+function getClientNotificationDisplay(notification: ClientNotification): {
+  Icon: LucideIcon;
+  iconColor: string;
+  iconBg: string;
+  title: string;
+  unreadBorder: string;
+} {
+  if (notification.type === 'session_cancelled') {
+    return {
+      Icon: XCircle,
+      iconColor: '#DC2626',
+      iconBg: '#FEE2E2',
+      title: 'Session cancelled',
+      unreadBorder: '#DC2626',
+    };
+  }
+
+  if (notification.type === 'session_scheduled') {
+    return {
+      Icon: Calendar,
+      iconColor: '#2563EB',
+      iconBg: '#DBEAFE',
+      title: 'Session scheduled',
+      unreadBorder: '#2563EB',
+    };
+  }
+
+  return {
+    Icon: ClipboardList,
+    iconColor: '#166534',
+    iconBg: '#DCFCE7',
+    title: 'New program assigned',
+    unreadBorder: '#166534',
+  };
+}
+
+function ProgramNotificationItem({
+  notification,
+  onTap,
+}: {
+  notification: ClientNotification;
+  onTap: (notification: ClientNotification) => void;
+}) {
+  const display = getClientNotificationDisplay(notification);
+  const Icon = display.Icon;
+  const [hovered, setHovered] = React.useState(false);
+
+  return (
+    <button
+      onClick={() => onTap(notification)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="w-full rounded-[12px] p-[14px] border-[1.5px] flex items-center gap-[14px] mb-[10px] cursor-pointer active:scale-[0.98] transition-all text-left"
+      style={{
+        backgroundColor: hovered ? '#F9FAFB' : '#ffffff',
+        cursor: 'pointer',
+        borderColor: '#E5E7EB',
+        borderLeft: notification.is_read
+          ? '3px solid transparent'
+          : `3px solid ${display.unreadBorder}`,
+      }}
+    >
+      <div
+        className="w-[40px] h-[40px] shrink-0 rounded-[10px] flex items-center justify-center"
+        style={{ backgroundColor: display.iconBg }}
+      >
+        <Icon size={20} color={display.iconColor} />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <h4
+          className="text-[13px] leading-[1.4] mb-0.5"
+          style={{ fontWeight: notification.is_read ? 600 : 700, color: '#111827' }}
+        >
+          {display.title}
+        </h4>
+        {notification.message && (
+          <p className="text-[12px] leading-snug line-clamp-2" style={{ color: '#4B5563' }}>
+            {notification.message}
+          </p>
+        )}
+        <span className="text-[12px] mt-1 block" style={{ color: '#6B7280' }}>
+          {relativeTime(notification.created_at)}
+        </span>
+      </div>
+
+      {!notification.is_read && (
+        <span
+          className="w-[8px] h-[8px] rounded-full shrink-0"
+          style={{ backgroundColor: display.unreadBorder }}
+        />
+      )}
+    </button>
+  );
+}
+
 export default function AlertsScreen() {
   const navigate = useNavigate();
-  const { userId } = useWellness();
+  const { userId, appState, supabaseUser } = useWellness();
+
+  // Derive avatar initial — same logic as HomeScreen.
+  // Falls back to email first character if full_name not yet in appState
+  // (e.g. direct navigation after page refresh before profile fetch resolves).
+  const fullName = (appState.full_name as string) || '';
+  const firstName = fullName.split(' ')[0] || '';
+  const avatarInitial = firstName
+    ? firstName[0].toUpperCase()
+    : (supabaseUser?.email?.[0]?.toUpperCase() ?? '?');
 
   // ── Live Supabase state ──────────────────────────────────────────────────────
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [clientNotifications, setClientNotifications] = useState<ClientNotification[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [fetchError,    setFetchError]    = useState(false);
+
+  // ── Assessment team contact ───────────────────────────────────────────────
+  const [assessmentMessage, setAssessmentMessage] = useState('');
+  const [sendStatus, setSendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
@@ -121,7 +247,10 @@ export default function AlertsScreen() {
     setLoading(true);
     setFetchError(false);
 
-    getRiskAlerts(userId).then(alerts => {
+    Promise.all([
+      getRiskAlerts(userId),
+      getClientNotifications(userId),
+    ]).then(([alerts, notifs]) => {
       if (cancelled) return;
       const mapped: Notification[] = alerts.map(a => ({
         id:         a.id,
@@ -131,6 +260,7 @@ export default function AlertsScreen() {
         time:       relativeTime(a.created_at),
       }));
       setNotifications(mapped);
+      setClientNotifications(notifs);
     }).catch(() => {
       if (!cancelled) setFetchError(true);
     }).finally(() => {
@@ -151,8 +281,13 @@ export default function AlertsScreen() {
 
   const handleMarkAllRead = () => {
     const unreadIds = notifications.filter(n => !n.isRead).map(n => n.id);
+    const unreadClientIds = clientNotifications.filter(n => !n.is_read).map(n => n.id);
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    setClientNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     unreadIds.forEach(id => markAlertRead(id));
+    if (userId) {
+      unreadClientIds.forEach(id => markClientNotificationRead(id, userId));
+    }
   };
 
   const onAction = (n: Notification) => {
@@ -160,7 +295,85 @@ export default function AlertsScreen() {
     else if (n.actionType === 'view_tracking') navigate('/client/check-in');
   };
 
-  const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
+  const handleClientNotificationTap = async (notification: ClientNotification) => {
+    if (!userId) return;
+
+    // Optimistic mark-read
+    setClientNotifications(prev =>
+      prev.map(n => n.id === notification.id ? { ...n, is_read: true } : n),
+    );
+
+    try {
+      await markClientNotificationRead(notification.id, userId);
+    } catch {
+      console.error('markClientNotificationRead failed for', notification.id);
+    }
+
+    if (notification.type === 'program_assigned') {
+      try {
+        const pendingPlanId = await getLatestPendingPlan(userId);
+        if (pendingPlanId) {
+          navigate(`/client/program-approval/${pendingPlanId}`);
+        } else {
+          navigate('/client/dashboard');
+        }
+      } catch {
+        console.error('Latest pending plan lookup failed for', userId);
+        navigate('/client/dashboard');
+      }
+    } else if (notification.type === 'session_cancelled') {
+      navigate('/client/sessions');
+    } else if (notification.type === 'session_scheduled') {
+      navigate('/client/sessions');
+    }
+  };
+
+  const handleSendToAssessmentTeam = async () => {
+    if (!userId || sendStatus === 'sending' || sendStatus === 'sent') return;
+    if (!assessmentMessage.trim()) {
+      setSendError('Please enter a message.');
+      return;
+    }
+
+    setSendStatus('sending');
+    setSendError(null);
+
+    try {
+      const assessorId = await getAssessorId();
+      if (!assessorId) throw new Error('Assessment team unavailable. Please try again later.');
+
+      const [msgRes, escRes] = await Promise.all([
+        sendAssessmentMessage(userId, assessorId, assessmentMessage.trim(), userId),
+        createEscalation(userId, 'client'),
+      ]);
+
+      if (!msgRes.success) throw new Error(msgRes.error ?? 'Failed to send message.');
+      if (!escRes.success) throw new Error(escRes.error ?? 'Failed to raise escalation.');
+
+      setSendStatus('sent');
+      setAssessmentMessage('');
+    } catch (err: unknown) {
+      setSendStatus('error');
+      setSendError(err instanceof Error ? err.message : 'Failed to contact assessment team.');
+    }
+  };
+
+  const unreadCount = useMemo(
+    () => notifications.filter(n => !n.isRead).length + clientNotifications.filter(n => !n.is_read).length,
+    [clientNotifications, notifications],
+  );
+
+  // De-duplicate program updates: keep only the most recent notification per type
+  // (e.g. a single "Program assigned" instead of one for every re-assignment).
+  const dedupedClientNotifications = useMemo(() => {
+    const sorted = [...clientNotifications].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+    return sorted.reduce((acc, n) => {
+      if (!acc.find(x => x.type === n.type)) acc.push(n);
+      return acc;
+    }, [] as typeof clientNotifications);
+  }, [clientNotifications]);
 
     return (
         <div className="max-w-md mx-auto w-full min-h-screen relative shadow-xl bg-gray-50 flex flex-col">
@@ -173,7 +386,7 @@ export default function AlertsScreen() {
                     onClick={() => navigate('/client/dashboard')}
                     className="w-[36px] h-[36px] rounded-full bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-semibold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors"
                 >
-                    V
+                    {avatarInitial}
                 </button>
             </header>
 
@@ -228,7 +441,7 @@ export default function AlertsScreen() {
                 )}
 
                 {/* Feed Generation */}
-                {!loading && !fetchError && (notifications.length > 0 ? (
+                {!loading && !fetchError && notifications.length > 0 && (
                     <div className="flex flex-col">
                         <AnimatePresence initial={false}>
                             {notifications.map((n) => (
@@ -241,7 +454,27 @@ export default function AlertsScreen() {
                             ))}
                         </AnimatePresence>
                     </div>
-                ) : (
+                )}
+
+                {!loading && !fetchError && clientNotifications.length > 0 && (
+                    <section className="pt-[12px]">
+                        <h2
+                            className="text-[11px] font-bold tracking-[0.07em] uppercase mb-[10px]"
+                            style={{ color: '#6B7280' }}
+                        >
+                            PROGRAM UPDATES
+                        </h2>
+                        {dedupedClientNotifications.map(notification => (
+                            <ProgramNotificationItem
+                                key={notification.id}
+                                notification={notification}
+                                onTap={handleClientNotificationTap}
+                            />
+                        ))}
+                    </section>
+                )}
+
+                {!loading && !fetchError && notifications.length === 0 && clientNotifications.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 px-10 text-center space-y-4">
                         <div className="w-16 h-16 rounded-full bg-[#E5E7EB]/40 flex items-center justify-center text-[#9CA3AF]">
                             <Bell size={32} strokeWidth={1.5} />
@@ -253,7 +486,66 @@ export default function AlertsScreen() {
                             </p>
                         </div>
                     </div>
-                ))}
+                )}
+
+                {/* ── Assessment Team CTA ─────────────────────────────────────── */}
+                {!loading && !fetchError && (
+                    <section className="mt-6 mb-2">
+                        <div
+                            className="rounded-2xl p-4 space-y-3"
+                            style={{
+                                backgroundColor: '#f0fdf4',
+                                border: '1px solid #bbf7d0',
+                            }}
+                        >
+                            <p
+                                className="text-[11px] font-bold uppercase tracking-wider"
+                                style={{ color: '#166534' }}
+                            >
+                                Contact Assessment Team
+                            </p>
+                            <textarea
+                                rows={3}
+                                value={assessmentMessage}
+                                onChange={e => setAssessmentMessage(e.target.value)}
+                                placeholder="Describe your concern..."
+                                disabled={sendStatus === 'sent'}
+                                className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 placeholder:text-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400"
+                            />
+                            <button
+                                onClick={handleSendToAssessmentTeam}
+                                disabled={sendStatus === 'sending' || sendStatus === 'sent'}
+                                className="w-full text-sm font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-opacity"
+                                style={{
+                                    backgroundColor: sendStatus === 'sent' ? '#9ca3af' : '#0d9488',
+                                    color: '#ffffff',
+                                    opacity: sendStatus === 'sending' ? 0.7 : 1,
+                                    cursor: sendStatus === 'sent' ? 'default' : 'pointer',
+                                }}
+                            >
+                                {sendStatus === 'sending' && (
+                                    <span
+                                        className="w-4 h-4 rounded-full border-2 animate-spin"
+                                        style={{ borderColor: '#ffffff', borderTopColor: 'transparent' }}
+                                    />
+                                )}
+                                {sendStatus === 'sending'
+                                    ? 'Sending...'
+                                    : 'Send to Assessment Team →'}
+                            </button>
+                            {sendStatus === 'error' && sendError && (
+                                <p className="text-xs font-medium text-center" style={{ color: '#dc2626' }}>
+                                    {sendError}
+                                </p>
+                            )}
+                            {sendStatus === 'sent' && (
+                                <p className="text-xs font-medium text-center" style={{ color: '#0d9488' }}>
+                                    Your message has been sent. The assessment team will follow up with you. ✓
+                                </p>
+                            )}
+                        </div>
+                    </section>
+                )}
             </div>
 
             {/* BOTTOM NAVIGATION BAR */}
@@ -261,6 +553,7 @@ export default function AlertsScreen() {
                 <NavButton label="Home" icon={Home} onClick={() => navigate('/client/dashboard')} />
                 <NavButton label="Trainers" icon={Users} onClick={() => navigate('/client/trainers')} />
                 <NavButton label="Progress" icon={BarChart3} onClick={() => navigate('/client/progress')} />
+                <NavButton label="Messages" icon={MessageSquare} onClick={() => navigate('/client/messages')} />
                 <NavButton label="Alerts" icon={Bell} active={true} badgeContent={unreadCount} />
             </nav>
         </div>
@@ -268,7 +561,7 @@ export default function AlertsScreen() {
 }
 
 // Reused NavButton from HomeScreen UI source of truth
-const NavButton = ({ label, icon: Icon, active = false, onClick, badgeContent }: { label: string; icon: any; active?: boolean; onClick?: () => void; badgeContent?: number }) => (
+const NavButton = ({ label, icon: Icon, active = false, onClick, badgeContent }: { label: string; icon: LucideIcon; active?: boolean; onClick?: () => void; badgeContent?: number }) => (
     <button
         onClick={onClick}
         className="flex flex-col items-center justify-center gap-[2px] transition-all"

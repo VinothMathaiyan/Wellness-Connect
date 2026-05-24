@@ -27,3 +27,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/e2e/.auth/
+.pw-screenshot.*
+ARLWRM7LETCDTAWG7A366EDV.txt
+*.txt
+OTP_Twilio_Secret.txt
+ARLWRM7LETCDTAWG7A366EDV.txt
+*.txt

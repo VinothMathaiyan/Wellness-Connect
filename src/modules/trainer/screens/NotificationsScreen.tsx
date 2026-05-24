@@ -1,227 +1,125 @@
-import { useState, useEffect } from 'react';
-import { flushSync } from 'react-dom';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ChevronLeft,
   Bell,
   UserPlus,
-  Clock,
-  ClipboardList,
-  AlertTriangle,
-  CheckCircle,
-  Zap,
-  XCircle,
+  MessageSquare,
+  RefreshCw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
+import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import {
-  getTrainerClients,
-  getPendingClientRequests,
-  type TrainerClient,
+  getTrainerNotifications,
+  markNotificationRead,
 } from '../../../services/supabaseService';
+import type { TrainerNotification } from '../../../types';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Relative time helper (no external library) ───────────────────────────────
 
-type NotificationType =
-  | 'new_client_request'
-  | 'session_reminder'
-  | 'checkin_ready'
-  | 'risk_flag_red'
-  | 'risk_flag_amber'
-  | 'client_goal_approval'
-  | 'plan_suggestion'
-  | 'session_no_show';
-
-type NotificationGroup = 'today' | 'earlier';
-
-interface AppNotification {
-  id: string;
-  type: NotificationType;
-  title: string;
-  subtitle: string;
-  time: string;
-  isRead: boolean;
-  group: NotificationGroup;
+function relativeTime(isoString: string): string {
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1)  return 'Just now';
+  if (diffMin < 60) return `${diffMin} min${diffMin === 1 ? '' : 's'} ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24)  return `${diffHr} hour${diffHr === 1 ? '' : 's'} ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
 }
 
-// ─── Mock notification content ────────────────────────────────────────────────
-// Content stays mock until a notifications table exists in the DB.
-// Navigation destinations are resolved dynamically from real client IDs.
+// ─── Skeleton row ─────────────────────────────────────────────────────────────
 
-const INITIAL_NOTIFICATIONS: AppNotification[] = [
-  {
-    id: '1',
-    type: 'risk_flag_red',
-    title: 'Red Risk Flag — Sarah Chen',
-    subtitle: 'Pain levels elevated for 3 consecutive days',
-    time: '10 min ago',
-    isRead: false,
-    group: 'today',
-  },
-  {
-    id: '2',
-    type: 'checkin_ready',
-    title: 'Check-in submitted — Ravi Kumar',
-    subtitle: 'Readiness score: 41 · Needs review',
-    time: '1 hr ago',
-    isRead: false,
-    group: 'today',
-  },
-  {
-    id: '3',
-    type: 'session_no_show',
-    title: 'No-show — Michael Torres',
-    subtitle: 'Did not attend 9:00 AM session today',
-    time: '3 hrs ago',
-    isRead: false,
-    group: 'today',
-  },
-  {
-    id: '4',
-    type: 'new_client_request',
-    title: 'New client request — Kavya Reddy',
-    subtitle: 'Rehabilitation · Beginner · Chennai',
-    time: 'Yesterday',
-    isRead: true,
-    group: 'earlier',
-  },
-  {
-    id: '5',
-    type: 'client_goal_approval',
-    title: 'Program approved — Priya Sharma',
-    subtitle: 'Client approved the 12-week program',
-    time: 'Yesterday',
-    isRead: true,
-    group: 'earlier',
-  },
-  {
-    id: '6',
-    type: 'plan_suggestion',
-    title: 'Plan suggestion — Michael Torres',
-    subtitle: 'Engine 5.4 recommends reviewing intensity',
-    time: '2 days ago',
-    isRead: true,
-    group: 'earlier',
-  },
-];
-
-// ─── Navigation resolution ────────────────────────────────────────────────────
-
-/** Extract the client name from a notification title (part after " — ") */
-function extractClientName(title: string): string | null {
-  const idx = title.indexOf(' — ');
-  return idx !== -1 ? title.slice(idx + 3).trim() : null;
-}
-
-/**
- * Resolve a real navigation destination for a notification.
- * Falls back to /trainer/dashboard when the client ID can't be found.
- */
-function resolveDestination(
-  type: NotificationType,
-  title: string,
-  activeMap: Map<string, string>,
-  pendingMap: Map<string, string>,
-): string {
-  const name = extractClientName(title);
-  const activeId = name ? activeMap.get(name) : null;
-  const pendingId = name ? pendingMap.get(name) : null;
-  const anyId = activeId ?? pendingId;
-
-  switch (type) {
-    case 'risk_flag_red':
-    case 'risk_flag_amber':
-      return anyId ? `/trainer/risk-alert/${anyId}` : '/trainer/risk-monitor';
-    case 'checkin_ready':
-      return anyId ? `/trainer/checkin-review/${anyId}` : '/trainer/dashboard';
-    case 'session_no_show':
-      return anyId ? `/trainer/session-log/${anyId}` : '/trainer/dashboard';
-    case 'new_client_request':
-      return pendingId ? `/trainer/client-request/${pendingId}` : '/trainer/dashboard';
-    case 'client_goal_approval':
-      return anyId ? `/trainer/program-builder/${anyId}` : '/trainer/dashboard';
-    case 'plan_suggestion':
-      return anyId ? `/trainer/client/${anyId}` : '/trainer/dashboard';
-    case 'session_reminder':
-      return '/trainer/dashboard';
-    default:
-      return '/trainer/dashboard';
-  }
-}
-
-// ─── Style config ─────────────────────────────────────────────────────────────
-
-const TYPE_ICON: Record<NotificationType, React.ElementType> = {
-  new_client_request: UserPlus,
-  session_reminder: Clock,
-  checkin_ready: ClipboardList,
-  risk_flag_red: AlertTriangle,
-  risk_flag_amber: AlertTriangle,
-  client_goal_approval: CheckCircle,
-  plan_suggestion: Zap,
-  session_no_show: XCircle,
-};
-
-const TYPE_ICON_STYLE: Record<NotificationType, string> = {
-  new_client_request: 'bg-blue-100 text-blue-600',
-  session_reminder: 'bg-teal-100 text-teal-600',
-  checkin_ready: 'bg-purple-100 text-purple-600',
-  risk_flag_red: 'bg-red-100 text-red-600',
-  risk_flag_amber: 'bg-amber-100 text-amber-700',
-  client_goal_approval: 'bg-green-100 text-green-600',
-  plan_suggestion: 'bg-teal-100 text-teal-600',
-  session_no_show: 'bg-red-100 text-red-600',
-};
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function GroupHeader({ label }: { label: string }) {
+function SkeletonRow() {
   return (
-    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider px-1 mb-2 mt-4 first:mt-0">
-      {label}
-    </p>
+    <div className="flex items-start gap-3 px-4 py-3.5 border-b border-gray-100 animate-pulse">
+      <div className="w-10 h-10 rounded-full bg-gray-200 shrink-0" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3 bg-gray-200 rounded w-3/4" />
+        <div className="h-3 bg-gray-200 rounded w-1/2" />
+      </div>
+      <div className="h-3 bg-gray-200 rounded w-12 shrink-0 mt-1" />
+    </div>
   );
 }
+
+// ─── Notification row ─────────────────────────────────────────────────────────
 
 function NotificationRow({
   notification,
   onTap,
 }: {
-  notification: AppNotification;
+  notification: TrainerNotification;
   onTap: () => void;
 }) {
-  const Icon = TYPE_ICON[notification.type];
-  const iconStyle = TYPE_ICON_STYLE[notification.type];
+  const isInfoRequest = notification.type === 'info_request';
+  const isProgramChangesRequested = notification.type === 'program_changes_requested';
+  const preview =
+    notification.message && notification.message.length > 80
+      ? notification.message.substring(0, 80) + '…'
+      : (notification.message ?? '');
+  const iconStyle = isInfoRequest
+    ? { backgroundColor: '#DCFCE7', color: '#166534' }
+    : isProgramChangesRequested
+      ? { backgroundColor: '#FEF3C7', color: '#92400E' }
+      : { backgroundColor: '#DBEAFE', color: '#2563EB' };
+  const unreadBorder = isProgramChangesRequested ? '#F59E0B' : '#1D9E75';
 
   return (
     <button
       onClick={onTap}
-      className={`w-full flex items-start gap-3 px-4 py-3.5 text-left border-b border-gray-100 last:border-b-0 transition-colors active:bg-gray-50 ${!notification.isRead
-          ? 'bg-teal-50 border-l-2 border-l-teal-400'
-          : 'bg-white'
-        }`}
+      className="w-full flex items-start gap-3 px-4 py-3.5 text-left border-b border-gray-100 last:border-b-0 transition-colors active:bg-gray-50"
+      style={
+        !notification.is_read
+          ? { backgroundColor: isProgramChangesRequested ? '#FFFBEB' : '#F0FDF4', borderLeft: `3px solid ${unreadBorder}` }
+          : { backgroundColor: '#ffffff', borderLeft: '3px solid transparent' }
+      }
     >
       {/* Icon circle */}
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${iconStyle}`}>
-        <Icon size={17} />
+      <div
+        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+        style={iconStyle}
+      >
+        {isInfoRequest
+          ? <UserPlus size={17} />
+          : <MessageSquare size={17} />
+        }
       </div>
 
       {/* Text */}
       <div className="flex-1 min-w-0">
-        <p className={`text-[14px] leading-snug truncate ${!notification.isRead ? 'font-bold text-gray-900' : 'font-medium text-gray-800'
-          }`}>
-          {notification.title}
+        <p
+          className="text-[14px] leading-snug truncate"
+          style={{ fontWeight: notification.is_read ? 500 : 700, color: '#111827' }}
+        >
+          {isInfoRequest
+            ? `${notification.from_name} wants to know more about you`
+            : isProgramChangesRequested
+              ? 'Client requested program changes'
+            : `Message from ${notification.from_name}`
+          }
         </p>
         <p className="text-[12px] text-gray-500 mt-0.5 leading-snug line-clamp-2">
-          {notification.subtitle}
+          {isInfoRequest
+            ? (notification.from_city ?? 'Location not set')
+            : isProgramChangesRequested
+              ? preview
+            : preview
+          }
         </p>
       </div>
 
       {/* Time + unread dot */}
       <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
-        <span className="text-[11px] text-gray-400 whitespace-nowrap">{notification.time}</span>
-        {!notification.isRead && (
-          <span className="w-2 h-2 rounded-full bg-teal-500" />
+        <span className="text-[11px] text-gray-400 whitespace-nowrap">
+          {relativeTime(notification.created_at)}
+        </span>
+        {!notification.is_read && (
+          <span
+            className="w-2 h-2 rounded-full"
+            style={{ backgroundColor: unreadBorder }}
+          />
         )}
       </div>
     </button>
@@ -231,61 +129,50 @@ function NotificationRow({
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function NotificationsScreen() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
   const { userId } = useWellness();
 
-  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<TrainerNotification[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [hasError,      setHasError]      = useState(false);
 
-  // Real client ID maps — built on mount so navigation targets use actual UUIDs
-  const [activeMap, setActiveMap] = useState<Map<string, string>>(new Map());
-  const [pendingMap, setPendingMap] = useState<Map<string, string>>(new Map());
-
-  useEffect(() => {
+  const fetchNotifications = useCallback(async () => {
     if (!userId) return;
-
-    Promise.all([
-      getTrainerClients(userId),
-      getPendingClientRequests(userId),
-    ]).then(([active, pending]) => {
-      const aMap = new Map<string, string>();
-      for (const c of active as TrainerClient[]) {
-        const p = c.profile as { id: string; full_name: string };
-        if (p?.full_name) aMap.set(p.full_name, p.id);
-      }
-
-      const pMap = new Map<string, string>();
-      for (const r of pending as any[]) {
-          if (r.client?.full_name) pMap.set(r.client.full_name, r.client.id);
-        }
-
-        setActiveMap(aMap);
-        setPendingMap(pMap);
-      });
+    setLoading(true);
+    setHasError(false);
+    try {
+      const data = await getTrainerNotifications(userId);
+      setNotifications(data);
+    } catch {
+      setHasError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [userId]);
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
-  const markAllAsRead = () =>
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  // Reactive unread count — updates immediately when a row is tapped
+  const unreadCount = notifications.filter(n => !n.is_read).length;
 
-  const handleTap = (notification: AppNotification) => {
-    flushSync(() => {
-      setNotifications(prev =>
-        prev.map(n => n.id === notification.id ? { ...n, isRead: true } : n),
-      );
-    });
-    const dest = resolveDestination(notification.type, notification.title, activeMap, pendingMap);
-    navigate(dest);
-  };
-
-  const todayItems = notifications.filter(n => n.group === 'today');
-  const earlierItems = notifications.filter(n => n.group === 'earlier');
+  const handleTap = useCallback(async (notification: TrainerNotification) => {
+    // Optimistic local update — don't wait for DB
+    setNotifications(prev =>
+      prev.map(n => n.id === notification.id ? { ...n, is_read: true } : n),
+    );
+    try {
+      await markNotificationRead(notification.id);
+    } catch {
+      // Non-fatal — local state already updated
+      console.error('markNotificationRead failed for', notification.id);
+    }
+  }, []);
 
   return (
     <MobileShell>
       <div className="flex flex-col min-h-full bg-gray-50">
 
-        {/* ── Header ─────────────────────────────────────────────────────────── */}
+        {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="bg-white px-4 pt-6 pb-4 flex items-center gap-3 shadow-sm">
           <button
             onClick={() => navigate(-1)}
@@ -295,76 +182,107 @@ export default function NotificationsScreen() {
             <ChevronLeft size={20} />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">Notifications</h1>
+            <h1 className="text-lg font-bold text-gray-900 leading-tight">
+              Notifications{unreadCount > 0 ? ` (${unreadCount})` : ''}
+            </h1>
           </div>
-          {unreadCount > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="text-[13px] font-semibold text-teal-600 active:opacity-70 transition-opacity"
-            >
-              Mark all as read
-            </button>
-          )}
         </div>
 
-        {/* ── Unread count summary ────────────────────────────────────────────── */}
-        {unreadCount > 0 ? (
+        {/* ── Unread summary pill ──────────────────────────────────────────── */}
+        {!loading && !hasError && (
           <div className="px-4 py-3 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center shrink-0">
-              <Bell size={13} className="text-white" />
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+              style={{ backgroundColor: unreadCount > 0 ? '#1D9E75' : '#E5E7EB' }}
+            >
+              <Bell size={13} color={unreadCount > 0 ? '#ffffff' : '#6B7280'} />
             </div>
             <p className="text-[13px] font-semibold text-gray-700">
-              {unreadCount} unread notification{unreadCount > 1 ? 's' : ''}
+              {unreadCount > 0
+                ? `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`
+                : 'All caught up'
+              }
             </p>
-          </div>
-        ) : (
-          <div className="px-4 py-3 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-              <Bell size={13} className="text-gray-500" />
-            </div>
-            <p className="text-[13px] font-medium text-gray-400">All caught up</p>
           </div>
         )}
 
-        {/* ── Notification list ───────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pb-10">
-          {notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-3">
-              <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center">
-                <Bell size={26} className="text-gray-300" />
+        {/* ── Content ─────────────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto pb-24">
+
+          {/* Loading */}
+          {loading && (
+            <div className="bg-white rounded-2xl mx-4 mt-2 shadow-sm overflow-hidden">
+              <SkeletonRow />
+              <SkeletonRow />
+              <SkeletonRow />
+            </div>
+          )}
+
+          {/* Error */}
+          {!loading && hasError && (
+            <div className="flex flex-col items-center justify-center text-center gap-4 py-16 px-6">
+              <div
+                className="w-14 h-14 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: '#FEF2F2' }}
+              >
+                <Bell size={24} color="#F87171" />
+              </div>
+              <p className="text-[14px] font-semibold text-gray-700">
+                Could not load notifications.
+              </p>
+              <button
+                onClick={fetchNotifications}
+                className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-[14px]"
+                style={{ backgroundColor: '#F0FDF4', color: '#166634', border: '1px solid #BBF7D0' }}
+              >
+                <RefreshCw size={15} />
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!loading && !hasError && notifications.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 gap-3 px-8 text-center">
+              <div
+                className="w-14 h-14 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: '#F3F4F6' }}
+              >
+                <Bell size={26} color="#D1D5DB" />
               </div>
               <p className="text-[14px] font-semibold text-gray-400">No notifications yet</p>
-              <p className="text-[13px] text-gray-400 text-center px-8 leading-relaxed">
-                Risk alerts, check-in updates, and session reminders will appear here.
+              <p className="text-[13px] text-gray-400 leading-relaxed">
+                Client requests and messages will appear here
               </p>
             </div>
-          ) : (
-            <>
-              {todayItems.length > 0 && (
-                <div>
-                  <GroupHeader label="Today" />
-                  <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                    {todayItems.map(n => (
-                      <NotificationRow key={n.id} notification={n} onTap={() => handleTap(n)} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {earlierItems.length > 0 && (
-                <div>
-                  <GroupHeader label="Earlier" />
-                  <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                    {earlierItems.map(n => (
-                      <NotificationRow key={n.id} notification={n} onTap={() => handleTap(n)} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
           )}
+
+          {/* Notification list — unread first, then read below an "Earlier" divider */}
+          {!loading && !hasError && notifications.length > 0 && (() => {
+            const unread = notifications.filter(n => !n.is_read);
+            const read   = notifications.filter(n => n.is_read);
+            return (
+              <div className="bg-white rounded-2xl mx-4 mt-2 shadow-sm overflow-hidden">
+                {unread.map(n => (
+                  <NotificationRow key={n.id} notification={n} onTap={() => handleTap(n)} />
+                ))}
+                {unread.length > 0 && read.length > 0 && (
+                  <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                    <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                      Earlier
+                    </span>
+                  </div>
+                )}
+                {read.map(n => (
+                  <NotificationRow key={n.id} notification={n} onTap={() => handleTap(n)} />
+                ))}
+              </div>
+            );
+          })()}
+
         </div>
       </div>
+      <TrainerBottomNav />
     </MobileShell>
   );
 }

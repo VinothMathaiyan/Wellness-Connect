@@ -430,6 +430,7 @@ For deeper context, refer to:
 - AI Rules: docs/ai-rules/MASTER_RULES.md
 - UX Standards: docs/ux/CLIENT_UX_STANDARDS.md
 - Design System: docs/ux/DESIGN_SYSTEM.md
+- Assessment App: docs/assessment/ASSESSMENT_APP_PLAN.md
 
 # CURRENT STATUS
 - Module restructuring: ✅ Done

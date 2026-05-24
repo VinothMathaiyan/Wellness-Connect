@@ -3,8 +3,23 @@
 export interface SessionExercise {
   id: string;
   name: string;
-  instructions: string;
-  client_completed: boolean;
+  sets: number;
+  reps: number;
+  rest_seconds: number | null;
+  instructions: string | null;
+  order_index: number;
+}
+
+// ─── Client Session (sessions table — HomeScreen + SessionDetailScreen) ──────
+export interface ClientSession {
+  id: string;
+  scheduled_at: string;
+  session_type: string;              // 'video' | 'in-person' | 'phone'
+  duration_minutes: number;
+  meeting_url: string | null;
+  status: string;                    // 'scheduled' | 'completed' | 'cancelled'
+  trainer_note: string | null;
+  trainer_name: string;
 }
 
 // ─── Training Session (SCR-C05 / HomeScreen) ─────────────────────────────────
@@ -166,6 +181,28 @@ export interface Notification {
   actionType?: string;
 }
 
+export interface ClientNotification {
+  id: string;
+  type: string;
+  message: string | null;
+  is_read: boolean;
+  created_at: string;
+  from_user_id: string;
+  from_name: string;
+}
+
+export interface ClientProgramDetail {
+  plan_id: string;
+  status: string;
+  trainer_note: string | null;
+  name: string;
+  duration_weeks: number | null;
+  sessions_per_week: number | null;
+  goals: string[] | null;
+  focus_areas: string[] | null;
+  trainer_name: string;
+}
+
 export interface WellnessAppState extends HealthProfile, AssessmentBooking {
   // Screen 1: Sign Up
   full_name?: string;
@@ -226,6 +263,65 @@ export interface User {
   sessionCount?: number | string;
   availability?: string[];
   bio?: string;
+}
+
+// ─── Trainer Profile (TrainersScreen recommendations + TrainerDetailSubScreen) ─
+export interface TrainerProfile {
+  id: string;
+  full_name: string;
+  city: string | null;
+  specialties: string[] | null;
+  certifications: string[] | null;
+  bio: string | null;
+  availability: {
+    weekdays?: string;
+    weekends?: string;
+  } | null;
+  experience_years: number | null;
+  session_count: number | null;
+  rating: number | null;
+  avatar_url: string | null;
+  photo_url: string | null;
+}
+
+// ─── Trainer Notification (notifications table — T16 NotificationsScreen) ─────
+export interface TrainerNotification {
+  id: string;
+  type: 'info_request' | 'message' | 'program_changes_requested' | string;
+  message: string | null;
+  is_read: boolean;
+  created_at: string;
+  from_name: string;
+  from_city: string | null;
+  from_avatar: string | null;
+}
+
+// ─── TrainerRecommendationCard shared props ───────────────────────────────────
+export interface TrainerRecommendationCardProps {
+  trainer: TrainerProfile;
+  onViewProfile: (id: string) => void;
+}
+
+// ─── Trainer Check-in Review (CheckinReviewScreen) ──────────────────────────
+export interface CheckinReviewData {
+  clientName: string | null;
+  logDate: string | null;
+  readinessScore: number | null;
+  readinessDelta: number | null;
+  mobilityScore: number | null;
+  painScore: number | null;
+  energyScore: number | null;
+}
+
+// ─── Trainer view of a client's session (sessions table — ClientDetailScreen) ─
+export interface TrainerClientSession {
+  id: string;
+  scheduled_at: string;
+  session_type: string;       // 'video' | 'in-person' | 'phone'
+  duration_minutes: number;
+  status: string;             // 'scheduled' | 'completed' | 'cancelled'
+  meeting_url: string | null;
+  trainer_note: string | null;
 }
 
 export interface TrainingProgram {

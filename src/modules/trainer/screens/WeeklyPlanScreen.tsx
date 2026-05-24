@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Send, CheckCircle, ChevronLeft, AlertTriangle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
+import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { getClientDetail, updatePlanTrainerNote } from '../../../services/supabaseService';
 
@@ -175,7 +176,7 @@ export default function WeeklyPlanScreen() {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-10 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3">
 
           {/* ── Week Indicator ────────────────────────────────────────────────── */}
           <div className="flex flex-col items-center py-3">
@@ -324,6 +325,7 @@ export default function WeeklyPlanScreen() {
 
         </div>
       </div>
+      <TrainerBottomNav />
     </MobileShell>
   );
 }
