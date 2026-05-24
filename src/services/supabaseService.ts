@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import { normalisePhone } from '../utils/otpUtils';
 import type {
   ClientNotification,
   ClientSession,
@@ -3506,3 +3507,155 @@ export async function getAssessorNotifications(
   };
 }
 // markNotificationRead already exists — reuse it for assessor notifications
+
+// ─── Admin Portal — Assessment Team pre-registration ────────────────────────
+// profiles.id is FK -> auth.users(id), so an assessor cannot have a profiles
+// row before they sign in. Pre-registrations live in preregistered_assessors
+// and are linked to a real profile on first OTP sign-in. Phone lookups reuse
+// the existing profiles.phone_number column.
+
+export type PreRegisteredAssessor = {
+  id: string;
+  full_name: string;
+  phone: string;
+  created_at: string;
+  is_active: boolean;
+  linked_user_id: string | null;
+};
+
+/**
+ * Check whether a phone number is pre-registered AND active as an assessor.
+ * Called right after OTP verification, before role selection.
+ * `phone` must be E.164, e.g. +919876543210.
+ */
+export async function getPreRegisteredRole(
+  phone: string
+): Promise<'assessor' | null> {
+  const { data, error } = await supabase
+    .from('preregistered_assessors')
+    .select('role, is_active')
+    .eq('phone', phone)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data.role as 'assessor';
+}
+
+/**
+ * Link a freshly authenticated user to their pre-registration:
+ *  - upserts their profiles row with role='assessor' + phone_number
+ *  - stamps linked_user_id on the pre-registration (drives the admin list's
+ *    "signed in" status)
+ * Called after OTP verification when a pre-registered phone is found.
+ */
+export async function linkAuthUserToProfile(
+  userId: string,
+  phone: string
+): Promise<boolean> {
+  const { data: pre } = await supabase
+    .from('preregistered_assessors')
+    .select('id, full_name')
+    .eq('phone', phone)
+    .maybeSingle();
+
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .upsert(
+      {
+        id: userId,
+        role: 'assessor',
+        phone_number: phone,
+        is_active: true,
+        ...(pre?.full_name ? { full_name: pre.full_name } : {}),
+      },
+      { onConflict: 'id' }
+    );
+  if (profileError) return false;
+
+  if (pre?.id) {
+    await supabase
+      .from('preregistered_assessors')
+      .update({ linked_user_id: userId })
+      .eq('id', pre.id);
+  }
+  return true;
+}
+
+/**
+ * Admin: list all pre-registered assessors, newest first.
+ */
+export async function getAllAssessors(): Promise<PreRegisteredAssessor[]> {
+  const { data, error } = await supabase
+    .from('preregistered_assessors')
+    .select('id, full_name, phone, created_at, is_active, linked_user_id')
+    .order('created_at', { ascending: false });
+  if (error || !data) return [];
+  return data as PreRegisteredAssessor[];
+}
+
+/**
+ * Admin: pre-register an assessor by full name + phone.
+ * Inserts a preregistered_assessors row (no auth.users entry yet — the auth
+ * entry + profile are created when they first sign in via OTP).
+ */
+export async function preRegisterAssessor(
+  fullName: string,
+  phone: string
+): Promise<{ success: boolean; error?: string }> {
+  const normalised = normalisePhone(phone);
+  const bareTen = normalised.replace(/\D/g, '').slice(-10);
+
+  // Already pre-registered?
+  const { data: existingPre } = await supabase
+    .from('preregistered_assessors')
+    .select('id')
+    .eq('phone', normalised)
+    .maybeSingle();
+  if (existingPre) {
+    return { success: false, error: 'This phone number is already registered.' };
+  }
+
+  // Already a signed-in user with this phone? (existing rows store phone_number
+  // as raw 10-digit, newer assessor links store E.164 — check both forms)
+  const { data: existingProfile } = await supabase
+    .from('profiles')
+    .select('id')
+    .in('phone_number', [normalised, bareTen])
+    .maybeSingle();
+  if (existingProfile) {
+    return { success: false, error: 'This phone number is already registered.' };
+  }
+
+  const { error } = await supabase
+    .from('preregistered_assessors')
+    .insert({ full_name: fullName, phone: normalised, role: 'assessor', is_active: true });
+
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+/**
+ * Admin: deactivate / reactivate a pre-registered assessor.
+ * `id` is the preregistered_assessors row id. If the assessor has already
+ * signed in, the change is mirrored onto their profiles row.
+ */
+export async function toggleAssessorActive(
+  id: string,
+  isActive: boolean
+): Promise<boolean> {
+  const { data: pre, error } = await supabase
+    .from('preregistered_assessors')
+    .update({ is_active: isActive })
+    .eq('id', id)
+    .select('linked_user_id')
+    .maybeSingle();
+  if (error) return false;
+
+  if (pre?.linked_user_id) {
+    await supabase
+      .from('profiles')
+      .update({ is_active: isActive })
+      .eq('id', pre.linked_user_id);
+  }
+  return true;
+}

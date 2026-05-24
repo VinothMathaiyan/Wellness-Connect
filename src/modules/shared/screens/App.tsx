@@ -49,6 +49,7 @@ import MessagesScreen from '../../assessment/screens/MessagesScreen';
 import MessageThreadScreen from '../../assessment/screens/MessageThreadScreen';
 import MonthlyReviewQueueScreen from '../../assessment/screens/MonthlyReviewQueueScreen';
 import AssessmentNotificationsScreen from '../../assessment/screens/AssessmentNotificationsScreen';
+import AdminDashboardScreen from '../../admin/screens/AdminDashboardScreen';
 import DevNav from '../../../components/DevNav';
 
 function AppRoutes() {
@@ -62,8 +63,9 @@ function AppRoutes() {
 
     const path = location.pathname;
 
-    // Public routes — never redirect
-    const publicPrefixes = ['/signup', '/role-selection', '/onboarding'];
+    // Public routes — never redirect. /admin has its own login gate and must
+    // be reachable without an OTP session.
+    const publicPrefixes = ['/signup', '/role-selection', '/onboarding', '/admin'];
     if (publicPrefixes.some(p => path.startsWith(p))) return;
 
     // Not logged in — send to signup
@@ -146,6 +148,7 @@ function AppRoutes() {
       <Route path="/assessment/messages/:userId" element={<MessageThreadScreen />} />
       <Route path="/assessment/monthly-reviews" element={<MonthlyReviewQueueScreen />} />
       <Route path="/assessment/notifications" element={<AssessmentNotificationsScreen />} />
+      <Route path="/admin" element={<AdminDashboardScreen />} />
       <Route path="*" element={<Navigate to="/signup" replace />} />
     </Routes>
   );

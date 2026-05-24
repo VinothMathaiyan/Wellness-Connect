@@ -4,7 +4,10 @@
       "Bash(echo \"TSC EXIT: $?\")",
       "Bash(git add *)",
       "Bash(git commit -m 'Fix: remove deprecated baseUrl from tsconfig *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git commit *)",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "Bash(echo \"tsc exit: $?\")"
     ]
   }
 }

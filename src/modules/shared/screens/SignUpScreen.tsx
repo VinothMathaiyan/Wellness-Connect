@@ -11,7 +11,7 @@ import MobileShell from '../../../components/MobileShell';
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
-import { isTrainerOnboardingComplete } from '../../../services/supabaseService';
+import { isTrainerOnboardingComplete, getPreRegisteredRole, linkAuthUserToProfile } from '../../../services/supabaseService';
 import { IS_DEV_OTP, normalisePhone, validatePhone, validateOtp } from '@/utils/otpUtils';
 
 export default function SignUpScreen() {
@@ -194,6 +194,30 @@ export default function SignUpScreen() {
   // New users have no profile row → role-selection.
   // Returning trainers/clients/assessors → skip role-selection entirely.
   const completeSignIn = async (userId: string) => {
+    // Admin pre-registration check (runs BEFORE the normal profile lookup).
+    // A phone pre-registered via the Admin Portal skips role selection and
+    // lands directly on its destination.
+    const preRegPhone = normalisePhone(formData.mobile);
+    const preRegRole = await getPreRegisteredRole(preRegPhone);
+    if (preRegRole === 'assessor') {
+      await linkAuthUserToProfile(userId, preRegPhone);
+      setUserRole('assessor');
+      setIsLoading(false);
+      setIsSuccess(true);
+      handleSignUpSuccess({
+        full_name: formData.full_name,
+        mobile: formData.mobile,
+        email: formData.email,
+        consentTimestamp: new Date().toISOString(),
+        privacy_accepted: true,
+        medical_disclaimer: true,
+        data_consent: true,
+        ipLogged: true,
+      });
+      setTimeout(() => navigate('/assessment/dashboard', { replace: true }), 800);
+      return;
+    }
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('role, full_name, city, specialties')
