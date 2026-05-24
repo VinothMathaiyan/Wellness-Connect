@@ -3531,14 +3531,12 @@ export type PreRegisteredAssessor = {
 export async function getPreRegisteredRole(
   phone: string
 ): Promise<'assessor' | null> {
-  console.log('[PreReg] Querying phone_number:', phone);
   const { data, error } = await supabase
     .from('preregistered_assessors')
     .select('role, is_active')
     .eq('phone', phone)
     .eq('is_active', true)
     .maybeSingle();
-  console.log('[PreReg] DB result:', data, error);
   if (error || !data) return null;
   return data.role as 'assessor';
 }
