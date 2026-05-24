@@ -345,57 +345,57 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
                                 </p>
                             </div>
                         </section>
+
+                        {/* ── Action buttons — inline, below content (not fixed) ──────────── */}
+                        <div className="px-4" style={{ marginTop: '24px', marginBottom: '24px' }}>
+
+                            {/* Inline feedback messages */}
+                            {callbackAlreadySent && (
+                                <p style={{ fontSize: '13px', color: '#D97706', marginBottom: '8px', textAlign: 'center' }}>
+                                    You've already sent a request to this trainer today
+                                </p>
+                            )}
+                            {callbackError && (
+                                <p style={{ fontSize: '13px', color: '#EF4444', marginBottom: '8px', textAlign: 'center' }}>
+                                    {callbackError}
+                                </p>
+                            )}
+                            {messageSent && (
+                                <p style={{ fontSize: '13px', color: '#166534', marginBottom: '8px', textAlign: 'center' }}>
+                                    Message sent!
+                                </p>
+                            )}
+
+                            <div className="flex gap-3">
+                                {/* Request Call Back */}
+                                <button
+                                    onClick={handleRequestCallback}
+                                    disabled={callbackLoading || callbackSent || callbackAlreadySent}
+                                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-bold transition-colors"
+                                    style={
+                                        callbackSent
+                                            ? { backgroundColor: '#F0FDF4', color: '#166534', border: '2px solid #1D9E75' }
+                                            : callbackAlreadySent
+                                            ? { backgroundColor: '#FEF3C7', color: '#D97706', border: '2px solid #FDE68A', cursor: 'default' }
+                                            : { border: '2px solid #1D9E75', color: '#1D9E75', backgroundColor: 'white' }
+                                    }
+                                >
+                                    {callbackLoading && <Loader2 size={15} className="animate-spin" />}
+                                    {callbackSent ? 'Request Sent' : 'Request Call Back'}
+                                </button>
+
+                                {/* Message */}
+                                <button
+                                    onClick={handleOpenMessage}
+                                    className="flex-1 flex items-center justify-center py-3 rounded-xl text-[14px] font-bold transition-all active:scale-[0.98]"
+                                    style={{ backgroundColor: '#1D9E75', color: 'white' }}
+                                >
+                                    Message
+                                </button>
+                            </div>
+                        </div>
                     </>
                 )}
-            </div>
-
-            {/* ── Persistence Bar ─────────────────────────────────────────────────── */}
-            <div className="bg-white border-t border-gray-200 p-4 absolute bottom-0 left-0 right-0 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-
-                {/* Inline feedback messages */}
-                {callbackAlreadySent && (
-                    <p style={{ fontSize: '13px', color: '#D97706', marginBottom: '8px', textAlign: 'center' }}>
-                        You've already sent a request to this trainer today
-                    </p>
-                )}
-                {callbackError && (
-                    <p style={{ fontSize: '13px', color: '#EF4444', marginBottom: '8px', textAlign: 'center' }}>
-                        {callbackError}
-                    </p>
-                )}
-                {messageSent && (
-                    <p style={{ fontSize: '13px', color: '#166534', marginBottom: '8px', textAlign: 'center' }}>
-                        Message sent!
-                    </p>
-                )}
-
-                <div className="flex gap-3">
-                    {/* Request Call Back */}
-                    <button
-                        onClick={handleRequestCallback}
-                        disabled={callbackLoading || callbackSent || callbackAlreadySent}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-bold transition-colors"
-                        style={
-                            callbackSent
-                                ? { backgroundColor: '#F0FDF4', color: '#166534', border: '2px solid #1D9E75' }
-                                : callbackAlreadySent
-                                ? { backgroundColor: '#FEF3C7', color: '#D97706', border: '2px solid #FDE68A', cursor: 'default' }
-                                : { border: '2px solid #1D9E75', color: '#1D9E75', backgroundColor: 'white' }
-                        }
-                    >
-                        {callbackLoading && <Loader2 size={15} className="animate-spin" />}
-                        {callbackSent ? 'Request Sent' : 'Request Call Back'}
-                    </button>
-
-                    {/* Message */}
-                    <button
-                        onClick={handleOpenMessage}
-                        className="flex-1 flex items-center justify-center py-3 rounded-xl text-[14px] font-bold transition-all active:scale-[0.98]"
-                        style={{ backgroundColor: '#1D9E75', color: 'white' }}
-                    >
-                        Message
-                    </button>
-                </div>
             </div>
 
             {/* ── Message Modal (bottom sheet) ─────────────────────────────────────── */}
