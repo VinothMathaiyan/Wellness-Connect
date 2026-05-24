@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(echo \"TSC EXIT: $?\")"
+      "Bash(echo \"TSC EXIT: $?\")",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Fix: remove deprecated baseUrl from tsconfig *)",
+      "Bash(git push *)"
     ]
   }
 }
