@@ -1511,7 +1511,7 @@ export function getMockMealAnalysis(mealType: string): MealAnalysisResult {
       ],
       totals: { calories: 290, protein_g: 11, carbs_g: 45, fat_g: 8 },
       confidence: 'high',
-      notes: 'Demo mode — connect Anthropic API for real food recognition',
+      notes: 'AI meal scanning coming soon',
     },
     lunch: {
       meal_name: 'Rice Meal',
@@ -1523,7 +1523,7 @@ export function getMockMealAnalysis(mealType: string): MealAnalysisResult {
       ],
       totals: { calories: 465, protein_g: 17, carbs_g: 88, fat_g: 5 },
       confidence: 'high',
-      notes: 'Demo mode — connect Anthropic API for real food recognition',
+      notes: 'AI meal scanning coming soon',
     },
     dinner: {
       meal_name: 'Roti with Sabzi',
@@ -1534,7 +1534,7 @@ export function getMockMealAnalysis(mealType: string): MealAnalysisResult {
       ],
       totals: { calories: 480, protein_g: 22, carbs_g: 59, fat_g: 18 },
       confidence: 'high',
-      notes: 'Demo mode — connect Anthropic API for real food recognition',
+      notes: 'AI meal scanning coming soon',
     },
     snack: {
       meal_name: 'Evening Snack',
@@ -1544,7 +1544,7 @@ export function getMockMealAnalysis(mealType: string): MealAnalysisResult {
       ],
       totals: { calories: 270, protein_g: 6, carbs_g: 29, fat_g: 16 },
       confidence: 'high',
-      notes: 'Demo mode — connect Anthropic API for real food recognition',
+      notes: 'AI meal scanning coming soon',
     },
   };
   return mockMeals[mealType] || mockMeals.snack;
