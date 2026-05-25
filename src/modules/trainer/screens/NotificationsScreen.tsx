@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
+import ProfileMenu from '../../../components/ProfileMenu';
 import {
   getTrainerNotifications,
   markNotificationRead,
@@ -262,6 +263,7 @@ export default function NotificationsScreen() {
               Notifications{unreadCount > 0 ? ` (${unreadCount})` : ''}
             </h1>
           </div>
+          <ProfileMenu />
         </div>
 
         {/* ── Unread summary pill ──────────────────────────────────────────── */}

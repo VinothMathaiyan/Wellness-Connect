@@ -1,0 +1,112 @@
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useWellness } from '@/context/WellnessContext';
+import { supabase } from '@/lib/supabaseClient';
+
+/**
+ * ProfileMenu — shared avatar + logout dropdown.
+ *
+ * Mirrors the avatar pattern already used on the client HomeScreen: a circular
+ * initial badge in a screen header that opens a small menu showing the user's
+ * name, role and a "Log out" action. Drop `<ProfileMenu />` into the top-right
+ * of any screen header that is missing it.
+ *
+ * Self-contained — reads userId / role / logout from WellnessContext and
+ * resolves the display name from the profiles table (appState.full_name is not
+ * repopulated on a fresh session restore, so we fetch it to be reliable).
+ */
+const ROLE_LABELS: Record<string, string> = {
+  client: 'Client',
+  trainer: 'Trainer',
+  assessor: 'Assessor',
+};
+
+export default function ProfileMenu() {
+  const navigate = useNavigate();
+  const { appState, userId, userRole, logout } = useWellness();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState<string>(appState.full_name ?? '');
+
+  // Resolve the signed-in user's name from their profile so the menu shows the
+  // right person even after a fresh login (when appState is at its defaults).
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data?.full_name) setName(data.full_name);
+      });
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const displayName = name || appState.full_name || 'My Account';
+  const initial = (name || appState.full_name || 'User').charAt(0).toUpperCase();
+  const roleLabel = userRole ? ROLE_LABELS[userRole] : 'Account';
+
+  const handleLogout = async () => {
+    setOpen(false);
+    await logout();
+    navigate('/', { replace: true });
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(prev => !prev)}
+        className="w-[36px] h-[36px] rounded-full bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-bold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors"
+        aria-label="Profile menu"
+      >
+        {initial}
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <>
+            {/* Backdrop — closes the menu on an outside tap */}
+            <div
+              onClick={() => setOpen(false)}
+              style={{ position: 'fixed', inset: 0, zIndex: 99, backgroundColor: 'transparent' }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -4 }}
+              transition={{ duration: 0.12 }}
+              style={{
+                position: 'fixed',
+                top: '60px',
+                right: '16px',
+                zIndex: 100,
+                backgroundColor: '#ffffff',
+                borderRadius: '12px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                minWidth: '200px',
+                overflow: 'hidden',
+                border: '1px solid #E5E7EB',
+              }}
+            >
+              <div className="px-4 py-3 border-b border-gray-100">
+                <p className="text-[13px] font-semibold text-[#111827] truncate">{displayName}</p>
+                <p className="text-[11px] text-[#6B7280] mt-0.5">{roleLabel}</p>
+              </div>
+
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-left active:bg-red-50 transition-colors"
+              >
+                <LogOut size={15} style={{ color: '#DC2626', flexShrink: 0 }} />
+                <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>Log out</span>
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

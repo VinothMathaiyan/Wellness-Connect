@@ -20,6 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '../../../components/ProfileMenu';
 
 
 
@@ -223,9 +224,7 @@ export default function SessionDetailScreen() {
           <ChevronLeft size={24} />
         </button>
         <h1 className="text-[17px] font-bold tracking-tight">Session Detail</h1>
-        <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-[#1D9E75] font-bold text-[14px]">
-          {userInitials}
-        </div>
+        <ProfileMenu />
       </header>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-6 pb-24">

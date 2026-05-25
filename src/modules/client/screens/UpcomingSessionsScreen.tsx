@@ -9,6 +9,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '../../../components/ProfileMenu';
 import { useWellness } from '../../../context/WellnessContext';
 import { getUpcomingSessions } from '../../../services/supabaseService';
 import type { ClientSession } from '../../../types';
@@ -250,6 +251,9 @@ export default function UpcomingSessionsScreen() {
           <ChevronLeft size={22} style={{ color: '#111827' }} />
         </button>
         <p className="text-[17px] font-bold text-[#111827]">Upcoming Sessions</p>
+        <div className="ml-auto">
+          <ProfileMenu />
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-8">

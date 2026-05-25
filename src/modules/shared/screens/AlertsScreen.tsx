@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ClientNotification, Notification } from '../../../types';
+import ProfileMenu from '../../../components/ProfileMenu';
 
 
 
@@ -382,12 +383,7 @@ export default function AlertsScreen() {
             <header className="h-[52px] w-full flex items-center justify-between px-[20px] bg-white border-b-[0.5px] border-[#E5E7EB] shrink-0 sticky top-0 z-20">
                 <div className="w-[36px]" />
                 <h1 className="text-[16px] font-semibold text-[#111827]">Alerts</h1>
-                <button
-                    onClick={() => navigate('/client/dashboard')}
-                    className="w-[36px] h-[36px] rounded-full bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-semibold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors"
-                >
-                    {avatarInitial}
-                </button>
+                <ProfileMenu />
             </header>
 
             {/* MAIN LIST AREA */}

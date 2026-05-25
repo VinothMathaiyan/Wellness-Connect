@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
+import ProfileMenu from '../../../components/ProfileMenu';
 import {
   getTrainerAllRiskAlerts,
   markAlertRead,
@@ -253,6 +254,9 @@ export default function RiskMonitorScreen() {
             <div>
               <h1 className="text-lg font-bold text-gray-900 leading-tight">Risk Monitor</h1>
               <p className="text-sm text-gray-500 mt-0.5">All clients · sorted by risk level</p>
+            </div>
+            <div className="ml-auto">
+              <ProfileMenu />
             </div>
           </div>
 

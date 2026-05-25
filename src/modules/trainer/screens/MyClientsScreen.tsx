@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
+import ProfileMenu from '../../../components/ProfileMenu';
 import { getTrainerClients, getPendingClientRequests } from '../../../services/supabaseService';
 import type { TrainerClient } from '../../../services/supabaseService';
 
@@ -226,6 +227,7 @@ export default function MyClientsScreen() {
                 : `${clients.length} active clients`}
             </p>
           </div>
+          <ProfileMenu />
         </div>
 
         {/* Search + Filter row */}

@@ -2,6 +2,7 @@ import { useState, useEffect, memo } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, Share2 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '../../../components/ProfileMenu';
 import { getWeeklyLogs } from '../../../services/supabaseService';
 import type { DailyLog } from '../../../types';
 import { formatDate } from '@/utils/dateUtils';
@@ -213,9 +214,12 @@ export default function WeeklyReportScreen() {
                         <ChevronLeft size={24} />
                     </button>
                     <h1 className="text-[16px] font-semibold text-[#111827]">Weekly Report</h1>
-                    <button className="p-1 -mr-2 text-[#111827]">
-                        <Share2 size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button className="p-1 text-[#111827]">
+                            <Share2 size={20} />
+                        </button>
+                        <ProfileMenu />
+                    </div>
                 </div>
                 <span className="text-[12px] text-[#6B7280]">
                     Week {report.week_number} · {report.start_date} – {report.end_date}
