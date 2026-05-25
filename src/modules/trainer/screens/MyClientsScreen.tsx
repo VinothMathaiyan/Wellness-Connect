@@ -14,7 +14,7 @@ import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
-import { getTrainerClients, getPendingClientRequests } from '../../../services/supabaseService';
+import { getTrainerClients, getPendingClientRequests, updateClientLinkStatus } from '../../../services/supabaseService';
 import type { TrainerClient } from '../../../services/supabaseService';
 
 type RiskLevel = 'red' | 'amber' | 'green';
@@ -138,6 +138,7 @@ export default function MyClientsScreen() {
 
   const [clients, setClients]           = useState<Client[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [actioningId, setActioningId]   = useState<string | null>(null);
   const [isLoading, setIsLoading]       = useState(true);
   const [error, setError]               = useState('');
   const [searchQuery, setSearchQuery]   = useState('');
@@ -178,6 +179,25 @@ export default function MyClientsScreen() {
     loadClients();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  // Accept a pending request → activate the client. The DB stores the active
+  // state as 'active' (the "accepted" action maps to status 'active').
+  const handleAcceptRequest = async (clientId: string) => {
+    if (!userId || actioningId) return;
+    setActioningId(clientId);
+    const ok = await updateClientLinkStatus(userId, clientId, 'active');
+    if (ok) await loadClients();
+    setActioningId(null);
+  };
+
+  // Decline a pending request → mark the link 'declined' and refresh.
+  const handleDeclineRequest = async (clientId: string) => {
+    if (!userId || actioningId) return;
+    setActioningId(clientId);
+    const ok = await updateClientLinkStatus(userId, clientId, 'declined');
+    if (ok) await loadClients();
+    setActioningId(null);
+  };
 
   const activeFilterCount = (filterRisk !== 'all' ? 1 : 0) + (sortBy !== null ? 1 : 0);
 
@@ -312,7 +332,7 @@ export default function MyClientsScreen() {
               Retry
             </button>
           </motion.div>
-        ) : clients.length === 0 ? (
+        ) : clients.length === 0 && pendingRequests.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -324,7 +344,7 @@ export default function MyClientsScreen() {
               Clients who connect with you will appear here
             </p>
           </motion.div>
-        ) : visibleClients.length === 0 ? (
+        ) : visibleClients.length === 0 && pendingRequests.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -342,42 +362,68 @@ export default function MyClientsScreen() {
             {pendingRequests.length > 0 && (
               <div className="mb-6">
                 <h2 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
-                  Pending Requests
+                  Requests ({pendingRequests.length})
                 </h2>
                 <div className="space-y-2">
                   {pendingRequests.map((req) => {
                     const clientName = req.client?.full_name ?? 'Unknown Client';
                     const initials = getInitials(clientName);
+                    const busy = actioningId === req.client_id;
                     return (
-                      <motion.button
+                      <motion.div
                         key={req.client_id}
                         initial={{ opacity: 0, y: 5 }}
                         animate={{ opacity: 1, y: 0 }}
-                        onClick={() => navigate(`/trainer/client-request/${req.client_id}`)}
-                        className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 flex items-stretch overflow-hidden text-left active:scale-[0.985] transition-transform"
+                        className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
                       >
-                        <div
-                          className="w-1.5 shrink-0"
-                          style={{ backgroundColor: '#f59e0b' }}
-                        />
-                        <div className="flex-1 flex items-center gap-3 px-3.5 py-3.5">
+                        <div className="flex items-stretch">
                           <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0"
-                            style={{ backgroundColor: '#fef3c7', color: '#92400e' }}
-                          >
-                            {initials}
+                            className="w-1.5 shrink-0"
+                            style={{ backgroundColor: '#f59e0b' }}
+                          />
+                          <div className="flex-1 flex items-center gap-3 px-3.5 py-3.5">
+                            <div
+                              className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0"
+                              style={{ backgroundColor: '#fef3c7', color: '#92400e' }}
+                            >
+                              {initials}
+                            </div>
+                            <div className="flex-1 min-w-0 flex flex-col justify-center">
+                              <p className="text-[14px] font-bold text-text-primary leading-tight truncate">
+                                {clientName}
+                              </p>
+                              <span
+                                className="inline-flex items-center self-start mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide"
+                                style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}
+                              >
+                                PENDING
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0 flex flex-col justify-center">
-                            <p className="text-[14px] font-bold text-text-primary leading-tight truncate">
-                              {clientName}
-                            </p>
-                            <span style={{ fontSize: '12px', color: '#d97706', fontWeight: 600, marginTop: '2px' }}>
-                              Pending approval
-                            </span>
-                          </div>
-                          <ChevronRight size={18} className="text-gray-300 shrink-0" />
                         </div>
-                      </motion.button>
+
+                        {/* Accept / Decline actions */}
+                        <div className="flex gap-2 px-3.5 pb-3.5">
+                          <button
+                            type="button"
+                            onClick={() => handleAcceptRequest(req.client_id)}
+                            disabled={busy}
+                            className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-white disabled:opacity-60 transition-colors"
+                            style={{ backgroundColor: '#1D9E75' }}
+                          >
+                            {busy ? 'Saving…' : 'Accept'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeclineRequest(req.client_id)}
+                            disabled={busy}
+                            className="flex-1 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-60 transition-colors"
+                            style={{ border: '1.5px solid #EF4444', color: '#EF4444', backgroundColor: 'white' }}
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </motion.div>
                     );
                   })}
                 </div>
@@ -387,11 +433,9 @@ export default function MyClientsScreen() {
             {/* ─── Active Clients ───────────────────────────────────────────────────── */}
             {visibleClients.length > 0 && (
               <>
-                {pendingRequests.length > 0 && (
-                  <h2 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
-                    Active Clients
-                  </h2>
-                )}
+                <h2 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
+                  Active Clients ({visibleClients.length})
+                </h2>
                 <div className="space-y-2">
                   {visibleClients.map((client, idx) => (
 
@@ -424,6 +468,12 @@ export default function MyClientsScreen() {
                             <p className="text-[14px] font-bold text-text-primary leading-tight truncate">
                               {client.name}
                             </p>
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0"
+                              style={{ backgroundColor: '#D1FAE5', color: '#047857' }}
+                            >
+                              Active
+                            </span>
                             {client.lastActive === 'No data' ? (
                               <span style={{
                                 fontSize: 11,

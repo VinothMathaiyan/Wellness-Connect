@@ -76,9 +76,13 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
         setCallbackLoading(true);
         setCallbackError('');
         try {
-            // Create (or confirm) the trainer-client link so the trainer sees
-            // this client as a pending request. "Already exists" is non-fatal.
-            await requestTrainerLink(userId, trainer.id);
+            // Create (or confirm) the trainer-client link first so the trainer
+            // sees this client as a pending request. Block on a real failure.
+            const linkResult = await requestTrainerLink(userId, trainer.id);
+            if (!linkResult.success) {
+                setCallbackError(linkResult.error || 'Could not send request. Try again.');
+                return;
+            }
             const result = await requestCallback(userId, trainer.id);
             if (!result.success) {
                 setCallbackError(result.error || 'Could not send request. Try again.');
@@ -110,9 +114,8 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
         setMessageSending(true);
         setMessageError('');
         try {
-            // Ensure a trainer-client link exists first. If it already does
-            // (already connected / request already sent) that's fine — the
-            // result is ignored and we proceed with the message send.
+            // Ensure a trainer-client link exists first. Whether it was newly
+            // created or already existed (alreadyExists), proceed with the send.
             await requestTrainerLink(userId, trainer.id);
             await sendMessage(userId, trainer.id, messageText.trim());
             setShowMessageModal(false);

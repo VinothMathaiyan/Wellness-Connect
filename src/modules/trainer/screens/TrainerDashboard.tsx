@@ -34,6 +34,7 @@ import {
   getWeeklyCheckinSummary,
   getCallbackRequests,
   updateCallbackStatus,
+  getPendingClientRequests,
 } from '../../../services/supabaseService';
 import type { WeeklyCheckinRow } from '../../../services/supabaseService';
 
@@ -46,6 +47,7 @@ export default function TrainerDashboard() {
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const [trainerAvatarSrc, setTrainerAvatarSrc] = useState<string | null>(null);
   const [clientCount, setClientCount] = useState(0);
+  const [pendingClientsCount, setPendingClientsCount] = useState(0);
   const [urgentCount, setUrgentCount] = useState(0);
   const [todaySessions, setTodaySessions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -109,7 +111,7 @@ export default function TrainerDashboard() {
         // getTrainerClients throws on DB error (unlike the other helpers which return
         // fallback values).  Isolate it with .catch so a single RLS / schema miss
         // cannot block the name + session data from rendering.
-        const [profile, clients, alertSummary, sessions, badgeCount, pendingCheckins, weeklyCheckinsResult, callbacks] = await Promise.all([
+        const [profile, clients, alertSummary, sessions, badgeCount, pendingCheckins, weeklyCheckinsResult, callbacks, pendingLinks] = await Promise.all([
           getTrainerProfile(userId),
           getTrainerClients(userId).catch(() => []),
           getTrainerAlertSummary(userId),
@@ -118,12 +120,14 @@ export default function TrainerDashboard() {
           getPendingCheckinsCount(userId).catch(() => 0),
           getWeeklyCheckinSummary(userId).catch(() => ({ data: [] as WeeklyCheckinRow[] })),
           getCallbackRequests(userId).catch(() => []),
+          getPendingClientRequests(userId).catch(() => []),
         ]);
         // Always set name — fall back to 'Trainer' only if profile is null
         setTrainerName(profile?.full_name ?? 'Trainer');
         // avatar_url may be a base64 data URI or a remote URL — both are valid src values
         setTrainerAvatarSrc(profile?.avatar_url ?? profile?.photo_url ?? null);
         setClientCount(clients.length);
+        setPendingClientsCount(pendingLinks.length);
         setUrgentCount(alertSummary.urgentCount);
         setTodaySessions(sessions);
         setUnreadCount(badgeCount);
@@ -360,9 +364,11 @@ export default function TrainerDashboard() {
                   </div>
                   <div className="flex items-end justify-between">
                     <span className="text-[24px] font-bold text-text-primary">{clientCount}</span>
-                    <div className="flex items-center gap-1 text-green-600 mb-1 bg-green-50 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                      <TrendingUp size={10} /> +2
-                    </div>
+                    {pendingClientsCount > 0 && (
+                      <div className="flex items-center gap-1 text-amber-600 mb-1 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                        <TrendingUp size={10} /> +{pendingClientsCount} pending
+                      </div>
+                    )}
                   </div>
                 </button>
                 <button

@@ -558,13 +558,14 @@ export const getPendingClientRequests = async (trainerId: string) => {
  * Inserts a `pending` trainer_client_links row so the trainer sees the client
  * in their Pending Requests list. Called when a client requests a callback or
  * sends a first message from the trainer profile. Idempotent: if a link already
- * exists it is left untouched and a descriptive message is returned.
+ * exists (any status) it is left untouched and reported via `alreadyExists`,
+ * so a client can request multiple trainers without hitting errors on retry.
  */
 export async function requestTrainerLink(
   clientId: string,
   trainerId: string
-): Promise<{ success: boolean; error?: string }> {
-  // Check if link already exists
+): Promise<{ success: boolean; alreadyExists?: boolean; error?: string }> {
+  // Check if link already exists (any status)
   const { data: existing } = await supabase
     .from('trainer_client_links')
     .select('id, status')
@@ -573,12 +574,8 @@ export async function requestTrainerLink(
     .maybeSingle()
 
   if (existing) {
-    return {
-      success: false,
-      error: existing.status === 'active'
-        ? 'You are already connected with this trainer'
-        : 'Request already sent'
-    }
+    return { success: true, alreadyExists: true }
+    // Don't error — silently skip if already exists
   }
 
   const { error } = await supabase
@@ -590,7 +587,7 @@ export async function requestTrainerLink(
     })
 
   if (error) return { success: false, error: error.message }
-  return { success: true }
+  return { success: true, alreadyExists: false }
 }
 
 // ─── Trainer Risk Monitor (full list) ────────────────────────────────────────
