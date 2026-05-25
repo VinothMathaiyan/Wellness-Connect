@@ -19,7 +19,7 @@ import {
     Loader2,
 } from 'lucide-react';
 import type { TrainerProfile, User } from '../../../types';
-import { getTrainerProfile, requestCallback, sendMessage } from '../../../services/supabaseService';
+import { getTrainerProfile, requestCallback, sendMessage, requestTrainerLink } from '../../../services/supabaseService';
 import { useWellness } from '../../../context/WellnessContext';
 
 interface TrainerDetailSubScreenProps {
@@ -76,6 +76,9 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
         setCallbackLoading(true);
         setCallbackError('');
         try {
+            // Create (or confirm) the trainer-client link so the trainer sees
+            // this client as a pending request. "Already exists" is non-fatal.
+            await requestTrainerLink(userId, trainer.id);
             const result = await requestCallback(userId, trainer.id);
             if (!result.success) {
                 setCallbackError(result.error || 'Could not send request. Try again.');
@@ -107,6 +110,10 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
         setMessageSending(true);
         setMessageError('');
         try {
+            // Ensure a trainer-client link exists first. If it already does
+            // (already connected / request already sent) that's fine — the
+            // result is ignored and we proceed with the message send.
+            await requestTrainerLink(userId, trainer.id);
             await sendMessage(userId, trainer.id, messageText.trim());
             setShowMessageModal(false);
             setMessageText('');
