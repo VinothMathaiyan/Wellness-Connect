@@ -2318,6 +2318,79 @@ export const sendInfoRequest = async (
   if (error) throw error;
 };
 
+export async function requestCallback(
+  clientId: string,
+  trainerId: string
+): Promise<{ success: boolean; error?: string }> {
+  // Get client profile to fetch name and phone
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, phone_number')
+    .eq('id', clientId)
+    .single();
+
+  if (!profile) return { success: false, error: 'Profile not found' };
+
+  const { data: requestData, error } = await supabase
+    .from('callback_requests')
+    .insert({
+      client_id: clientId,
+      trainer_id: trainerId,
+      client_name: profile.full_name,
+      client_phone: profile.phone_number,
+      status: 'pending'
+    })
+    .select('id')
+    .single();
+
+  if (error) return { success: false, error: error.message };
+
+  // Also create a notification for the trainer
+  await supabase
+    .from('notifications')
+    .insert({
+      to_user_id: trainerId,
+      from_user_id: clientId,
+      type: 'callback_request',
+      message: JSON.stringify({ 
+        request_id: requestData.id,
+        phone: profile.phone_number 
+      }),
+      is_read: false
+    });
+
+  return { success: true };
+}
+
+export async function getCallbackRequests(
+  trainerId: string
+): Promise<{
+  id: string;
+  client_name: string;
+  client_phone: string;
+  status: string;
+  created_at: string;
+}[]> {
+  const { data, error } = await supabase
+    .from('callback_requests')
+    .select('id, client_name, client_phone, status, created_at')
+    .eq('trainer_id', trainerId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+  return data || [];
+}
+
+export async function updateCallbackStatus(
+  requestId: string,
+  status: 'contacted' | 'resolved'
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('callback_requests')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', requestId);
+  return !error;
+}
+
 /**
  * Send a message from client to trainer.
  * Inserts into both messages and notifications tables atomically.

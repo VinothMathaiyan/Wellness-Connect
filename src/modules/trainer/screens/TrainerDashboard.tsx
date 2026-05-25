@@ -18,6 +18,7 @@ import {
   ArrowUpRight,
   Zap,
   LogOut,
+  Phone,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
@@ -31,6 +32,8 @@ import {
   getUnreadNotificationCount,
   getPendingCheckinsCount,
   getWeeklyCheckinSummary,
+  getCallbackRequests,
+  updateCallbackStatus,
 } from '../../../services/supabaseService';
 import type { WeeklyCheckinRow } from '../../../services/supabaseService';
 
@@ -49,6 +52,7 @@ export default function TrainerDashboard() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingCheckinsCount, setPendingCheckinsCount] = useState(0);
   const [weeklyCheckins, setWeeklyCheckins] = useState<WeeklyCheckinRow[]>([]);
+  const [callbackRequests, setCallbackRequests] = useState<any[]>([]);
 
   // Week strip — Mon–Sun of the current week, computed on mount
   // Always use local date arithmetic — never .toISOString() which returns UTC.
@@ -105,7 +109,7 @@ export default function TrainerDashboard() {
         // getTrainerClients throws on DB error (unlike the other helpers which return
         // fallback values).  Isolate it with .catch so a single RLS / schema miss
         // cannot block the name + session data from rendering.
-        const [profile, clients, alertSummary, sessions, badgeCount, pendingCheckins, weeklyCheckinsResult] = await Promise.all([
+        const [profile, clients, alertSummary, sessions, badgeCount, pendingCheckins, weeklyCheckinsResult, callbacks] = await Promise.all([
           getTrainerProfile(userId),
           getTrainerClients(userId).catch(() => []),
           getTrainerAlertSummary(userId),
@@ -113,6 +117,7 @@ export default function TrainerDashboard() {
           getUnreadNotificationCount(userId),
           getPendingCheckinsCount(userId).catch(() => 0),
           getWeeklyCheckinSummary(userId).catch(() => ({ data: [] as WeeklyCheckinRow[] })),
+          getCallbackRequests(userId).catch(() => []),
         ]);
         // Always set name — fall back to 'Trainer' only if profile is null
         setTrainerName(profile?.full_name ?? 'Trainer');
@@ -124,6 +129,7 @@ export default function TrainerDashboard() {
         setUnreadCount(badgeCount);
         setPendingCheckinsCount(pendingCheckins);
         setWeeklyCheckins(weeklyCheckinsResult.data);
+        setCallbackRequests(callbacks);
       } catch (err) {
         console.error('Dashboard load error:', err);
       } finally {
@@ -132,6 +138,15 @@ export default function TrainerDashboard() {
     };
     load();
   }, [userId]);
+
+  const handleMarkContacted = async (requestId: string) => {
+    try {
+      await updateCallbackStatus(requestId, 'contacted');
+      setCallbackRequests(prev => prev.filter(r => r.id !== requestId));
+    } catch {
+      // ignore
+    }
+  };
 
   // Refetch badge count when the tab becomes visible again (e.g. after returning
   // from NotificationsScreen where the trainer may have read notifications).
@@ -383,6 +398,35 @@ export default function TrainerDashboard() {
                     >
                       Full Schedule <ChevronRight size={12} />
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ─── Pending Callback Requests ─────────────────────────────────────────── */}
+              {callbackRequests.length > 0 && (
+                <div className="bg-white rounded-2xl border border-[#BAE6FD] shadow-sm overflow-hidden">
+                  <div className="bg-[#F0F9FF] px-4 py-3 border-b border-[#BAE6FD] flex items-center gap-2">
+                    <Phone size={16} className="text-[#0284C7]" />
+                    <h3 className="text-[13px] font-bold text-[#0369A1] uppercase tracking-wider">
+                      {callbackRequests.length} call back request{callbackRequests.length === 1 ? '' : 's'} pending
+                    </h3>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {callbackRequests.map(req => (
+                      <div key={req.id} className="px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-[14px] font-bold text-gray-900">{req.client_name}</p>
+                          <p className="text-[13px] text-gray-500 font-medium">📱 +91 {req.client_phone}</p>
+                        </div>
+                        <button
+                          onClick={() => handleMarkContacted(req.id)}
+                          className="px-3 py-1.5 rounded-lg text-[12px] font-bold border active:bg-gray-50"
+                          style={{ borderColor: '#1D9E75', color: '#1D9E75' }}
+                        >
+                          Mark Contacted
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

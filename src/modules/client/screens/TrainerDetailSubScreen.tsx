@@ -19,7 +19,7 @@ import {
     Loader2,
 } from 'lucide-react';
 import type { TrainerProfile, User } from '../../../types';
-import { getTrainerProfile, hasInfoRequestToday, sendInfoRequest, sendMessage } from '../../../services/supabaseService';
+import { getTrainerProfile, requestCallback, sendMessage } from '../../../services/supabaseService';
 import { useWellness } from '../../../context/WellnessContext';
 
 interface TrainerDetailSubScreenProps {
@@ -42,7 +42,6 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
     // ── Request Call Back state ──────────────────────────────────────────────────
     const [callbackLoading,    setCallbackLoading]    = useState(false);
     const [callbackSent,       setCallbackSent]       = useState(false);
-    const [callbackAlreadySent, setCallbackAlreadySent] = useState(false);
     const [callbackError,      setCallbackError]      = useState('');
 
     // ── Message modal state ──────────────────────────────────────────────────────
@@ -73,24 +72,22 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
 
     // ── Request Call Back handler ────────────────────────────────────────────────
     const handleRequestCallback = useCallback(async () => {
-        if (!userId || callbackLoading || callbackSent || callbackAlreadySent) return;
+        if (!userId || callbackLoading || callbackSent) return;
         setCallbackLoading(true);
         setCallbackError('');
         try {
-            const alreadySent = await hasInfoRequestToday(userId, trainer.id);
-            if (alreadySent) {
-                setCallbackAlreadySent(true);
-                setCallbackLoading(false);
+            const result = await requestCallback(userId, trainer.id);
+            if (!result.success) {
+                setCallbackError(result.error || 'Could not send request. Try again.');
                 return;
             }
-            await sendInfoRequest(userId, trainer.id);
             setCallbackSent(true);
         } catch {
             setCallbackError('Could not send request. Try again.');
         } finally {
             setCallbackLoading(false);
         }
-    }, [userId, trainer.id, callbackLoading, callbackSent, callbackAlreadySent]);
+    }, [userId, trainer.id, callbackLoading, callbackSent]);
 
     // ── Message handlers ─────────────────────────────────────────────────────────
     const handleOpenMessage = useCallback(() => {
@@ -350,11 +347,6 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
                         <div className="px-4" style={{ marginTop: '24px', marginBottom: '24px' }}>
 
                             {/* Inline feedback messages */}
-                            {callbackAlreadySent && (
-                                <p style={{ fontSize: '13px', color: '#D97706', marginBottom: '8px', textAlign: 'center' }}>
-                                    You've already sent a request to this trainer today
-                                </p>
-                            )}
                             {callbackError && (
                                 <p style={{ fontSize: '13px', color: '#EF4444', marginBottom: '8px', textAlign: 'center' }}>
                                     {callbackError}
@@ -366,23 +358,30 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
                                 </p>
                             )}
 
+                            {callbackSent ? (
+                                <div className="bg-green-50 p-4 rounded-xl border border-green-200 text-center mb-4">
+                                    <p className="text-green-700 font-bold text-[14px] flex items-center justify-center gap-1.5 mb-1">
+                                        <span className="text-[16px]">✓</span> Call back requested
+                                    </p>
+                                    <p className="text-green-600 text-[13px] font-medium">
+                                        {trainer.full_name} will call you soon.
+                                    </p>
+                                </div>
+                            ) : null}
+
                             <div className="flex gap-3">
                                 {/* Request Call Back */}
-                                <button
-                                    onClick={handleRequestCallback}
-                                    disabled={callbackLoading || callbackSent || callbackAlreadySent}
-                                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-bold transition-colors"
-                                    style={
-                                        callbackSent
-                                            ? { backgroundColor: '#F0FDF4', color: '#166534', border: '2px solid #1D9E75' }
-                                            : callbackAlreadySent
-                                            ? { backgroundColor: '#FEF3C7', color: '#D97706', border: '2px solid #FDE68A', cursor: 'default' }
-                                            : { border: '2px solid #1D9E75', color: '#1D9E75', backgroundColor: 'white' }
-                                    }
-                                >
-                                    {callbackLoading && <Loader2 size={15} className="animate-spin" />}
-                                    {callbackSent ? 'Request Sent' : 'Request Call Back'}
-                                </button>
+                                {!callbackSent && (
+                                    <button
+                                        onClick={handleRequestCallback}
+                                        disabled={callbackLoading}
+                                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-bold transition-colors"
+                                        style={{ border: '2px solid #1D9E75', color: '#1D9E75', backgroundColor: 'white' }}
+                                    >
+                                        {callbackLoading && <Loader2 size={15} className="animate-spin" />}
+                                        Request Call Back
+                                    </button>
+                                )}
 
                                 {/* Message */}
                                 <button
@@ -398,26 +397,33 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
                 )}
             </div>
 
-            {/* ── Message Modal (bottom sheet) ─────────────────────────────────────── */}
+            {/* ── Message Modal (centered overlay) ─────────────────────────────────────── */}
             {showMessageModal && (
                 <div
                     onClick={handleCloseMessage}
                     style={{
-                        position: 'absolute',
-                        inset: 0,
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
                         backgroundColor: 'rgba(0,0,0,0.5)',
-                        zIndex: 50,
-                        display: 'flex',
-                        alignItems: 'flex-end',
+                        zIndex: 1000,
                     }}
                 >
                     <div
                         onClick={(e) => e.stopPropagation()}
                         style={{
+                            position: 'fixed',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: '90%',
+                            maxWidth: '400px',
                             backgroundColor: '#ffffff',
-                            borderRadius: '24px 24px 0 0',
+                            borderRadius: '16px',
                             padding: '24px',
-                            width: '100%',
+                            zIndex: 1001,
                         }}
                     >
                         <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '16px', color: '#111827' }}>

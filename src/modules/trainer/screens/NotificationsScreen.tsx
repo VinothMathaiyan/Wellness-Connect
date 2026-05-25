@@ -5,6 +5,7 @@ import {
   UserPlus,
   MessageSquare,
   RefreshCw,
+  Phone,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
@@ -13,6 +14,7 @@ import { useWellness } from '../../../context/WellnessContext';
 import {
   getTrainerNotifications,
   markNotificationRead,
+  updateCallbackStatus,
 } from '../../../services/supabaseService';
 import type { TrainerNotification } from '../../../types';
 
@@ -49,80 +51,150 @@ function SkeletonRow() {
 function NotificationRow({
   notification,
   onTap,
+  onActioned,
 }: {
   notification: TrainerNotification;
   onTap: () => void;
+  onActioned?: (id: string) => void;
 }) {
   const isInfoRequest = notification.type === 'info_request';
   const isProgramChangesRequested = notification.type === 'program_changes_requested';
+  const isCallbackRequest = notification.type === 'callback_request';
+
+  let parsedMessage = notification.message ?? '';
+  let phone = '';
+  let requestId = '';
+  
+  if (isCallbackRequest && notification.message) {
+    try {
+      const data = JSON.parse(notification.message);
+      phone = data.phone || '';
+      requestId = data.request_id || '';
+    } catch {
+      // fallback
+    }
+  }
+
   const preview =
-    notification.message && notification.message.length > 80
-      ? notification.message.substring(0, 80) + '…'
-      : (notification.message ?? '');
-  const iconStyle = isInfoRequest
+    parsedMessage.length > 80 && !isCallbackRequest
+      ? parsedMessage.substring(0, 80) + '…'
+      : parsedMessage;
+
+  const iconStyle = isCallbackRequest
+    ? { backgroundColor: '#E0F2FE', color: '#0284C7' }
+    : isInfoRequest
     ? { backgroundColor: '#DCFCE7', color: '#166534' }
     : isProgramChangesRequested
       ? { backgroundColor: '#FEF3C7', color: '#92400E' }
       : { backgroundColor: '#DBEAFE', color: '#2563EB' };
-  const unreadBorder = isProgramChangesRequested ? '#F59E0B' : '#1D9E75';
+  
+  const unreadBorder = isProgramChangesRequested ? '#F59E0B' : isCallbackRequest ? '#0EA5E9' : '#1D9E75';
+
+  const [actioning, setActioning] = useState(false);
+
+  const handleAction = async (e: React.MouseEvent, status: 'contacted' | 'resolved') => {
+    e.stopPropagation(); // prevent row tap
+    if (!requestId || actioning) return;
+    setActioning(true);
+    try {
+      await updateCallbackStatus(requestId, status);
+      // Mark notification as read implicitly
+      await markNotificationRead(notification.id);
+      if (onActioned) onActioned(notification.id);
+    } catch {
+      // ignore
+    } finally {
+      setActioning(false);
+    }
+  };
 
   return (
-    <button
-      onClick={onTap}
-      className="w-full flex items-start gap-3 px-4 py-3.5 text-left border-b border-gray-100 last:border-b-0 transition-colors active:bg-gray-50"
-      style={
-        !notification.is_read
-          ? { backgroundColor: isProgramChangesRequested ? '#FFFBEB' : '#F0FDF4', borderLeft: `3px solid ${unreadBorder}` }
-          : { backgroundColor: '#ffffff', borderLeft: '3px solid transparent' }
-      }
-    >
-      {/* Icon circle */}
-      <div
-        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-        style={iconStyle}
-      >
-        {isInfoRequest
-          ? <UserPlus size={17} />
-          : <MessageSquare size={17} />
+    <div className="border-b border-gray-100 last:border-b-0">
+      <button
+        onClick={onTap}
+        className="w-full flex items-start gap-3 px-4 py-3.5 text-left transition-colors active:bg-gray-50"
+        style={
+          !notification.is_read
+            ? { backgroundColor: isProgramChangesRequested ? '#FFFBEB' : isCallbackRequest ? '#F0F9FF' : '#F0FDF4', borderLeft: `3px solid ${unreadBorder}` }
+            : { backgroundColor: '#ffffff', borderLeft: '3px solid transparent' }
         }
-      </div>
-
-      {/* Text */}
-      <div className="flex-1 min-w-0">
-        <p
-          className="text-[14px] leading-snug truncate"
-          style={{ fontWeight: notification.is_read ? 500 : 700, color: '#111827' }}
+      >
+        {/* Icon circle */}
+        <div
+          className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+          style={iconStyle}
         >
-          {isInfoRequest
-            ? `${notification.from_name} wants to know more about you`
-            : isProgramChangesRequested
-              ? 'Client requested program changes'
-            : `Message from ${notification.from_name}`
+          {isCallbackRequest
+            ? <Phone size={17} />
+            : isInfoRequest
+            ? <UserPlus size={17} />
+            : <MessageSquare size={17} />
           }
-        </p>
-        <p className="text-[12px] text-gray-500 mt-0.5 leading-snug line-clamp-2">
-          {isInfoRequest
-            ? (notification.from_city ?? 'Location not set')
-            : isProgramChangesRequested
-              ? preview
-            : preview
-          }
-        </p>
-      </div>
+        </div>
 
-      {/* Time + unread dot */}
-      <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
-        <span className="text-[11px] text-gray-400 whitespace-nowrap">
-          {relativeTime(notification.created_at)}
-        </span>
-        {!notification.is_read && (
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: unreadBorder }}
-          />
-        )}
-      </div>
-    </button>
+        {/* Text */}
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-[14px] leading-snug truncate"
+            style={{ fontWeight: notification.is_read ? 500 : 700, color: '#111827' }}
+          >
+            {isCallbackRequest
+              ? `${notification.from_name} requested a call back`
+              : isInfoRequest
+              ? `${notification.from_name} wants to know more about you`
+              : isProgramChangesRequested
+                ? 'Client requested program changes'
+              : `Message from ${notification.from_name}`
+            }
+          </p>
+          <p className="text-[12px] text-gray-500 mt-0.5 leading-snug line-clamp-2">
+            {isCallbackRequest
+              ? `📱 +91 ${phone}`
+              : isInfoRequest
+              ? (notification.from_city ?? 'Location not set')
+              : isProgramChangesRequested
+                ? preview
+              : preview
+            }
+          </p>
+        </div>
+
+        {/* Time + unread dot */}
+        <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
+          <span className="text-[11px] text-gray-400 whitespace-nowrap">
+            {relativeTime(notification.created_at)}
+          </span>
+          {!notification.is_read && (
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: unreadBorder }}
+            />
+          )}
+        </div>
+      </button>
+
+      {/* Callback Actions */}
+      {isCallbackRequest && !notification.is_read && (
+        <div className="px-4 pb-3 pt-1 flex gap-2 pl-[60px]" style={{ backgroundColor: '#F0F9FF', borderLeft: `3px solid ${unreadBorder}` }}>
+          <button
+            onClick={(e) => handleAction(e, 'contacted')}
+            disabled={actioning}
+            className="px-3 py-1.5 rounded-lg text-[12px] font-bold border"
+            style={{ borderColor: '#1D9E75', color: '#1D9E75', backgroundColor: 'white' }}
+          >
+            Mark Contacted
+          </button>
+          <button
+            onClick={(e) => handleAction(e, 'resolved')}
+            disabled={actioning}
+            className="px-3 py-1.5 rounded-lg text-[12px] font-bold"
+            style={{ backgroundColor: '#1D9E75', color: 'white' }}
+          >
+            Resolve
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -166,6 +238,10 @@ export default function NotificationsScreen() {
       // Non-fatal — local state already updated
       console.error('markNotificationRead failed for', notification.id);
     }
+  }, []);
+
+  const handleActioned = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
   return (
@@ -264,7 +340,7 @@ export default function NotificationsScreen() {
             return (
               <div className="bg-white rounded-2xl mx-4 mt-2 shadow-sm overflow-hidden">
                 {unread.map(n => (
-                  <NotificationRow key={n.id} notification={n} onTap={() => handleTap(n)} />
+                  <NotificationRow key={n.id} notification={n} onTap={() => handleTap(n)} onActioned={handleActioned} />
                 ))}
                 {unread.length > 0 && read.length > 0 && (
                   <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
@@ -274,7 +350,7 @@ export default function NotificationsScreen() {
                   </div>
                 )}
                 {read.map(n => (
-                  <NotificationRow key={n.id} notification={n} onTap={() => handleTap(n)} />
+                  <NotificationRow key={n.id} notification={n} onTap={() => handleTap(n)} onActioned={handleActioned} />
                 ))}
               </div>
             );
