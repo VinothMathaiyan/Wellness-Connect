@@ -11,6 +11,14 @@ import {
   type Assessment 
 } from '../../../services/supabaseService';
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  if (hour >= 17 && hour < 21) return 'Good evening';
+  return 'Good night';
+}
+
 export default function AssessmentDashboardScreen() {
   const navigate = useNavigate();
   const { userId, appState, logout } = useWellness();
@@ -121,7 +129,7 @@ export default function AssessmentDashboardScreen() {
         >
           <div className="flex justify-between items-start relative z-10">
             <div>
-              <h1 className="text-2xl font-bold mb-1">Good morning, {firstName} 👋</h1>
+              <h1 className="text-2xl font-bold mb-1">{getGreeting()}, {firstName} 👋</h1>
               <p className="text-white/80 text-sm font-medium">Assessment Command Center</p>
             </div>
             {/* Avatar — tap to open profile menu */}

@@ -1378,26 +1378,44 @@ export const upsertDailyMetrics = async (
   userId: string,
   log: DailyLog,
 ): Promise<boolean> => {
+  // Normalise optional fields so unfilled values do not violate the
+  // daily_metrics CHECK constraints. mood_score / energy_score must be 1–5
+  // (or NULL) — a 0 from an unanswered question would be rejected — and
+  // water_glasses must be 0–8. Only user_id, log_date and readiness_score
+  // are effectively required; everything else defaults to NULL when blank.
+  const moodScore = log.mood_score >= 1 ? log.mood_score : null;
+  const energyScore = log.energy_score >= 1 ? log.energy_score : null;
+  const sleepQualityScore = log.sleep_quality_score >= 1 ? log.sleep_quality_score : null;
+  const waterGlasses = Math.min(Math.max(log.water_glasses ?? 0, 0), 8);
+
   const { error } = await supabase
     .from('daily_metrics')
     .upsert(
       {
         user_id: userId,
         log_date: log.log_date,
-        sleep_hours: log.sleep_hours,
-        sleep_quality_score: log.sleep_quality_score,
-        mood_score: log.mood_score,
-        energy_score: log.energy_score,
-        water_glasses: log.water_glasses,
+        sleep_hours: log.sleep_hours ?? null,
+        sleep_quality_score: sleepQualityScore,
+        mood_score: moodScore,
+        energy_score: energyScore,
+        water_glasses: waterGlasses,
         workout_done: log.workout_done,
         pain_score: log.pain_score ?? null,
-        mobility_score: log.mobility_score,
+        mobility_score: log.mobility_score ?? null,
         readiness_score: log.readiness_score ?? null,
       },
       { onConflict: 'user_id,log_date' },
     );
   if (error) {
-    console.error('upsertDailyMetrics:', error);
+    // Surface the real Supabase error (message/details/hint/code) rather than
+    // a bare object, so check-in save failures are diagnosable.
+    console.error(
+      'upsertDailyMetrics:',
+      error.message,
+      error.details,
+      error.hint,
+      error.code,
+    );
     return false;
   }
   return true;
@@ -2607,6 +2625,29 @@ export async function getActiveWorkoutPlanId(
     console.error('getActiveWorkoutPlanId:', err);
     return null;
   }
+}
+
+/**
+ * Returns true only if the client has a workout_plan with status = 'active'.
+ * Used by the client HomeScreen to decide whether to show plan-progress UI —
+ * brand-new clients with no assigned plan must not see another user's data.
+ */
+export async function hasActiveWorkoutPlan(
+  clientId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('workout_plans')
+    .select('id')
+    .eq('client_id', clientId)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('hasActiveWorkoutPlan:', error);
+    return false;
+  }
+  return !!data;
 }
 
 /**

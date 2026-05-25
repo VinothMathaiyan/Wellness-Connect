@@ -10,6 +10,14 @@ import { formatDateLong } from '@/utils/dateUtils';
 /* ── Helpers ─────────────────────────────────────────────── */
 const formatDateShort = () => formatDateLong(new Date());
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  if (hour >= 17 && hour < 21) return 'Good evening';
+  return 'Good night';
+}
+
 const getScoreColor = (s: number) => s >= 70 ? '#1D9E75' : s >= 40 ? '#EF9F27' : '#E24B4A';
 
 /* ── NavButton ───────────────────────────────────────────── */
@@ -207,7 +215,7 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingCompl
 /* ── HomeScreen (Main Export) ────────────────────────────── */
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientReadiness, getTodaySession, getClientUnreadCount } from '../../../services/supabaseService';
+import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWorkoutPlan } from '../../../services/supabaseService';
 import { supabase } from '../../../lib/supabaseClient';
 export default function HomeScreen() {
   const navigate = useNavigate();
@@ -216,6 +224,7 @@ export default function HomeScreen() {
 
   // ── Live Supabase state ────────────────────────────────────────────────────
   const [readinessScore,    setReadinessScore]    = useState<number | null>(null);
+  const [hasPlan,           setHasPlan]           = useState(false);
   const [todaySession,      setTodaySession]      = useState<ClientSession | null>(null);
   const [homeDataLoading,   setHomeDataLoading]   = useState(true);
   const [fetchError,        setFetchError]        = useState<'offline' | 'error' | null>(null);
@@ -237,11 +246,13 @@ export default function HomeScreen() {
       getClientReadiness(userId),
       getTodaySession(userId),
       getClientUnreadCount(userId),
-    ]).then(([readiness, session, unreadCount]) => {
+      hasActiveWorkoutPlan(userId),
+    ]).then(([readiness, session, unreadCount, activePlan]) => {
       if (cancelled) return;
       setReadinessScore(readiness);
       setTodaySession(session);
       setUnreadAlertsCount(unreadCount);
+      setHasPlan(activePlan);
     }).catch(err => {
       if (cancelled) return;
       console.error('HomeScreen data fetch:', err);
@@ -430,7 +441,7 @@ export default function HomeScreen() {
           {/* Hero */}
           <section className="bg-white pt-[16px] px-[16px] pb-[16px]">
             <div className="mb-[14px]">
-              <p className="text-[14px] text-[#6B7280]">Good morning,</p>
+              <p className="text-[14px] text-[#6B7280]">{getGreeting()},</p>
               <h2 className="text-[22px] font-bold text-[#1D9E75]">{firstName}</h2>
             </div>
 
@@ -446,11 +457,24 @@ export default function HomeScreen() {
                   <span className="text-[22px] font-bold text-white tracking-tight">{readinessScore}/100</span>
                   <span className="text-[11px] text-white/70 font-medium">Readiness score</span>
                 </div>
-                <div className="w-[1px] h-[40px] bg-white opacity-40" />
-                <div className="flex-1 flex flex-col items-center">
-                  <span className="text-[22px] font-bold text-white tracking-tight">Week {userData.currentWeek ?? 4}</span>
-                  <span className="text-[11px] text-white/70 font-medium">of 12-week plan</span>
-                </div>
+                {/* Plan progress only shows when this client has an active plan — never another user's data */}
+                {hasPlan ? (
+                  <>
+                    <div className="w-[1px] h-[40px] bg-white opacity-40" />
+                    <div className="flex-1 flex flex-col items-center">
+                      <span className="text-[22px] font-bold text-white tracking-tight">Week {userData.currentWeek ?? 1}</span>
+                      <span className="text-[11px] text-white/70 font-medium">of 12-week plan</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-[1px] h-[40px] bg-white opacity-40" />
+                    <div className="flex-1 flex flex-col items-center text-center px-1">
+                      <span className="text-[12px] font-semibold text-white leading-tight">No active plan yet</span>
+                      <span className="text-[11px] text-white/70 font-medium leading-tight">Your trainer will assign one</span>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <button

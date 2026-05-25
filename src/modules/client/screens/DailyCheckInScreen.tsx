@@ -463,13 +463,13 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
               <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                  <div className="flex justify-between items-center mb-1">
                     <div className="flex items-center gap-1.5">
-                      <h4 className="text-[15px] font-bold text-[#111827]">Pain Level</h4>
+                      <h4 className="text-[15px] font-bold text-[#111827]">Pain level compared to yesterday</h4>
                     </div>
                     <span className="text-[13px] font-semibold" style={{ color: EMOJI_PAIN.find(p => p.value === log.pain_score)?.textColor }}>
                       {EMOJI_PAIN.find(p => p.value === log.pain_score)?.label || ''}
                     </span>
                  </div>
-                 <p className="text-[12px] text-[#9CA3AF] italic mb-[10px]">Current pain or discomfort</p>
+                 <p className="text-[12px] text-[#9CA3AF] italic mb-[10px]">0 = much better, 10 = much worse</p>
                  <div className="flex justify-between mt-4">
                     {EMOJI_PAIN.map(p => (
                       <button
@@ -496,11 +496,11 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
               <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                  <div className="flex justify-between items-center mb-1">
                    <div className="flex items-center gap-1.5">
-                      <h4 className="text-[15px] font-bold text-[#111827]">Mobility</h4>
+                      <h4 className="text-[15px] font-bold text-[#111827]">How well are you moving compared to yesterday?</h4>
                    </div>
                    <span className="text-[13px] font-bold text-[#1D9E75]">{(log.mobility_score || 5)}/10</span>
                  </div>
-                 <p className="text-[12px] text-[#9CA3AF] italic mb-[10px]">How well are you moving?</p>
+                 <p className="text-[12px] text-[#9CA3AF] italic mb-[10px]">1 = much worse, 10 = much better</p>
 
                  <div className="relative pt-8 pb-4">
                     <div className="h-[8px] w-full bg-[#E5E7EB] rounded-[4px] relative overflow-hidden">
