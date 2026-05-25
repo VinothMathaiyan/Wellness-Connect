@@ -215,8 +215,9 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingCompl
 /* ── HomeScreen (Main Export) ────────────────────────────── */
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWorkoutPlan } from '../../../services/supabaseService';
+import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWorkoutPlan, getClientTodayMealCount, getClientTodayCheckinStatus, getClientCurrentWeek } from '../../../services/supabaseService';
 import { supabase } from '../../../lib/supabaseClient';
+import { getUserProfile } from '../../../services/supabaseService';
 export default function HomeScreen() {
   const navigate = useNavigate();
   const { appState, userId, workoutProgress, logout } = useWellness();
@@ -228,6 +229,19 @@ export default function HomeScreen() {
   const [todaySession,      setTodaySession]      = useState<ClientSession | null>(null);
   const [homeDataLoading,   setHomeDataLoading]   = useState(true);
   const [fetchError,        setFetchError]        = useState<'offline' | 'error' | null>(null);
+
+  // ── Live meal count + nutrition from Supabase ─────────────────────────────
+  const [mealsLoggedLive,   setMealsLoggedLive]   = useState(0);
+  const [dailyNutritionLive, setDailyNutritionLive] = useState<{ calories: number; protein_g: number; carbs_g: number; fat_g: number } | null>(null);
+
+  // ── Live check-in status from Supabase ────────────────────────────────────
+  const [checkinStatus, setCheckinStatus] = useState<{ hasCheckin: boolean; done: number; total: number }>({ hasCheckin: false, done: 0, total: 7 });
+
+  // ── Live current week from active plan ────────────────────────────────────
+  const [currentWeekLive, setCurrentWeekLive] = useState<number | null>(null);
+
+  // ── Live user profile name ────────────────────────────────────────────────
+  const [profileName, setProfileName] = useState<string>('');
 
   // ── Live unread alert badge — same source as AlertsScreen ─────────────────
   const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
@@ -247,12 +261,21 @@ export default function HomeScreen() {
       getTodaySession(userId),
       getClientUnreadCount(userId),
       hasActiveWorkoutPlan(userId),
-    ]).then(([readiness, session, unreadCount, activePlan]) => {
+      getClientTodayMealCount(userId),
+      getClientTodayCheckinStatus(userId),
+      getClientCurrentWeek(userId),
+      getUserProfile(userId),
+    ]).then(([readiness, session, unreadCount, activePlan, mealData, checkin, week, profile]) => {
       if (cancelled) return;
       setReadinessScore(readiness);
       setTodaySession(session);
       setUnreadAlertsCount(unreadCount);
       setHasPlan(activePlan);
+      setMealsLoggedLive(mealData.count);
+      setDailyNutritionLive(mealData.nutrition);
+      setCheckinStatus(checkin);
+      setCurrentWeekLive(week);
+      if (profile?.full_name) setProfileName(profile.full_name);
     }).catch(err => {
       if (cancelled) return;
       console.error('HomeScreen data fetch:', err);
@@ -295,26 +318,19 @@ export default function HomeScreen() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [userId]);
 
-  // ── Remaining fields still from context (not in scope for this task) ───────
-  const userData = {
-    full_name: appState.full_name ?? '',
-    currentWeek: 4,
-    assessmentStatus: appState.assessmentStatus ?? 'pending',
-    habitProgress: appState.habitProgress ?? { done: 1, total: 5 },
-    mealsLogged: (appState as any).dailyNutrition?.mealsLogged ?? (appState.mealLogs ?? []).length,
-    weeklyReportStatus: 'ready' as any,
-    weeklyReportTeaser: { sleep: '6.5h', mood: '4.2', energy: '7.5' },
-  };
+  // ── Derived display values from live Supabase data ────────────────────────
+  const displayName = profileName || appState.full_name || '';
 
   const [showToast] = useState(false);
   const todayRef = useRef<HTMLDivElement>(null);
 
-  const firstName = (userData.full_name || 'User').split(' ')[0];
+  const firstName = (displayName || 'User').split(' ')[0];
   const initial = firstName[0].toUpperCase();
-  const habitsDone = userData.habitProgress?.done ?? 1;
-  const habitsTotal = userData.habitProgress?.total ?? 7;
-  const mealsLogged = userData.mealsLogged ?? 1;
-  const isTrackingComplete = habitsDone >= habitsTotal;
+  const habitsDone = checkinStatus.done;
+  const habitsTotal = checkinStatus.total;
+  const mealsLogged = mealsLoggedLive;
+  const isTrackingComplete = checkinStatus.hasCheckin && habitsDone >= habitsTotal;
+  const currentWeek = currentWeekLive ?? 1;
 
   // Track adherence for last session
   const lastSessionAdherence = workoutProgress?.score ?? 0;
@@ -380,7 +396,7 @@ export default function HomeScreen() {
                     {/* Name row */}
                     <div className="px-4 py-3 border-b border-gray-100">
                       <p className="text-[13px] font-semibold text-[#111827] truncate">
-                        {userData.full_name || 'My Account'}
+                        {displayName || 'My Account'}
                       </p>
                       <p className="text-[11px] text-[#6B7280] mt-0.5">Client</p>
                     </div>
@@ -462,7 +478,7 @@ export default function HomeScreen() {
                   <>
                     <div className="w-[1px] h-[40px] bg-white opacity-40" />
                     <div className="flex-1 flex flex-col items-center">
-                      <span className="text-[22px] font-bold text-white tracking-tight">Week {userData.currentWeek ?? 1}</span>
+                      <span className="text-[22px] font-bold text-white tracking-tight">Week {currentWeek}</span>
                       <span className="text-[11px] text-white/70 font-medium">of 12-week plan</span>
                     </div>
                   </>
@@ -520,7 +536,7 @@ export default function HomeScreen() {
             {/* Nutrition Card */}
             <NutritionCard
               logged={mealsLogged}
-              dailyNutrition={(appState as any).dailyNutrition}
+              dailyNutrition={dailyNutritionLive ? { ...dailyNutritionLive, mealsLogged: mealsLoggedLive } : (appState as any).dailyNutrition}
               onClick={() => { console.log('Action Triggered: Log your Meal'); navigate('/client/nutrition'); }}
             />
 
@@ -576,9 +592,9 @@ export default function HomeScreen() {
 
             {/* Weekly Report Card */}
             <WeeklyReportCard
-              status={userData.weeklyReportStatus ?? 'no_data'}
-              weekNumber={userData.currentWeek ?? 1}
-              teaser={userData.weeklyReportTeaser}
+              status={checkinStatus.hasCheckin ? 'ready' : 'no_data'}
+              weekNumber={currentWeek}
+              teaser={checkinStatus.hasCheckin ? undefined : undefined}
               isTrackingComplete={isTrackingComplete}
               onClick={() => { console.log('Action Triggered: View Report'); navigate('/client/report/current'); }}
             />

@@ -2650,6 +2650,121 @@ export async function hasActiveWorkoutPlan(
   return !!data;
 }
 
+// ─── HomeScreen Live Data: Meals, Check-in, Current Week ─────────────────────
+
+/**
+ * Count how many meal_logs the client has for today (UTC date boundary).
+ * Also returns aggregated macros so the NutritionCard can show live data.
+ * Returns { count: 0, nutrition: null } if no rows or on error.
+ */
+export const getClientTodayMealCount = async (
+  userId: string,
+): Promise<{
+  count: number;
+  nutrition: { calories: number; protein_g: number; carbs_g: number; fat_g: number } | null;
+}> => {
+  const today = new Date().toISOString().split('T')[0];
+  const { data, error } = await supabase
+    .from('meal_logs')
+    .select('total_calories, macros_json')
+    .eq('user_id', userId)
+    .gte('logged_at', `${today}T00:00:00`)
+    .lte('logged_at', `${today}T23:59:59`);
+
+  if (error) {
+    console.error('getClientTodayMealCount:', error);
+    return { count: 0, nutrition: null };
+  }
+  if (!data || data.length === 0) return { count: 0, nutrition: null };
+
+  const nutrition = data.reduce(
+    (acc, row) => {
+      const macros = row.macros_json as { protein_g?: number; carbs_g?: number; fat_g?: number } | null;
+      return {
+        calories:  acc.calories  + (row.total_calories ?? 0),
+        protein_g: acc.protein_g + (macros?.protein_g ?? 0),
+        carbs_g:   acc.carbs_g   + (macros?.carbs_g ?? 0),
+        fat_g:     acc.fat_g     + (macros?.fat_g ?? 0),
+      };
+    },
+    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
+  );
+
+  return { count: data.length, nutrition };
+};
+
+/**
+ * Fetch today's daily_metrics row for a client.
+ * Returns the number of tracked fields (non-null) and total trackable fields
+ * so the HomeScreen can show "X of Y tracked".
+ * Also returns whether a check-in exists at all (hasCheckin).
+ */
+export const getClientTodayCheckinStatus = async (
+  userId: string,
+): Promise<{
+  hasCheckin: boolean;
+  done: number;
+  total: number;
+}> => {
+  const today = new Date().toISOString().split('T')[0];
+  const { data, error } = await supabase
+    .from('daily_metrics')
+    .select('sleep_hours, sleep_quality_score, mood_score, energy_score, water_glasses, workout_done, pain_score')
+    .eq('user_id', userId)
+    .eq('log_date', today)
+    .maybeSingle();
+
+  if (error) {
+    console.error('getClientTodayCheckinStatus:', error);
+    return { hasCheckin: false, done: 0, total: 7 };
+  }
+  if (!data) return { hasCheckin: false, done: 0, total: 7 };
+
+  // Count non-null / non-default tracked fields
+  const fields = [
+    data.sleep_hours,
+    data.sleep_quality_score,
+    data.mood_score,
+    data.energy_score,
+    data.water_glasses,
+    data.workout_done !== null && data.workout_done !== undefined ? 1 : null,
+    data.pain_score,
+  ];
+  const done = fields.filter(f => f !== null && f !== undefined).length;
+
+  return { hasCheckin: true, done, total: 7 };
+};
+
+/**
+ * Compute the current week number for a client's active workout plan.
+ * Returns 1-indexed week based on plan start date vs today.
+ * Returns null if no active plan exists.
+ */
+export const getClientCurrentWeek = async (
+  clientId: string,
+): Promise<number | null> => {
+  const { data, error } = await supabase
+    .from('workout_plans')
+    .select('created_at')
+    .eq('client_id', clientId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('getClientCurrentWeek:', error);
+    return null;
+  }
+  if (!data) return null;
+
+  const startDate = new Date(data.created_at);
+  const now = new Date();
+  const diffMs = now.getTime() - startDate.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  return Math.max(1, Math.floor(diffDays / 7) + 1);
+};
+
 /**
  * Mark a session as completed:
  * 1. Insert a workout_log record

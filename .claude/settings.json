@@ -8,7 +8,13 @@
       "Bash(git commit *)",
       "mcp__claude_ai_Supabase__apply_migration",
       "Bash(echo \"tsc exit: $?\")",
-      "Bash(git branch *)"
+      "Bash(git branch *)",
+      "mcp__claude_ai_Supabase__list_tables",
+      "mcp__claude_ai_Supabase__list_edge_functions",
+      "PowerShell(npx tsc --noEmit)",
+      "PowerShell(if \\($?\\) { \"TSC_OK\" })",
+      "PowerShell(npx vite build)",
+      "PowerShell(if \\($?\\) { \"BUILD_OK\" })"
     ]
   }
 }
