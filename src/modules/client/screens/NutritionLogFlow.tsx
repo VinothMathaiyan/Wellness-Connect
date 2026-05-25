@@ -7,9 +7,11 @@ import { useNavigate } from 'react-router-dom';
 import type { FoodItem, MealLog, NutritionMealEntry } from '../../../types';
 import MobileShell from '../../../components/MobileShell';
 import { useWellness } from '../../../context/WellnessContext';
+import { IS_DEV_OTP } from '../../../utils/otpUtils';
 import {
   insertMealLog,
   analyseMealImage,
+  getMockMealAnalysis,
   type MealAnalysisResult,
 } from '../../../services/supabaseService';
 
@@ -136,8 +138,16 @@ export default function NutritionLogFlow() {
     setStep('analysing');
 
     try {
-      const base64 = await fileToBase64(file);
-      const result = await analyseMealImage(base64, file.type || 'image/jpeg');
+      let result: MealAnalysisResult | null;
+      if (IS_DEV_OTP) {
+        // Dev bypass — mock data so the flow works without Anthropic API credits.
+        // 2s delay keeps the "Analysing…" screen visible for UX testing.
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        result = getMockMealAnalysis(mealKind);
+      } else {
+        const base64 = await fileToBase64(file);
+        result = await analyseMealImage(base64, file.type || 'image/jpeg');
+      }
 
       if (!result) {
         setError("Couldn't analyse this image. Please try a clearer photo.");
@@ -366,7 +376,9 @@ export default function NutritionLogFlow() {
           </motion.div>
           <div className="text-center">
             <p className="text-white text-[16px] font-bold">Analysing your meal…</p>
-            <p className="text-white/60 text-[12px] mt-1">Claude AI is identifying foods and calculating nutrition</p>
+            <p className="text-white/60 text-[12px] mt-1">
+              {IS_DEV_OTP ? 'Demo mode — using sample meal data' : 'Claude AI is identifying foods and calculating nutrition'}
+            </p>
           </div>
         </div>
       </div>

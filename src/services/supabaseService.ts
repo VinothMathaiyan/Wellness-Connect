@@ -1478,6 +1478,60 @@ export const analyseMealImage = async (
   }
 };
 
+/**
+ * Dev-only mock meal analysis. Used by NutritionLogFlow when VITE_USE_DEV_OTP=true
+ * so the scan flow works without Anthropic API credits. Never used in production.
+ */
+export function getMockMealAnalysis(mealType: string): MealAnalysisResult {
+  const mockMeals: Record<string, MealAnalysisResult> = {
+    breakfast: {
+      meal_name: 'South Indian Breakfast',
+      foods: [
+        { name: 'Idli', portion: '3 pieces', calories: 150, protein_g: 6, carbs_g: 30, fat_g: 1 },
+        { name: 'Sambar', portion: '1 cup (200ml)', calories: 80, protein_g: 4, carbs_g: 12, fat_g: 2 },
+        { name: 'Coconut Chutney', portion: '2 tbsp', calories: 60, protein_g: 1, carbs_g: 3, fat_g: 5 },
+      ],
+      totals: { calories: 290, protein_g: 11, carbs_g: 45, fat_g: 8 },
+      confidence: 'high',
+      notes: 'Demo mode — connect Anthropic API for real food recognition',
+    },
+    lunch: {
+      meal_name: 'Rice Meal',
+      foods: [
+        { name: 'Steamed Rice', portion: '1 cup (200g)', calories: 260, protein_g: 5, carbs_g: 57, fat_g: 1 },
+        { name: 'Dal', portion: '1 cup (200ml)', calories: 120, protein_g: 8, carbs_g: 18, fat_g: 2 },
+        { name: 'Mixed Vegetables', portion: '1/2 cup', calories: 50, protein_g: 2, carbs_g: 8, fat_g: 1 },
+        { name: 'Papad', portion: '1 piece', calories: 35, protein_g: 2, carbs_g: 5, fat_g: 1 },
+      ],
+      totals: { calories: 465, protein_g: 17, carbs_g: 88, fat_g: 5 },
+      confidence: 'high',
+      notes: 'Demo mode — connect Anthropic API for real food recognition',
+    },
+    dinner: {
+      meal_name: 'Roti with Sabzi',
+      foods: [
+        { name: 'Whole Wheat Roti', portion: '3 rotis', calories: 240, protein_g: 9, carbs_g: 45, fat_g: 4 },
+        { name: 'Paneer Sabzi', portion: '1 cup', calories: 180, protein_g: 10, carbs_g: 8, fat_g: 12 },
+        { name: 'Raita', portion: '1/2 cup', calories: 60, protein_g: 3, carbs_g: 6, fat_g: 2 },
+      ],
+      totals: { calories: 480, protein_g: 22, carbs_g: 59, fat_g: 18 },
+      confidence: 'high',
+      notes: 'Demo mode — connect Anthropic API for real food recognition',
+    },
+    snack: {
+      meal_name: 'Evening Snack',
+      foods: [
+        { name: 'Banana', portion: '1 medium', calories: 90, protein_g: 1, carbs_g: 23, fat_g: 0 },
+        { name: 'Mixed Nuts', portion: '1 handful (30g)', calories: 180, protein_g: 5, carbs_g: 6, fat_g: 16 },
+      ],
+      totals: { calories: 270, protein_g: 6, carbs_g: 29, fat_g: 16 },
+      confidence: 'high',
+      notes: 'Demo mode — connect Anthropic API for real food recognition',
+    },
+  };
+  return mockMeals[mealType] || mockMeals.snack;
+}
+
 // ─── SessionDetailScreen Live Data ───────────────────────────────────────────
 
 /**
