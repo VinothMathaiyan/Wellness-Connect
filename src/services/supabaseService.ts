@@ -1407,6 +1407,7 @@ export const upsertDailyMetrics = async (
 
 /**
  * Insert a single meal log entry for the client.
+ * Persists the AI meal_name and per-food breakdown (foods_json) when provided.
  */
 export const insertMealLog = async (
   userId: string,
@@ -1421,12 +1422,60 @@ export const insertMealLog = async (
       total_calories: payload.total_calories,
       macros_json: payload.macros_json,
       logged_at: payload.logged_at,
+      meal_name: payload.meal_name ?? null,
+      foods_json: payload.foods ?? null,
+      notes: payload.notes ?? null,
     });
   if (error) {
     console.error('insertMealLog:', error);
     return false;
   }
   return true;
+};
+
+// ─── Meal Image Analysis (Claude Vision via Edge Function) ─────────────────────
+
+/** Shape returned by the analyse-meal-image Edge Function */
+export interface MealAnalysisResult {
+  meal_name: string;
+  foods: {
+    name: string;
+    portion: string;
+    calories: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+  }[];
+  totals: {
+    calories: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+  };
+  confidence: 'high' | 'medium' | 'low';
+  notes: string;
+}
+
+/**
+ * Send a base64 meal image to the analyse-meal-image Edge Function, which calls
+ * Claude Vision and returns structured nutrition data. The image is never stored.
+ * Returns null on any failure so the caller can show a retry state.
+ */
+export const analyseMealImage = async (
+  imageBase64: string,
+  mediaType: string = 'image/jpeg',
+): Promise<MealAnalysisResult | null> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('analyse-meal-image', {
+      body: { imageBase64, mediaType },
+    });
+    if (error) throw error;
+    if (!data?.success) throw new Error(data?.error ?? 'Analysis failed');
+    return data.meal as MealAnalysisResult;
+  } catch (err) {
+    console.error('analyseMealImage error:', err);
+    return null;
+  }
 };
 
 // ─── SessionDetailScreen Live Data ───────────────────────────────────────────

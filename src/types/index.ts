@@ -123,12 +123,26 @@ export interface DailyNutrition {
 }
 
 // ─── Meal Log (meal_logs table — SCR-C07 / MealLogScreen) ────────────────────
+
+/** Per-food breakdown persisted to meal_logs.foods_json */
+export interface MealLogFood {
+  name: string;
+  portion: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+}
+
 export interface MealLog {
   meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack'; // meal_logs.meal_type
   description: string;          // meal_logs.description
   total_calories: number;       // meal_logs.total_calories
   macros_json: MacrosJson;      // meal_logs.macros_json
   logged_at: string;            // ISO datetime  — meal_logs.logged_at
+  meal_name?: string;           // meal_logs.meal_name (AI overall meal name)
+  foods?: MealLogFood[];        // meal_logs.foods_json (AI per-food breakdown)
+  notes?: string;               // meal_logs.notes (AI estimation notes / user edits)
 }
 
 // ─── NutritionLogFlow types (SCR-C07 / NutritionLogFlow) ─────────────────────
@@ -139,6 +153,7 @@ export interface FoodItem {
   name: string;
   quantity: number;
   unit: string;
+  portion?: string;   // AI free-text portion estimate (e.g. "1 cup", "150g")
   calories: number;
   protein: number;
   carbs: number;
