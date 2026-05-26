@@ -2876,6 +2876,42 @@ export const getClientCurrentWeek = async (
   return Math.max(1, Math.floor(diffDays / 7) + 1);
 };
 
+export const getClientPlanInfo = async (
+  clientId: string,
+): Promise<{ currentWeek: number; totalWeeks: number } | null> => {
+  const { data, error } = await supabase
+    .from('workout_plans')
+    .select(`
+      created_at,
+      workout_templates ( duration_weeks )
+    `)
+    .eq('client_id', clientId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('getClientPlanInfo:', error);
+    return null;
+  }
+  if (!data) return null;
+
+  const template = Array.isArray(data.workout_templates)
+    ? data.workout_templates[0]
+    : data.workout_templates;
+  const totalWeeks = template?.duration_weeks ?? 12;
+
+  const startDate = new Date(data.created_at);
+  const now = new Date();
+  const diffMs = now.getTime() - startDate.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  let currentWeek = Math.max(1, Math.floor(diffDays / 7) + 1);
+  if (currentWeek > totalWeeks) currentWeek = totalWeeks;
+
+  return { currentWeek, totalWeeks };
+};
+
 /**
  * Mark a session as completed:
  * 1. Insert a workout_log record
@@ -2888,7 +2924,8 @@ export async function markSessionComplete(
   sessionId: string,
   clientId: string,
   planId: string,
-  clientNotes: string
+  clientNotes: string,
+  completedBy: 'client' | 'trainer' = 'client'
 ): Promise<void> {
   try {
     // Step A — insert workout_log
@@ -2909,7 +2946,12 @@ export async function markSessionComplete(
     // Step B — update session status
     const { data, error: sessionError } = await supabase
       .from('sessions')
-      .update({ status: 'completed' })
+      .update({ 
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        completed_by: completedBy,
+        completion_notes: clientNotes.trim() || null
+      })
       .eq('id', sessionId)
       .eq('client_id', clientId)
       .select();
@@ -2922,6 +2964,35 @@ export async function markSessionComplete(
     if (!data || data.length === 0) {
       throw new Error('Session not found or unauthorized');
     }
+
+    // Send notification to the other party
+    const session = data[0];
+    const trainerId = session.trainer_id;
+    const isClient = completedBy === 'client';
+    
+    // Get sender info
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', isClient ? clientId : trainerId)
+      .maybeSingle();
+      
+    const senderName = profile?.full_name ?? 'Someone';
+
+    try {
+      await supabase.from('notifications').insert({
+        type: 'session_completed',
+        from_user_id: isClient ? clientId : trainerId,
+        to_user_id: isClient ? trainerId : clientId,
+        message: isClient 
+          ? `${senderName} has marked today's session as complete.`
+          : `${senderName} has marked your session as complete. Hope it was a great session! 💪`,
+        is_read: false,
+      });
+    } catch (notifErr) {
+      console.warn('markSessionComplete: notification insert failed (non-fatal):', notifErr);
+    }
+    
   } catch (err) {
     console.error('markSessionComplete:', err);
     throw err;

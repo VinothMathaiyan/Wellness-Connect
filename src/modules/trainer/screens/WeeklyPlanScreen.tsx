@@ -4,7 +4,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientDetail, updatePlanTrainerNote } from '../../../services/supabaseService';
+import { getClientDetail, updatePlanTrainerNote, getClientSessions } from '../../../services/supabaseService';
+import { formatDateLong, formatSessionTime } from '@/utils/dateUtils';
+import type { TrainerClientSession } from '../../../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +65,7 @@ export default function WeeklyPlanScreen() {
   // ── Remote data ─────────────────────────────────────────────────────────────
   const [clientName, setClientName] = useState('Client');
   const [weekLabel, setWeekLabel] = useState('Current Week');
+  const [nextSession, setNextSession] = useState<TrainerClientSession | null>(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(true);
 
   // ── Form state ──────────────────────────────────────────────────────────────
@@ -78,8 +81,18 @@ export default function WeeklyPlanScreen() {
   // ── Fetch client + plan on mount ─────────────────────────────────────────────
   useEffect(() => {
     if (!userId || !clientId) { setIsLoadingPlan(false); return; }
-    getClientDetail(clientId, userId).then(({ profile, currentPlan }) => {
+    
+    Promise.all([
+      getClientDetail(clientId, userId),
+      getClientSessions(clientId, userId)
+    ]).then(([ { profile, currentPlan }, sessions ]) => {
       if (profile?.full_name) setClientName(profile.full_name);
+      
+      const upcoming = sessions.filter(s => s.status === 'scheduled' && new Date(s.scheduled_at).getTime() >= Date.now());
+      if (upcoming.length > 0) {
+        setNextSession(upcoming[0]);
+      }
+
       if (currentPlan) {
         const tpl = currentPlan.template as { duration_weeks?: number } | null;
         const weekNum = computeWeekNumber((currentPlan as any).created_at ?? new Date().toISOString());
@@ -183,9 +196,15 @@ export default function WeeklyPlanScreen() {
             <span className="inline-flex items-center px-4 py-1.5 rounded-full bg-teal-50 text-teal-700 text-sm font-semibold border border-teal-100">
               {weekLabel}
             </span>
-            <p className="text-xs text-gray-400 mt-2">
-              You are updating the plan for the current week
-            </p>
+            {nextSession ? (
+              <p className="text-xs text-teal-600 font-medium mt-2">
+                Next Session: {formatDateLong(nextSession.scheduled_at)} at {formatSessionTime(nextSession.scheduled_at)}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 mt-2">
+                You are updating the plan for the current week
+              </p>
+            )}
           </div>
 
           {/* ── This Week's Focus ─────────────────────────────────────────────── */}

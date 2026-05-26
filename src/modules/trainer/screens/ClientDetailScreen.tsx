@@ -22,10 +22,10 @@ import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import {
-  getClientDetail,
   getClientSessions,
   cancelSession,
   updateSessionNote,
+  markSessionComplete,
 } from '../../../services/supabaseService';
 import type { TrainerClientSession } from '../../../types';
 import { formatDateLong } from '@/utils/dateUtils';
@@ -233,6 +233,8 @@ export default function ClientDetailScreen() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancelError, setCancelError]   = useState<string | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [completeError, setCompleteError] = useState<string | null>(null);
 
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
   const [editingNoteSessionId, setEditingNoteSessionId] = useState<string | null>(null);
@@ -285,6 +287,22 @@ export default function ClientDetailScreen() {
       setCancelError('Could not cancel. Try again.');
     } finally {
       setCancellingId(null);
+    }
+  };
+
+  const handleMarkComplete = async (sessionId: string) => {
+    if (!clientId || !userId || !clientData?.currentPlan?.id) return;
+    setCompletingId(sessionId);
+    setCompleteError(null);
+    try {
+      await markSessionComplete(sessionId, clientId, clientData.currentPlan.id, '', 'trainer');
+      setSessions(prev =>
+        prev.map(s => s.id === sessionId ? { ...s, status: 'completed' } : s),
+      );
+    } catch {
+      setCompleteError('Could not complete. Try again.');
+    } finally {
+      setCompletingId(null);
     }
   };
 
@@ -386,6 +404,7 @@ export default function ClientDetailScreen() {
     const isCompleted   = session.status === 'completed';
     const isConfirming  = confirmingId === session.id;
     const isCancelling  = cancellingId === session.id;
+    const isCompleting  = completingId === session.id;
     const isEditingNote = editingNoteSessionId === session.id;
     const canHaveNote   = isCompleted || isCancelled;
     const note          = session.trainer_note;
@@ -449,21 +468,38 @@ export default function ClientDetailScreen() {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => { setConfirmingId(session.id); setCancelError(null); }}
-                style={{
-                  fontSize: 12,
-                  color: '#DC2626',
-                  border: '1px solid #DC2626',
-                  borderRadius: '8px',
-                  padding: '4px 10px',
-                  backgroundColor: 'transparent',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              >
-                Cancel
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  onClick={() => handleMarkComplete(session.id)}
+                  disabled={isCompleting}
+                  style={{
+                    fontSize: 12,
+                    color: '#ffffff',
+                    backgroundColor: '#10B981',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '4px 10px',
+                    cursor: isCompleting ? 'default' : 'pointer',
+                    opacity: isCompleting ? 0.6 : 1,
+                  }}
+                >
+                  {isCompleting ? '…' : 'Complete'}
+                </button>
+                <button
+                  onClick={() => { setConfirmingId(session.id); setCancelError(null); }}
+                  style={{
+                    fontSize: 12,
+                    color: '#DC2626',
+                    border: '1px solid #DC2626',
+                    borderRadius: '8px',
+                    padding: '4px 10px',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
             )
           )}
 
@@ -491,10 +527,15 @@ export default function ClientDetailScreen() {
           )}
         </div>
 
-        {/* Inline cancel error */}
+        {/* Inline errors */}
         {cancelError && isConfirming && (
           <p style={{ fontSize: 11, color: '#DC2626', marginTop: 4, marginLeft: 23 }}>
             {cancelError}
+          </p>
+        )}
+        {completeError && (
+          <p style={{ fontSize: 11, color: '#DC2626', marginTop: 4, marginLeft: 23 }}>
+            {completeError}
           </p>
         )}
 

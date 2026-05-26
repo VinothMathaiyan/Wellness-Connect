@@ -215,7 +215,7 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingCompl
 /* ── HomeScreen (Main Export) ────────────────────────────── */
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWorkoutPlan, getClientTodayMealCount, getClientTodayCheckinStatus, getClientCurrentWeek } from '../../../services/supabaseService';
+import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWorkoutPlan, getClientTodayMealCount, getClientTodayCheckinStatus, getClientCurrentWeek, getClientPlanInfo } from '../../../services/supabaseService';
 import { supabase } from '../../../lib/supabaseClient';
 import { getUserProfile } from '../../../services/supabaseService';
 export default function HomeScreen() {
@@ -239,6 +239,7 @@ export default function HomeScreen() {
 
   // ── Live current week from active plan ────────────────────────────────────
   const [currentWeekLive, setCurrentWeekLive] = useState<number | null>(null);
+  const [totalWeeksLive, setTotalWeeksLive] = useState<number | null>(null);
 
   // ── Live user profile name ────────────────────────────────────────────────
   const [profileName, setProfileName] = useState<string>('');
@@ -263,9 +264,9 @@ export default function HomeScreen() {
       hasActiveWorkoutPlan(userId),
       getClientTodayMealCount(userId),
       getClientTodayCheckinStatus(userId),
-      getClientCurrentWeek(userId),
+      getClientPlanInfo(userId),
       getUserProfile(userId),
-    ]).then(([readiness, session, unreadCount, activePlan, mealData, checkin, week, profile]) => {
+    ]).then(([readiness, session, unreadCount, activePlan, mealData, checkin, planInfo, profile]) => {
       if (cancelled) return;
       setReadinessScore(readiness);
       setTodaySession(session);
@@ -274,7 +275,10 @@ export default function HomeScreen() {
       setMealsLoggedLive(mealData.count);
       setDailyNutritionLive(mealData.nutrition);
       setCheckinStatus(checkin);
-      setCurrentWeekLive(week);
+      if (planInfo) {
+        setCurrentWeekLive(planInfo.currentWeek);
+        setTotalWeeksLive(planInfo.totalWeeks);
+      }
       if (profile?.full_name) setProfileName(profile.full_name);
     }).catch(err => {
       if (cancelled) return;
@@ -331,6 +335,7 @@ export default function HomeScreen() {
   const mealsLogged = mealsLoggedLive;
   const isTrackingComplete = checkinStatus.hasCheckin && habitsDone >= habitsTotal;
   const currentWeek = currentWeekLive ?? 1;
+  const totalWeeks = totalWeeksLive ?? 12;
 
   // Track adherence for last session
   const lastSessionAdherence = workoutProgress?.score ?? 0;
@@ -479,7 +484,7 @@ export default function HomeScreen() {
                     <div className="w-[1px] h-[40px] bg-white opacity-40" />
                     <div className="flex-1 flex flex-col items-center">
                       <span className="text-[22px] font-bold text-white tracking-tight">Week {currentWeek}</span>
-                      <span className="text-[11px] text-white/70 font-medium">of 12-week plan</span>
+                      <span className="text-[11px] text-white/70 font-medium">of {totalWeeks}-week plan</span>
                     </div>
                   </>
                 ) : (
