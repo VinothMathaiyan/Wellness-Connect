@@ -532,6 +532,28 @@ export default function TrainerDashboard() {
                   </div>
                 </div>
 
+                {/* Legend for check-in dots */}
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px',
+                  padding: '4px 0 8px 0',
+                  opacity: 0.7
+                }}>
+                  <div style={{ 
+                    width: '8px', height: '8px', 
+                    borderRadius: '50%', 
+                    backgroundColor: '#f59e0b'  
+                  }} />
+                  <span style={{ 
+                    fontSize: '11px', 
+                    color: '#6b7280',
+                    fontFamily: 'Arial, sans-serif'
+                  }}>
+                    Each dot represents a client check-in on that day
+                  </span>
+                </div>
+
                 {weeklyCheckins.length === 0 && (
                   <p
                     className="text-center mt-2"
