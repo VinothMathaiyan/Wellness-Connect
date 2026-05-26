@@ -117,23 +117,9 @@ export default function TrainerMessageThreadScreen() {
 
   async function handleSend() {
     const text = inputText.trim();
-    // [MSG] Guard diagnostics — reveals why a send may be skipped before any network call.
-    console.log('[MSG] handleSend guard:', {
-      hasText: !!text,
-      userId,
-      otherUserId,
-      clientId,
-      isSending,
-    });
-    if (!text || !userId || !otherUserId || isSending) {
-      console.warn('[MSG] send skipped at guard — missing userId/otherUserId/text or already sending');
-      return;
-    }
+    if (!text || !userId || !otherUserId || isSending) return;
 
     setSendError('');
-
-    console.log('[MSG] Sending from:', userId, 'to:', otherUserId);
-    console.log('[MSG] Payload:', { from_user_id: userId, to_user_id: otherUserId, message: text, client_id: clientId });
 
     // Optimistic message
     const optimisticMsg: AssessmentMessage = {
@@ -154,7 +140,6 @@ export default function TrainerMessageThreadScreen() {
 
     // clientId = the client being discussed in this thread
     const res = await sendAssessmentMessage(userId, otherUserId, text, clientId ?? undefined);
-    console.log('[MSG] Result:', res);
 
     setIsSending(false);
 

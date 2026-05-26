@@ -3720,20 +3720,14 @@ export async function sendAssessmentMessage(
   message: string,
   clientId?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const payload = {
-    from_user_id: fromUserId,
-    to_user_id: toUserId,
-    message,
-    client_id: clientId ?? null,
-  };
-  console.log('[MSG] sendAssessmentMessage insert payload:', payload);
-
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('assessment_messages')
-    .insert(payload)
-    .select();
-
-  console.log('[MSG] sendAssessmentMessage result:', { data, error });
+    .insert({
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      message,
+      client_id: clientId ?? null,
+    });
 
   if (error) {
     console.error('sendAssessmentMessage:', error);

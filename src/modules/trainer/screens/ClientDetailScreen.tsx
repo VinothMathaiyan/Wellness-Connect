@@ -16,6 +16,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  MessageSquare,
 } from 'lucide-react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
@@ -1099,6 +1100,15 @@ export default function ClientDetailScreen() {
               >
                 <Calendar size={17} />
                 Schedule Session
+              </button>
+
+              {/* Message Client button — entry point to start a conversation */}
+              <button
+                onClick={() => navigate(`/trainer/messages/${clientId}`, { state: { clientId } })}
+                className="mt-2 w-full py-3.5 rounded-2xl text-[15px] font-bold border-2 border-teal-600 text-teal-600 bg-white active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              >
+                <MessageSquare size={17} />
+                Message Client
               </button>
             </div>
 

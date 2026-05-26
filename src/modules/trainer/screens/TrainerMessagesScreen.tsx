@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, PenSquare, X } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
-import { getMessageThreads } from '../../../services/supabaseService';
+import { getMessageThreads, getTrainerClients, type TrainerClient } from '../../../services/supabaseService';
 import { formatDate } from '@/utils/dateUtils';
 
 interface MessageThread {
@@ -57,6 +57,32 @@ export default function TrainerMessagesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Compose ("New Message") flow — pick an active client to start a conversation.
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [clients, setClients] = useState<TrainerClient[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsError, setClientsError] = useState('');
+
+  async function openCompose() {
+    setIsComposeOpen(true);
+    if (!userId || clients.length > 0) return;
+    setClientsLoading(true);
+    setClientsError('');
+    try {
+      const data = await getTrainerClients(userId);
+      setClients(data);
+    } catch (err: unknown) {
+      setClientsError(err instanceof Error ? err.message : 'Failed to load clients.');
+    } finally {
+      setClientsLoading(false);
+    }
+  }
+
+  function startConversation(clientId: string) {
+    setIsComposeOpen(false);
+    navigate(`/trainer/messages/${clientId}`, { state: { clientId } });
+  }
+
   useEffect(() => {
     if (!userId) return;
 
@@ -103,7 +129,18 @@ export default function TrainerMessagesScreen() {
                 <p className="text-white/80 text-sm font-medium">{unreadTotal} unread</p>
               )}
             </div>
-            <ProfileMenu />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openCompose}
+                className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold bg-white/15 text-white active:scale-95 transition-transform"
+                aria-label="New message"
+              >
+                <PenSquare size={16} />
+                New
+              </button>
+              <ProfileMenu />
+            </div>
           </div>
         </div>
 
@@ -205,11 +242,100 @@ export default function TrainerMessagesScreen() {
               >
                 <MessageSquare size={28} style={{ color: '#0d9488' }} />
               </div>
-              <p className="text-gray-500 text-sm">No messages yet</p>
+              <p className="text-gray-500 text-sm mb-5">
+                No messages yet — start a conversation with a client
+              </p>
+              <button
+                type="button"
+                onClick={openCompose}
+                className="flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white active:scale-[0.98] transition-transform"
+                style={{ backgroundColor: '#0d9488' }}
+              >
+                <PenSquare size={16} />
+                New Message
+              </button>
             </div>
           )}
         </div>
       </div>
+
+      {/* Compose sheet — pick an active client to start a conversation */}
+      {isComposeOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setIsComposeOpen(false)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-t-3xl max-h-[75vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">New Message</h2>
+              <button
+                type="button"
+                onClick={() => setIsComposeOpen(false)}
+                className="p-1 rounded-full text-gray-400 active:scale-95 transition-transform"
+                aria-label="Close"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-4 py-3 space-y-2">
+              {clientsLoading &&
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 animate-pulse">
+                    <div className="w-11 h-11 rounded-full bg-gray-200 shrink-0" />
+                    <div className="h-4 bg-gray-200 rounded w-2/5" />
+                  </div>
+                ))}
+
+              {!clientsLoading && clientsError && (
+                <div
+                  className="p-3 rounded-xl text-sm border"
+                  style={{ backgroundColor: '#fef2f2', color: '#dc2626', borderColor: '#fecaca' }}
+                >
+                  {clientsError}
+                </div>
+              )}
+
+              {!clientsLoading && !clientsError && clients.length === 0 && (
+                <p className="text-gray-500 text-sm text-center py-8">
+                  No active clients to message yet.
+                </p>
+              )}
+
+              {!clientsLoading && !clientsError &&
+                clients.map(client => (
+                  <button
+                    key={client.id}
+                    type="button"
+                    onClick={() => startConversation(client.id)}
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl active:bg-gray-50 transition-colors text-left"
+                  >
+                    <div
+                      className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
+                      style={{ backgroundColor: '#ccfbf1', color: '#0f766e' }}
+                    >
+                      {getInitials(client.full_name)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {client.full_name}
+                      </p>
+                      {client.city && (
+                        <p className="text-xs text-gray-500 truncate mt-0.5">{client.city}</p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+            </div>
+
+            <div style={{ height: 'calc(env(safe-area-inset-bottom) + 12px)' }} />
+          </div>
+        </div>
+      )}
 
       <TrainerBottomNav />
     </MobileShell>
