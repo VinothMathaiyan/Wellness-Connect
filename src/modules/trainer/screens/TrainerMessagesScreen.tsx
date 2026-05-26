@@ -259,80 +259,176 @@ export default function TrainerMessagesScreen() {
         </div>
       </div>
 
-      {/* Compose sheet — pick an active client to start a conversation */}
+      {/* Compose modal (centered overlay) — pick an active client to start a conversation */}
       {isComposeOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
           onClick={() => setIsComposeOpen(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            zIndex: 1000,
+          }}
         >
           <div
-            className="w-full max-w-md bg-white rounded-t-3xl max-h-[75vh] flex flex-col"
             onClick={e => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '90%',
+              maxWidth: '400px',
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              padding: '0',
+              zIndex: 1001,
+              maxHeight: '70vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
           >
-            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
-              <h2 className="text-lg font-bold text-gray-900">New Message</h2>
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#111827' }}>New Message</h2>
               <button
                 type="button"
                 onClick={() => setIsComposeOpen(false)}
-                className="p-1 rounded-full text-gray-400 active:scale-95 transition-transform"
                 aria-label="Close"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '4px',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
               >
-                <X size={22} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="overflow-y-auto px-4 py-3 space-y-2">
+            {/* Client list (scrollable) */}
+            <div style={{ overflowY: 'auto', flex: 1 }}>
               {clientsLoading &&
                 Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 animate-pulse">
-                    <div className="w-11 h-11 rounded-full bg-gray-200 shrink-0" />
-                    <div className="h-4 bg-gray-200 rounded w-2/5" />
+                  <div
+                    key={i}
+                    className="animate-pulse"
+                    style={{
+                      padding: '14px 20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      borderBottom: '1px solid #f3f4f6',
+                    }}
+                  >
+                    <div className="rounded-full bg-gray-200" style={{ width: '40px', height: '40px' }} />
+                    <div className="h-4 bg-gray-200 rounded" style={{ width: '40%' }} />
                   </div>
                 ))}
 
               {!clientsLoading && clientsError && (
                 <div
-                  className="p-3 rounded-xl text-sm border"
-                  style={{ backgroundColor: '#fef2f2', color: '#dc2626', borderColor: '#fecaca' }}
+                  style={{
+                    margin: '16px 20px',
+                    padding: '12px',
+                    borderRadius: '12px',
+                    fontSize: '14px',
+                    border: '1px solid #fecaca',
+                    backgroundColor: '#fef2f2',
+                    color: '#dc2626',
+                  }}
                 >
                   {clientsError}
                 </div>
               )}
 
               {!clientsLoading && !clientsError && clients.length === 0 && (
-                <p className="text-gray-500 text-sm text-center py-8">
+                <p style={{ color: '#6b7280', fontSize: '14px', textAlign: 'center', padding: '32px 20px' }}>
                   No active clients to message yet.
                 </p>
               )}
 
               {!clientsLoading && !clientsError &&
                 clients.map(client => (
-                  <button
+                  <div
                     key={client.id}
-                    type="button"
                     onClick={() => startConversation(client.id)}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl active:bg-gray-50 transition-colors text-left"
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                    style={{
+                      padding: '14px 20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      borderBottom: '1px solid #f3f4f6',
+                      cursor: 'pointer',
+                      backgroundColor: '#ffffff',
+                    }}
                   >
+                    {/* Initials avatar */}
                     <div
-                      className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
-                      style={{ backgroundColor: '#ccfbf1', color: '#0f766e' }}
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '9999px',
+                        backgroundColor: '#0d9488',
+                        color: '#ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '14px',
+                        fontWeight: 700,
+                        flexShrink: 0,
+                      }}
                     >
                       {getInitials(client.full_name)}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: '#111827',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {client.full_name}
                       </p>
                       {client.city && (
-                        <p className="text-xs text-gray-500 truncate mt-0.5">{client.city}</p>
+                        <p
+                          style={{
+                            fontSize: '12px',
+                            color: '#6b7280',
+                            marginTop: '2px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {client.city}
+                        </p>
                       )}
                     </div>
-                  </button>
+                  </div>
                 ))}
             </div>
-
-            <div style={{ height: 'calc(env(safe-area-inset-bottom) + 12px)' }} />
           </div>
         </div>
       )}
