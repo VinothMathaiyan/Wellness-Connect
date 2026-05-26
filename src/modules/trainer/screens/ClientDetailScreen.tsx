@@ -22,6 +22,7 @@ import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import {
+  getClientDetail,
   getClientSessions,
   cancelSession,
   updateSessionNote,

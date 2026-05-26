@@ -5,7 +5,7 @@ import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { getClientDetail, updatePlanTrainerNote, getClientSessions } from '../../../services/supabaseService';
-import { formatDateLong, formatSessionTime } from '@/utils/dateUtils';
+import { formatDateLong } from '@/utils/dateUtils';
 import type { TrainerClientSession } from '../../../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -22,6 +22,16 @@ interface ExerciseRow {
 const MAX_EXERCISES = 10;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Format session time in 12-hour format with IST timezone */
+function formatSessionTime(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
 
 /** Derive current week number from plan creation date */
 function computeWeekNumber(createdAt: string): number {
