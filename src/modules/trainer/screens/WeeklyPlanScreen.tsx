@@ -76,6 +76,7 @@ export default function WeeklyPlanScreen() {
   const [clientName, setClientName] = useState('Client');
   const [weekLabel, setWeekLabel] = useState('Current Week');
   const [nextSession, setNextSession] = useState<TrainerClientSession | null>(null);
+  const [sessions, setSessions] = useState<TrainerClientSession[]>([]);
   const [isLoadingPlan, setIsLoadingPlan] = useState(true);
 
   // ── Form state ──────────────────────────────────────────────────────────────
@@ -95,10 +96,11 @@ export default function WeeklyPlanScreen() {
     Promise.all([
       getClientDetail(clientId, userId),
       getClientSessions(clientId, userId)
-    ]).then(([ { profile, currentPlan }, sessions ]) => {
+    ]).then(([ { profile, currentPlan }, allSessions ]) => {
       if (profile?.full_name) setClientName(profile.full_name);
       
-      const upcoming = sessions.filter(s => s.status === 'scheduled' && new Date(s.scheduled_at).getTime() >= Date.now());
+      setSessions(allSessions);
+      const upcoming = allSessions.filter(s => s.status === 'scheduled' && new Date(s.scheduled_at).getTime() >= Date.now());
       if (upcoming.length > 0) {
         setNextSession(upcoming[0]);
       }
@@ -216,6 +218,67 @@ export default function WeeklyPlanScreen() {
               </p>
             )}
           </div>
+
+          {/* ── Weekly Calendar Strip ─────────────────────────────────────────── */}
+          {(() => {
+            const hasSession = (day: Date) => sessions.some(s => {
+              const sessionDate = new Date(s.scheduled_at);
+              return sessionDate.toDateString() === day.toDateString();
+            });
+            
+            const today = new Date();
+            const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+            const currentDayOfWeek = today.getDay() === 0 ? 6 : today.getDay() - 1;
+            const weekStart = new Date(today);
+            weekStart.setDate(today.getDate() - currentDayOfWeek);
+            
+            return (
+              <div className="bg-white rounded-2xl shadow-sm p-4">
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, 1fr)',
+                  gap: '8px',
+                }}>
+                  {Array.from({ length: 7 }).map((_, i) => {
+                    const day = new Date(weekStart);
+                    day.setDate(weekStart.getDate() + i);
+                    const dayNum = day.getDate();
+                    const hasSesh = hasSession(day);
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          padding: '8px 4px',
+                          borderRadius: '8px',
+                          backgroundColor: i === currentDayOfWeek ? '#F0FDFA' : 'transparent',
+                          borderLeft: i === currentDayOfWeek ? '2px solid #14B8A6' : 'none',
+                        }}
+                      >
+                        <div style={{ fontSize: '10px', fontWeight: 600, color: '#6B7280', marginBottom: '4px' }}>
+                          {dayLabels[i]}
+                        </div>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#111827', marginBottom: '4px' }}>
+                          {dayNum}
+                        </div>
+                        {hasSesh && (
+                          <div style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            backgroundColor: '#00897B',
+                            margin: '2px auto 0'
+                          }} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ── This Week's Focus ─────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm p-4">

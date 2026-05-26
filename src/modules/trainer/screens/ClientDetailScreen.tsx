@@ -29,7 +29,7 @@ import {
   markSessionComplete,
 } from '../../../services/supabaseService';
 import type { TrainerClientSession } from '../../../types';
-import { formatDateLong } from '@/utils/dateUtils';
+import { formatDateLong, formatDate } from '@/utils/dateUtils';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -410,6 +410,15 @@ export default function ClientDetailScreen() {
     const canHaveNote   = isCompleted || isCancelled;
     const note          = session.trainer_note;
 
+    // ── Time-gate: can only complete on or after session date (from midnight IST) ──
+    const sessionDate = new Date(session.scheduled_at);
+    const now = new Date();
+    const sessionDay = new Date(sessionDate);
+    sessionDay.setHours(0, 0, 0, 0);
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const canComplete = todayStart >= sessionDay;
+
     return (
       <div
         key={session.id}
@@ -471,18 +480,19 @@ export default function ClientDetailScreen() {
             ) : (
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 <button
-                  onClick={() => handleMarkComplete(session.id)}
-                  disabled={isCompleting}
+                  onClick={() => canComplete && handleMarkComplete(session.id)}
+                  disabled={isCompleting || !canComplete}
                   style={{
                     fontSize: 12,
-                    color: '#ffffff',
-                    backgroundColor: '#10B981',
+                    color: canComplete ? '#ffffff' : '#9CA3AF',
+                    backgroundColor: canComplete ? '#10B981' : '#E5E7EB',
                     border: 'none',
                     borderRadius: '8px',
                     padding: '4px 10px',
-                    cursor: isCompleting ? 'default' : 'pointer',
-                    opacity: isCompleting ? 0.6 : 1,
+                    cursor: (isCompleting || !canComplete) ? 'default' : 'pointer',
+                    opacity: (isCompleting || !canComplete) ? 0.6 : 1,
                   }}
+                  title={canComplete ? undefined : `Available from ${formatDate(session.scheduled_at)}`}
                 >
                   {isCompleting ? '…' : 'Complete'}
                 </button>
@@ -537,6 +547,11 @@ export default function ClientDetailScreen() {
         {completeError && (
           <p style={{ fontSize: 11, color: '#DC2626', marginTop: 4, marginLeft: 23 }}>
             {completeError}
+          </p>
+        )}
+        {!canComplete && isScheduled && !isConfirming && (
+          <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4, marginLeft: 23 }}>
+            Available from {formatDate(session.scheduled_at)}
           </p>
         )}
 
