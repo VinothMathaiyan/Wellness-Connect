@@ -264,12 +264,31 @@ export async function getTrainerClients(trainerId: string): Promise<TrainerClien
     } | null;
   }>;
 
+  // Assessment gate: a trainer only sees a linked client once the assessment
+  // team has cleared them (clearance_status 'cleared' or 'conditional').
+  const clientIds = links.map(l => l.client?.id).filter((id): id is string => !!id);
+  const clearedClientIds = new Set<string>();
+  if (clientIds.length > 0) {
+    const { data: clearedRows } = await supabase
+      .from('assessments')
+      .select('client_id, clearance_status')
+      .in('client_id', clientIds)
+      .in('clearance_status', ['cleared', 'conditional']);
+    for (const row of (clearedRows ?? []) as Array<{ client_id: string }>) {
+      clearedClientIds.add(row.client_id);
+    }
+  }
+
+  const clearedLinks = links.filter(
+    link => link.client != null && clearedClientIds.has(link.client.id),
+  );
+
   // Today's date string (YYYY-MM-DD) for pending check-in calculation
   const today = new Date().toISOString().split('T')[0];
 
-  // For each client, fetch their latest daily_metrics row
+  // For each cleared client, fetch their latest daily_metrics row
   const results: TrainerClient[] = await Promise.all(
-    links.map(async (link) => {
+    clearedLinks.map(async (link) => {
       const client = link.client;
       if (!client) {
         return {
@@ -999,7 +1018,7 @@ export async function getClientNotifications(
       )
     `)
     .eq('to_user_id', clientId)
-    .in('type', ['program_assigned', 'session_cancelled', 'session_scheduled'])
+    .in('type', ['program_assigned', 'session_cancelled', 'session_scheduled', 'profile_updated', 'assessment_complete'])
     .order('created_at', { ascending: false })
     .limit(20);
 
@@ -2576,7 +2595,7 @@ export const getClientUnreadCount = async (
         .select('id', { count: 'exact', head: true })
         .eq('to_user_id', clientId)
         .eq('is_read', false)
-        .in('type', ['program_assigned', 'session_cancelled', 'session_scheduled']),
+        .in('type', ['program_assigned', 'session_cancelled', 'session_scheduled', 'profile_updated', 'assessment_complete']),
     ]);
 
     if (alertsRes.error) console.error('getClientUnreadCount (alerts):', alertsRes.error);
@@ -3335,8 +3354,11 @@ export interface AssessorNotification {
 // ── Assessments ───────────────────────────────────────────────────────────────
 
 export async function getNewClientQueue(
-  assessorId: string,
+  _assessorId: string,
 ): Promise<{ data: Assessment[]; error?: string }> {
+  // Shared queue: assessments are auto-created (unassigned) when a client saves
+  // their health profile, so we show every pending / in-progress assessment to
+  // the assessment team rather than filtering by a single assessor_id.
   const { data, error } = await supabase
     .from('assessments')
     .select(`
@@ -3345,7 +3367,6 @@ export async function getNewClientQueue(
       recommended_trainer_id, clearance_status, created_at,
       client:profiles!assessments_client_id_fkey ( full_name )
     `)
-    .eq('assessor_id', assessorId)
     .in('status', ['pending', 'in_progress'])
     .order('created_at', { ascending: true });
 
@@ -3421,6 +3442,161 @@ export async function submitAssessment(
     console.error('submitAssessment:', error);
     return { success: false, error: error.message };
   }
+  return { success: true };
+}
+
+/**
+ * Auto-create an assessment record when a client saves their health profile.
+ * Called silently from HealthProfileScreen. The record is created unassigned
+ * (assessor_id null, status 'pending') so it surfaces in the shared assessment
+ * queue. Skips creation if one already exists for this client.
+ */
+export async function createAssessmentRequest(
+  clientId: string,
+): Promise<boolean> {
+  const { data: existing } = await supabase
+    .from('assessments')
+    .select('id')
+    .eq('client_id', clientId)
+    .maybeSingle();
+
+  if (existing) return true; // Don't duplicate
+
+  const { error } = await supabase
+    .from('assessments')
+    .insert({ client_id: clientId, status: 'pending' });
+
+  if (error) console.error('createAssessmentRequest:', error);
+  return !error;
+}
+
+/**
+ * Notify a client that the assessment team edited their health profile.
+ * Non-fatal — logs and returns on failure so profile saves are never blocked.
+ */
+export async function notifyClientProfileUpdated(
+  clientId: string,
+  assessorId: string,
+): Promise<void> {
+  const { error } = await supabase.from('notifications').insert({
+    to_user_id:   clientId,
+    from_user_id: assessorId,
+    type:         'profile_updated',
+    message:
+      'The assessment team has updated your health profile. Please review your details.',
+    is_read:      false,
+  });
+  if (error) console.warn('notifyClientProfileUpdated: insert failed (non-fatal):', error);
+}
+
+/**
+ * Complete an assessment for a client (assessment gate, Stage 2 → Stage 3).
+ *
+ * Updates the client's existing assessment row (created on health-profile save)
+ * with the clearance decision, then fans out notifications:
+ *  - cleared / conditional → tells the client they are cleared AND notifies all
+ *    active trainers that the client is looking for a trainer.
+ *  - hold → tells the client their assessment needs further review.
+ *
+ * Notification failures are non-fatal so the clearance still saves.
+ */
+export async function completeAssessment(
+  assessorId: string,
+  clientId: string,
+  data: {
+    fitness_level: 'beginner' | 'intermediate' | 'advanced' | null;
+    health_notes: string;
+    trainer_recommendation: string;
+    clearance_status: 'cleared' | 'conditional' | 'hold';
+  },
+): Promise<{ success: boolean; error?: string }> {
+  const payload = {
+    assessor_id:            assessorId,
+    fitness_level:          data.fitness_level,
+    health_notes:           data.health_notes,
+    trainer_recommendation: data.trainer_recommendation,
+    clearance_status:       data.clearance_status,
+    status:                 'completed' as const,
+    assessment_date:        new Date().toISOString().split('T')[0],
+  };
+
+  // Update the existing assessment row for this client.
+  const { data: updated, error } = await supabase
+    .from('assessments')
+    .update(payload)
+    .eq('client_id', clientId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    console.error('completeAssessment (update):', error);
+    return { success: false, error: error.message };
+  }
+
+  // Safety net: if no row existed yet, create the completed record directly.
+  if (!updated) {
+    const { error: insertErr } = await supabase
+      .from('assessments')
+      .insert({ client_id: clientId, ...payload });
+    if (insertErr) {
+      console.error('completeAssessment (insert):', insertErr);
+      return { success: false, error: insertErr.message };
+    }
+  }
+
+  // Fan out notifications (non-fatal).
+  try {
+    const cleared =
+      data.clearance_status === 'cleared' || data.clearance_status === 'conditional';
+
+    if (cleared) {
+      await supabase.from('notifications').insert({
+        to_user_id:   clientId,
+        from_user_id: assessorId,
+        type:         'assessment_complete',
+        message:      'Your assessment is complete. You are now cleared for training!',
+        is_read:      false,
+      });
+
+      // Resolve client name for the trainer-facing message.
+      const { data: clientProfile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', clientId)
+        .maybeSingle();
+      const clientName = clientProfile?.full_name ?? 'A new client';
+
+      // Notify every active trainer.
+      const { data: trainers } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'trainer')
+        .eq('is_active', true);
+
+      if (trainers && trainers.length > 0) {
+        const rows = (trainers as Array<{ id: string }>).map(t => ({
+          to_user_id:   t.id,
+          from_user_id: assessorId,
+          type:         'client_cleared',
+          message: `New client ${clientName} has been cleared for training and is looking for a trainer.`,
+          is_read:      false,
+        }));
+        await supabase.from('notifications').insert(rows);
+      }
+    } else {
+      await supabase.from('notifications').insert({
+        to_user_id:   clientId,
+        from_user_id: assessorId,
+        type:         'assessment_complete',
+        message:
+          'Your assessment requires further review. The team will be in touch shortly.',
+        is_read:      false,
+      });
+    }
+  } catch (notifErr) {
+    console.warn('completeAssessment: notification insert failed (non-fatal):', notifErr);
+  }
+
   return { success: true };
 }
 
@@ -3881,10 +4057,10 @@ export async function getAssessorDashboardStats(assessorId: string): Promise<{
 }> {
   const [newClientsRes, escalationsRes, approvalsRes, dueReviewsRes] =
     await Promise.all([
+      // Shared queue count — matches getNewClientQueue (unassigned + assigned).
       supabase
         .from('assessments')
         .select('id', { count: 'exact', head: true })
-        .eq('assessor_id', assessorId)
         .in('status', ['pending', 'in_progress']),
       supabase
         .from('escalations')

@@ -148,6 +148,35 @@ function getClientNotificationDisplay(notification: ClientNotification): {
     };
   }
 
+  if (notification.type === 'profile_updated') {
+    return {
+      Icon: ClipboardList,
+      iconColor: '#7C3AED',
+      iconBg: '#EDE9FE',
+      title: 'Assessment team updated your profile',
+      unreadBorder: '#7C3AED',
+    };
+  }
+
+  if (notification.type === 'assessment_complete') {
+    const cleared = (notification.message ?? '').toLowerCase().includes('cleared for training');
+    return cleared
+      ? {
+          Icon: CheckCircle2,
+          iconColor: '#16A34A',
+          iconBg: '#DCFCE7',
+          title: 'Your assessment is complete!',
+          unreadBorder: '#16A34A',
+        }
+      : {
+          Icon: ShieldAlert,
+          iconColor: '#D97706',
+          iconBg: '#FEF3C7',
+          title: 'Your assessment needs further review',
+          unreadBorder: '#D97706',
+        };
+  }
+
   return {
     Icon: ClipboardList,
     iconColor: '#166534',
@@ -326,6 +355,11 @@ export default function AlertsScreen() {
       navigate('/client/sessions');
     } else if (notification.type === 'session_scheduled') {
       navigate('/client/sessions');
+    } else if (notification.type === 'profile_updated') {
+      navigate('/onboarding/profile');
+    } else if (notification.type === 'assessment_complete') {
+      const cleared = (notification.message ?? '').toLowerCase().includes('cleared for training');
+      navigate(cleared ? '/client/trainers' : '/client/dashboard');
     }
   };
 

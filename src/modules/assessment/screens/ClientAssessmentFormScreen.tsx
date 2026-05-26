@@ -1,23 +1,41 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Loader2, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, Loader2, AlertTriangle, Check } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
-import { submitAssessment } from '../../../services/supabaseService';
+import {
+  upsertClientProfile,
+  notifyClientProfileUpdated,
+  completeAssessment,
+} from '../../../services/supabaseService';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say'] as const;
+
+const GOAL_OPTIONS = [
+  'General fitness',
+  'Fat loss',
+  'Muscle gain',
+  'Flexibility',
+  'Stress relief',
+  'Rehabilitation',
+  'Yoga',
+] as const;
+
 const CONDITION_OPTIONS = [
-  'Knee injury',
   'Back pain',
-  'Cardiac',
+  'Knee issue',
+  'Joint pain',
   'Diabetes',
-  'Hypertension',
-  'Obesity',
-  'Post-surgery',
+  'Blood pressure',
+  'Heart condition',
+  'Respiratory condition',
+  'PCOS / PCOD',
+  'Injury recovery',
   'Other',
 ] as const;
 
@@ -25,6 +43,14 @@ const FITNESS_LEVELS: { value: 'beginner' | 'intermediate' | 'advanced'; label: 
   { value: 'beginner',     label: 'Beginner'     },
   { value: 'intermediate', label: 'Intermediate' },
   { value: 'advanced',     label: 'Advanced'     },
+];
+
+const ACTIVITY_LEVELS: { value: number; label: string }[] = [
+  { value: 1, label: '1 — Sedentary' },
+  { value: 2, label: '2 — Lightly active' },
+  { value: 3, label: '3 — Moderately active' },
+  { value: 4, label: '4 — Active' },
+  { value: 5, label: '5 — Very active' },
 ];
 
 const CLEARANCE_OPTIONS: {
@@ -39,7 +65,7 @@ const CLEARANCE_OPTIONS: {
   {
     value: 'cleared',
     icon: '✅',
-    label: 'Cleared',
+    label: 'Clear for Training',
     description: 'Client is ready to begin training',
     activeBg: '#f0fdf4',
     activeBorder: '#86efac',
@@ -48,7 +74,7 @@ const CLEARANCE_OPTIONS: {
   {
     value: 'conditional',
     icon: '⚠️',
-    label: 'Conditional',
+    label: 'Conditional Clearance',
     description: 'Training with restrictions',
     activeBg: '#fffbeb',
     activeBorder: '#fcd34d',
@@ -57,7 +83,7 @@ const CLEARANCE_OPTIONS: {
   {
     value: 'hold',
     icon: '🚫',
-    label: 'Hold',
+    label: 'Put on Hold',
     description: 'Not cleared — requires further review',
     activeBg: '#fef2f2',
     activeBorder: '#fca5a5',
@@ -70,15 +96,25 @@ const CLEARANCE_OPTIONS: {
 interface ProfileRow {
   id: string;
   full_name: string;
+  phone_number: string | null;
   city: string | null;
 }
 
-interface ClientHealthProfile {
-  goals: string[] | null;
-  medical_conditions: string[] | null;
-  fitness_level: string | null;
-  dob: string | null;
-  gender: string | null;
+interface ProfileForm {
+  dob: string;
+  gender: string;
+  height_cm: string;
+  weight_kg: string;
+  activity_level: number | null;
+  fitness_level: string;
+  goals: string[];
+  medical_conditions: string[];
+}
+
+interface AssessmentForm {
+  health_notes: string;
+  fitness_level: 'beginner' | 'intermediate' | 'advanced' | null;
+  trainer_recommendation: string;
 }
 
 interface ExistingAssessment {
@@ -88,24 +124,29 @@ interface ExistingAssessment {
   clearance_status: 'cleared' | 'conditional' | 'hold' | null;
 }
 
-interface FormState {
-  fitness_level: 'beginner' | 'intermediate' | 'advanced' | null;
-  health_notes: string;
-  trainer_recommendation: string;
-  clearance_status: 'cleared' | 'conditional' | 'hold' | null;
-  flagged_conditions: string[];
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function calculateAge(dob: string): number {
+function calculateAge(dob: string): number | null {
+  if (!dob) return null;
   const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return null;
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
   return age;
 }
+
+const EMPTY_PROFILE: ProfileForm = {
+  dob: '',
+  gender: '',
+  height_cm: '',
+  weight_kg: '',
+  activity_level: null,
+  fitness_level: '',
+  goals: [],
+  medical_conditions: [],
+};
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -115,23 +156,25 @@ export default function ClientAssessmentFormScreen() {
   const { userId } = useWellness();
 
   // Data
-  const [profile, setProfile]           = useState<ProfileRow | null>(null);
-  const [healthProfile, setHealthProfile] = useState<ClientHealthProfile | null>(null);
-  const [isLoading, setIsLoading]        = useState(true);
-  const [loadError, setLoadError]        = useState('');
+  const [profile, setProfile]         = useState<ProfileRow | null>(null);
+  const [hasClientProfile, setHasClientProfile] = useState(false);
+  const [isLoading, setIsLoading]     = useState(true);
+  const [loadError, setLoadError]     = useState('');
 
-  // Form
-  const [form, setForm] = useState<FormState>({
-    fitness_level:      null,
-    health_notes:       '',
+  // Section A — editable health profile
+  const [profileForm, setProfileForm] = useState<ProfileForm>(EMPTY_PROFILE);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSaved, setProfileSaved]       = useState(false);
+  const [profileError, setProfileError]       = useState('');
+
+  // Section B — assessment decision
+  const [assessmentForm, setAssessmentForm] = useState<AssessmentForm>({
+    health_notes: '',
+    fitness_level: null,
     trainer_recommendation: '',
-    clearance_status:   null,
-    flagged_conditions: [],
   });
-
-  // Submit
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError]   = useState('');
+  const [decidingStatus, setDecidingStatus] = useState<'cleared' | 'conditional' | 'hold' | null>(null);
+  const [decisionError, setDecisionError]   = useState('');
 
   // ── Fetch on mount ──────────────────────────────────────────────────────────
 
@@ -148,17 +191,17 @@ export default function ClientAssessmentFormScreen() {
         const [profileRes, healthRes, assessmentRes] = await Promise.all([
           supabase
             .from('profiles')
-            .select('id, full_name, city')
+            .select('id, full_name, phone_number, city')
             .eq('id', id)
             .maybeSingle(),
           supabase
             .from('client_profiles')
-            .select('goals, medical_conditions, fitness_level, dob, gender')
+            .select('dob, gender, height_cm, weight_kg, activity_level, fitness_level, goals, medical_conditions')
             .eq('user_id', id)
             .maybeSingle(),
           supabase
             .from('assessments')
-            .select('*')
+            .select('fitness_level, health_notes, trainer_recommendation, clearance_status')
             .eq('client_id', id)
             .maybeSingle(),
         ]);
@@ -169,26 +212,40 @@ export default function ClientAssessmentFormScreen() {
 
         setProfile(profileRes.data as ProfileRow | null);
 
-        const health = healthRes.data as ClientHealthProfile | null;
-        setHealthProfile(health);
+        const health = healthRes.data as Partial<{
+          dob: string | null;
+          gender: string | null;
+          height_cm: number | null;
+          weight_kg: number | null;
+          activity_level: number | null;
+          fitness_level: string | null;
+          goals: string[] | null;
+          medical_conditions: string[] | null;
+        }> | null;
 
-        // Pre-populate conditions from client health profile
-        const medConditions: string[] = Array.isArray(health?.medical_conditions)
-          ? (health!.medical_conditions as string[])
-          : [];
+        setHasClientProfile(!!health);
 
-        // Pre-populate form from existing assessment (if any)
+        if (health) {
+          setProfileForm({
+            dob:                health.dob ?? '',
+            gender:             health.gender ?? '',
+            height_cm:          health.height_cm != null ? String(health.height_cm) : '',
+            weight_kg:          health.weight_kg != null ? String(health.weight_kg) : '',
+            activity_level:     health.activity_level ?? null,
+            fitness_level:      health.fitness_level ?? '',
+            goals:              Array.isArray(health.goals) ? health.goals : [],
+            medical_conditions: Array.isArray(health.medical_conditions) ? health.medical_conditions : [],
+          });
+        }
+
+        // Pre-populate the assessment decision section from any existing row.
         const existing = assessmentRes.data as ExistingAssessment | null;
         if (existing) {
-          setForm({
-            fitness_level:          existing.fitness_level ?? null,
+          setAssessmentForm({
             health_notes:           existing.health_notes ?? '',
+            fitness_level:          existing.fitness_level ?? null,
             trainer_recommendation: existing.trainer_recommendation ?? '',
-            clearance_status:       existing.clearance_status ?? null,
-            flagged_conditions:     medConditions,
           });
-        } else {
-          setForm(prev => ({ ...prev, flagged_conditions: medConditions }));
         }
       } catch (err: unknown) {
         if (isMounted) {
@@ -205,50 +262,91 @@ export default function ClientAssessmentFormScreen() {
 
   // ── Derived ─────────────────────────────────────────────────────────────────
 
-  const canSubmit =
-    form.fitness_level !== null &&
-    form.clearance_status !== null &&
-    form.health_notes.trim().length > 0;
-
-  const initials = profile?.full_name
-    ?.split(' ')
-    .map(n => n[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase() ?? '?';
-
-  const age = healthProfile?.dob ? calculateAge(healthProfile.dob) : null;
-  const goals: string[]        = Array.isArray(healthProfile?.goals) ? (healthProfile!.goals as string[]) : [];
-  const medConditions: string[] = Array.isArray(healthProfile?.medical_conditions) ? (healthProfile!.medical_conditions as string[]) : [];
+  const age = calculateAge(profileForm.dob);
+  const canDecide =
+    assessmentForm.fitness_level !== null &&
+    assessmentForm.health_notes.trim().length > 0;
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const toggleCondition = (cond: string) => {
-    setForm(prev => ({
-      ...prev,
-      flagged_conditions: prev.flagged_conditions.includes(cond)
-        ? prev.flagged_conditions.filter(c => c !== cond)
-        : [...prev.flagged_conditions, cond],
-    }));
+  const setProfileField = <K extends keyof ProfileForm>(key: K, value: ProfileForm[K]) => {
+    setProfileForm(prev => ({ ...prev, [key]: value }));
+    setProfileSaved(false);
   };
 
-  const handleSubmit = async () => {
-    if (!canSubmit || !userId || !clientId) return;
-    setIsSubmitting(true);
-    setSubmitError('');
+  const toggleGoal = (goal: string) => {
+    setProfileForm(prev => ({
+      ...prev,
+      goals: prev.goals.includes(goal)
+        ? prev.goals.filter(g => g !== goal)
+        : [...prev.goals, goal],
+    }));
+    setProfileSaved(false);
+  };
+
+  const toggleCondition = (cond: string) => {
+    setProfileForm(prev => ({
+      ...prev,
+      medical_conditions: prev.medical_conditions.includes(cond)
+        ? prev.medical_conditions.filter(c => c !== cond)
+        : [...prev.medical_conditions, cond],
+    }));
+    setProfileSaved(false);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!clientId || !userId) return;
+    setIsSavingProfile(true);
+    setProfileError('');
+    setProfileSaved(false);
     try {
-      const result = await submitAssessment(userId, clientId, {
-        fitness_level:          form.fitness_level!,
-        health_notes:           form.health_notes,
-        trainer_recommendation: form.trainer_recommendation,
-        clearance_status:       form.clearance_status!,
+      const result = await upsertClientProfile(
+        clientId,
+        {
+          dob:                profileForm.dob || null,
+          gender:             profileForm.gender || null,
+          height_cm:          profileForm.height_cm ? Number(profileForm.height_cm) : null,
+          weight_kg:          profileForm.weight_kg ? Number(profileForm.weight_kg) : null,
+          medical_conditions: profileForm.medical_conditions,
+          activity_level:     profileForm.activity_level,
+          fitness_level:      profileForm.fitness_level || null,
+          goals:              profileForm.goals,
+        },
+        null, // city is owned by the client profile screen — leave untouched
+      );
+
+      if (!result.ok) throw new Error(result.errorMessage ?? 'Save failed.');
+
+      setHasClientProfile(true);
+      await notifyClientProfileUpdated(clientId, userId);
+      setProfileSaved(true);
+    } catch (err: unknown) {
+      setProfileError(err instanceof Error ? err.message : 'Save failed.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleClearance = async (status: 'cleared' | 'conditional' | 'hold') => {
+    if (!clientId || !userId || decidingStatus) return;
+    if (!canDecide) {
+      setDecisionError('Add a fitness level assessment and assessment notes before deciding.');
+      return;
+    }
+    setDecidingStatus(status);
+    setDecisionError('');
+    try {
+      const result = await completeAssessment(userId, clientId, {
+        fitness_level:          assessmentForm.fitness_level,
+        health_notes:           assessmentForm.health_notes,
+        trainer_recommendation: assessmentForm.trainer_recommendation,
+        clearance_status:       status,
       });
-      if (!result.success) throw new Error(result.error ?? 'Submission failed.');
+      if (!result.success) throw new Error(result.error ?? 'Could not save decision.');
       navigate('/assessment/clients/queue');
     } catch (err: unknown) {
-      setSubmitError(err instanceof Error ? err.message : 'Submission failed.');
-    } finally {
-      setIsSubmitting(false);
+      setDecisionError(err instanceof Error ? err.message : 'Could not save decision.');
+      setDecidingStatus(null);
     }
   };
 
@@ -297,205 +395,295 @@ export default function ClientAssessmentFormScreen() {
             />
           </div>
         ) : (
-          <div className="px-5 pt-4 space-y-5">
+          <div className="px-5 pt-4 space-y-6">
 
-            {/* ── Client Profile Card (read-only) ── */}
-            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-              {/* Avatar + name row */}
-              <div className="flex items-center gap-3 mb-3">
-                <div
-                  className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg shrink-0"
-                  style={{ backgroundColor: '#e0f2fe', color: '#0284c7' }}
+            {/* ════ SECTION A — Client Health Profile (editable) ════ */}
+            <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-5">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Client Health Profile</h2>
+                {!hasClientProfile && (
+                  <p className="text-xs text-amber-600 font-medium mt-1">
+                    Client hasn't filled this in — you can complete it below.
+                  </p>
+                )}
+              </div>
+
+              {/* Full name (read only) */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Full Name</label>
+                <p className="text-sm font-medium text-gray-900 mt-1">{profile?.full_name ?? '—'}</p>
+              </div>
+
+              {/* Phone (read only) */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Phone</label>
+                <p className="text-sm font-medium text-gray-900 mt-1">
+                  {profile?.phone_number || 'Not provided'}
+                </p>
+              </div>
+
+              {/* Date of birth */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date of Birth</label>
+                <input
+                  type="date"
+                  value={profileForm.dob}
+                  onChange={e => setProfileField('dob', e.target.value)}
+                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+                {age !== null && (
+                  <p className="text-xs text-gray-500 mt-1">Age: {age} years</p>
+                )}
+              </div>
+
+              {/* Gender */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gender</label>
+                <select
+                  value={profileForm.gender}
+                  onChange={e => setProfileField('gender', e.target.value)}
+                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
                 >
-                  {initials}
-                </div>
-                <div>
-                  <p className="font-bold text-gray-900">{profile?.full_name ?? '—'}</p>
-                  {profile?.city && (
-                    <p className="text-sm text-gray-500">{profile.city}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Age + gender */}
-              {(age !== null || healthProfile?.gender) && (
-                <div className="flex gap-4 mb-3 text-sm text-gray-600">
-                  {age !== null && (
-                    <span>Age: <span className="font-semibold text-gray-800">{age}</span></span>
-                  )}
-                  {healthProfile?.gender && (
-                    <span>Gender: <span className="font-semibold text-gray-800 capitalize">{healthProfile.gender}</span></span>
-                  )}
-                </div>
-              )}
-
-              {/* Goals chips */}
-              {goals.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {goals.map((goal, i) => (
-                    <span
-                      key={i}
-                      className="text-xs px-2.5 py-1 rounded-full font-medium"
-                      style={{ backgroundColor: '#f0fdfa', color: '#0d9488' }}
-                    >
-                      {goal}
-                    </span>
+                  <option value="">Not filled by client</option>
+                  {GENDER_OPTIONS.map(g => (
+                    <option key={g} value={g}>{g}</option>
                   ))}
-                </div>
-              )}
+                </select>
+              </div>
 
-              {/* Medical condition chips */}
-              {medConditions.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {medConditions.map((cond, i) => (
-                    <span
-                      key={i}
-                      className="text-xs px-2.5 py-1 rounded-full font-medium"
-                      style={{ backgroundColor: '#fffbeb', color: '#d97706' }}
-                    >
-                      {cond}
-                    </span>
+              {/* Height + Weight */}
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Height (cm)</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="Not filled"
+                    value={profileForm.height_cm}
+                    onChange={e => setProfileField('height_cm', e.target.value)}
+                    className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weight (kg)</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Not filled"
+                    value={profileForm.weight_kg}
+                    onChange={e => setProfileField('weight_kg', e.target.value)}
+                    className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  />
+                </div>
+              </div>
+
+              {/* Activity level */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Activity Level</label>
+                <select
+                  value={profileForm.activity_level ?? ''}
+                  onChange={e => setProfileField('activity_level', e.target.value ? Number(e.target.value) : null)}
+                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                >
+                  <option value="">Not filled by client</option>
+                  {ACTIVITY_LEVELS.map(a => (
+                    <option key={a.value} value={a.value}>{a.label}</option>
                   ))}
+                </select>
+              </div>
+
+              {/* Fitness level */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fitness Level</label>
+                <select
+                  value={profileForm.fitness_level}
+                  onChange={e => setProfileField('fitness_level', e.target.value)}
+                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                >
+                  <option value="">Not filled by client</option>
+                  {FITNESS_LEVELS.map(f => (
+                    <option key={f.value} value={f.value}>{f.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Health goals */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Health Goals</label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {GOAL_OPTIONS.map(goal => {
+                    const selected = profileForm.goals.includes(goal);
+                    return (
+                      <button
+                        key={goal}
+                        type="button"
+                        onClick={() => toggleGoal(goal)}
+                        className="px-3 py-1.5 rounded-full text-xs font-semibold active:scale-95 transition-transform"
+                        style={
+                          selected
+                            ? { backgroundColor: '#f0fdfa', border: '1.5px solid #5eead4', color: '#0d9488' }
+                            : { backgroundColor: '#ffffff', border: '1.5px solid #e5e7eb', color: '#6b7280' }
+                        }
+                      >
+                        {goal}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Medical conditions */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Medical Conditions</label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {CONDITION_OPTIONS.map(cond => {
+                    const selected = profileForm.medical_conditions.includes(cond);
+                    return (
+                      <button
+                        key={cond}
+                        type="button"
+                        onClick={() => toggleCondition(cond)}
+                        className="px-3 py-1.5 rounded-full text-xs font-semibold active:scale-95 transition-transform"
+                        style={
+                          selected
+                            ? { backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', color: '#dc2626' }
+                            : { backgroundColor: '#ffffff', border: '1.5px solid #e5e7eb', color: '#6b7280' }
+                        }
+                      >
+                        {cond}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Save profile error */}
+              {profileError && (
+                <div className="bg-red-50 p-3 rounded-lg flex items-start gap-2 border border-red-100">
+                  <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16} />
+                  <p className="text-sm text-red-700">{profileError}</p>
                 </div>
               )}
 
-              {/* Empty health profile state */}
-              {!healthProfile && (
-                <p className="text-sm text-gray-400 italic">No health profile submitted yet</p>
+              {/* Save profile button */}
+              <button
+                onClick={handleSaveProfile}
+                disabled={isSavingProfile}
+                className="w-full py-3 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                style={{ backgroundColor: profileSaved ? '#16a34a' : '#0d9488' }}
+              >
+                {isSavingProfile && <Loader2 size={16} className="animate-spin" />}
+                {profileSaved && !isSavingProfile && <Check size={16} />}
+                {isSavingProfile ? 'Saving…' : profileSaved ? 'Profile Saved' : 'Save Profile Changes'}
+              </button>
+              {profileSaved && (
+                <p className="text-xs text-center text-gray-500">
+                  The client has been notified to review their details.
+                </p>
               )}
-            </div>
+            </section>
 
-            {/* ── Section 1: Fitness Level ── */}
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-2">Fitness Level</p>
-              <div className="flex gap-2">
-                {FITNESS_LEVELS.map(({ value, label }) => {
-                  const selected = form.fitness_level === value;
-                  return (
-                    <button
-                      key={value}
-                      onClick={() => setForm(prev => ({ ...prev, fitness_level: value }))}
-                      className="flex-1 py-3 rounded-xl text-sm font-semibold active:scale-95 transition-transform"
-                      style={
-                        selected
-                          ? { backgroundColor: '#f0fdfa', border: '2px solid #0d9488', color: '#0d9488' }
-                          : { backgroundColor: '#ffffff', border: '2px solid #e5e7eb', color: '#6b7280' }
-                      }
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
+            {/* ════ SECTION B — Assessment Decision ════ */}
+            <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-5">
+              <h2 className="text-base font-bold text-gray-900">Assessment Decision</h2>
+
+              {/* Assessment notes */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Assessment Notes</label>
+                <textarea
+                  value={assessmentForm.health_notes}
+                  onChange={e => setAssessmentForm(prev => ({ ...prev, health_notes: e.target.value }))}
+                  placeholder="Observations, limitations, medical considerations..."
+                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-3 text-sm text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  style={{ minHeight: '100px' }}
+                />
               </div>
-            </div>
 
-            {/* ── Section 2: Health Notes ── */}
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-2">Health Notes</p>
-              <textarea
-                value={form.health_notes}
-                onChange={e => setForm(prev => ({ ...prev, health_notes: e.target.value }))}
-                placeholder="Observations, limitations, medical considerations..."
-                className="w-full rounded-xl border border-gray-200 p-3 text-sm text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
-                style={{ minHeight: '100px' }}
-              />
-            </div>
-
-            {/* ── Section 3: Conditions Checklist ── */}
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-2">Flag Conditions</p>
-              {/* Horizontal scroll, hide scrollbar */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {CONDITION_OPTIONS.map(cond => {
-                  const selected = form.flagged_conditions.includes(cond);
-                  return (
-                    <button
-                      key={cond}
-                      onClick={() => toggleCondition(cond)}
-                      className="px-3 py-1.5 rounded-full text-xs font-semibold active:scale-95 transition-transform"
-                      style={
-                        selected
-                          ? { backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', color: '#dc2626' }
-                          : { backgroundColor: '#ffffff', border: '1.5px solid #e5e7eb', color: '#6b7280' }
-                      }
-                    >
-                      {cond}
-                    </button>
-                  );
-                })}
+              {/* Fitness level assessment */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fitness Level Assessment</label>
+                <div className="flex gap-2 mt-2">
+                  {FITNESS_LEVELS.map(({ value, label }) => {
+                    const selected = assessmentForm.fitness_level === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setAssessmentForm(prev => ({ ...prev, fitness_level: value }))}
+                        className="flex-1 py-3 rounded-xl text-sm font-semibold active:scale-95 transition-transform"
+                        style={
+                          selected
+                            ? { backgroundColor: '#f0fdfa', border: '2px solid #0d9488', color: '#0d9488' }
+                            : { backgroundColor: '#ffffff', border: '2px solid #e5e7eb', color: '#6b7280' }
+                        }
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
 
-            {/* ── Section 4: Trainer Recommendation ── */}
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-2">Trainer Recommendation</p>
-              <textarea
-                value={form.trainer_recommendation}
-                onChange={e => setForm(prev => ({ ...prev, trainer_recommendation: e.target.value }))}
-                placeholder="Recommended training approach, restrictions, trainer notes..."
-                className="w-full rounded-xl border border-gray-200 p-3 text-sm text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
-                style={{ minHeight: '100px' }}
-              />
-            </div>
-
-            {/* ── Section 5: Clearance Decision ── */}
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-2">Clearance Status</p>
-              <div className="space-y-2">
-                {CLEARANCE_OPTIONS.map(({ value, icon, label, description, activeBg, activeBorder, activeText }) => {
-                  const selected = form.clearance_status === value;
-                  return (
-                    <button
-                      key={value}
-                      onClick={() => setForm(prev => ({ ...prev, clearance_status: value }))}
-                      className="w-full p-4 rounded-xl flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
-                      style={
-                        selected
-                          ? { backgroundColor: activeBg, border: `2px solid ${activeBorder}` }
-                          : { backgroundColor: '#ffffff', border: '2px solid #e5e7eb' }
-                      }
-                    >
-                      <span className="text-xl leading-none">{icon}</span>
-                      <div>
-                        <p
-                          className="font-semibold text-sm"
-                          style={{ color: selected ? activeText : '#374151' }}
-                        >
-                          {label}
-                        </p>
-                        <p
-                          className="text-xs mt-0.5"
-                          style={{ color: selected ? activeText : '#9ca3af' }}
-                        >
-                          {description}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
+              {/* Trainer recommendation */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Trainer Recommendation</label>
+                <textarea
+                  value={assessmentForm.trainer_recommendation}
+                  onChange={e => setAssessmentForm(prev => ({ ...prev, trainer_recommendation: e.target.value }))}
+                  placeholder="Recommended training approach, restrictions, trainer notes..."
+                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-3 text-sm text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  style={{ minHeight: '80px' }}
+                />
               </div>
-            </div>
 
-            {/* Submit error */}
-            {submitError && (
-              <div className="bg-red-50 p-3 rounded-lg flex items-start gap-2 border border-red-100">
-                <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16} />
-                <p className="text-sm text-red-700">{submitError}</p>
+              {/* Clearance decision */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Clearance Decision</label>
+                {!canDecide && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Select a fitness level and add assessment notes to enable a decision.
+                  </p>
+                )}
+                <div className="space-y-2 mt-2">
+                  {CLEARANCE_OPTIONS.map(({ value, icon, label, description, activeBg, activeBorder, activeText }) => {
+                    const isThisDeciding = decidingStatus === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={decidingStatus !== null || !canDecide}
+                        onClick={() => handleClearance(value)}
+                        className="w-full p-4 rounded-xl flex items-center gap-3 text-left active:scale-[0.98] transition-transform disabled:opacity-60"
+                        style={
+                          isThisDeciding
+                            ? { backgroundColor: activeBg, border: `2px solid ${activeBorder}` }
+                            : { backgroundColor: '#ffffff', border: '2px solid #e5e7eb' }
+                        }
+                      >
+                        <span className="text-xl leading-none">{icon}</span>
+                        <div className="flex-1">
+                          <p className="font-semibold text-sm" style={{ color: isThisDeciding ? activeText : '#374151' }}>
+                            {label}
+                          </p>
+                          <p className="text-xs mt-0.5" style={{ color: isThisDeciding ? activeText : '#9ca3af' }}>
+                            {description}
+                          </p>
+                        </div>
+                        {isThisDeciding && <Loader2 size={18} className="animate-spin" style={{ color: activeText }} />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            )}
 
-            {/* ── Submit Button ── */}
-            <button
-              onClick={handleSubmit}
-              disabled={!canSubmit || isSubmitting}
-              className="w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-              style={{
-                backgroundColor: canSubmit && !isSubmitting ? '#0d9488' : '#9ca3af',
-              }}
-            >
-              {isSubmitting && <Loader2 size={18} className="animate-spin" />}
-              {isSubmitting ? 'Saving...' : 'Submit Assessment'}
-            </button>
+              {/* Decision error */}
+              {decisionError && (
+                <div className="bg-red-50 p-3 rounded-lg flex items-start gap-2 border border-red-100">
+                  <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16} />
+                  <p className="text-sm text-red-700">{decisionError}</p>
+                </div>
+              )}
+            </section>
 
           </div>
         )}

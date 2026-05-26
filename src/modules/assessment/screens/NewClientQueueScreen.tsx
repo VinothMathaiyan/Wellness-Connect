@@ -10,6 +10,13 @@ import { supabase } from '../../../lib/supabaseClient';
 
 type FilterTab = 'pending' | 'in_progress' | 'completed';
 
+/** Per-client snapshot of the health profile, shown as badges on each queue card. */
+interface ClientProfileSummary {
+  fitness_level: string | null;
+  conditionCount: number;
+  incomplete: boolean;
+}
+
 export default function NewClientQueueScreen() {
   const navigate = useNavigate();
   const { userId } = useWellness();
@@ -17,6 +24,7 @@ export default function NewClientQueueScreen() {
   const [activeTab, setActiveTab] = useState<FilterTab>('pending');
   const [queue, setQueue] = useState<Assessment[]>([]);
   const [completed, setCompleted] = useState<Assessment[]>([]);
+  const [profileMap, setProfileMap] = useState<Record<string, ClientProfileSummary>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -33,7 +41,7 @@ export default function NewClientQueueScreen() {
         const queueRes = await getNewClientQueue(userId!);
         if (queueRes.error) throw new Error(queueRes.error);
         
-        // Fetch completed
+        // Fetch completed — shared across the assessment team (any assessor)
         const { data: completedData, error: completedError } = await supabase
           .from('assessments')
           .select(`
@@ -42,7 +50,6 @@ export default function NewClientQueueScreen() {
             recommended_trainer_id, clearance_status, created_at,
             client:profiles!assessments_client_id_fkey ( full_name )
           `)
-          .eq('assessor_id', userId!)
           .eq('status', 'completed')
           .order('created_at', { ascending: false });
 
@@ -51,15 +58,56 @@ export default function NewClientQueueScreen() {
         if (!isMounted) return;
 
         setQueue(queueRes.data);
-        
+
         const mappedCompleted = (completedData || []).map((row: any) => ({
           ...row,
           client_name: Array.isArray(row.client)
             ? (row.client[0]?.full_name ?? 'Unknown')
             : (row.client?.full_name ?? 'Unknown'),
         }));
-        
+
         setCompleted(mappedCompleted as Assessment[]);
+
+        // Fetch each client's health profile to render status badges on cards.
+        const clientIds = Array.from(
+          new Set([
+            ...queueRes.data.map(q => q.client_id),
+            ...mappedCompleted.map((c: Assessment) => c.client_id),
+          ]),
+        );
+
+        if (clientIds.length > 0) {
+          const { data: profileRows } = await supabase
+            .from('client_profiles')
+            .select('user_id, dob, gender, fitness_level, medical_conditions')
+            .in('user_id', clientIds);
+
+          if (isMounted) {
+            const map: Record<string, ClientProfileSummary> = {};
+            for (const row of (profileRows ?? []) as Array<{
+              user_id: string;
+              dob: string | null;
+              gender: string | null;
+              fitness_level: string | null;
+              medical_conditions: string[] | null;
+            }>) {
+              map[row.user_id] = {
+                fitness_level: row.fitness_level ?? null,
+                conditionCount: Array.isArray(row.medical_conditions)
+                  ? row.medical_conditions.length
+                  : 0,
+                incomplete: !row.dob || !row.gender,
+              };
+            }
+            // Clients with no client_profiles row at all are incomplete too.
+            for (const id of clientIds) {
+              if (!map[id]) {
+                map[id] = { fitness_level: null, conditionCount: 0, incomplete: true };
+              }
+            }
+            setProfileMap(map);
+          }
+        }
 
       } catch (err: any) {
         if (isMounted) setError(err.message || 'Failed to load queue.');
@@ -77,7 +125,10 @@ export default function NewClientQueueScreen() {
 
   const displayedList = useMemo(() => {
     if (activeTab === 'completed') return completed;
-    return queue.filter(item => item.status === activeTab);
+    // Pending tab surfaces the full live queue (pending + in_progress);
+    // the In Progress tab narrows to in_progress only.
+    if (activeTab === 'in_progress') return queue.filter(item => item.status === 'in_progress');
+    return queue;
   }, [activeTab, queue, completed]);
 
   const getStatusColor = (status: string) => {
@@ -173,6 +224,7 @@ export default function NewClientQueueScreen() {
           <div className="space-y-3">
             {displayedList.map(client => {
               const colors = getStatusColor(client.status);
+              const summary = profileMap[client.client_id];
               const clientInitials = client.client_name?.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
               
               return (
@@ -187,10 +239,25 @@ export default function NewClientQueueScreen() {
                   <div className="flex-1">
                     <p className="font-bold text-gray-900 text-[15px]">{client.client_name}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{calculateDaysAgo(client.created_at)}</p>
-                    <div className="mt-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: colors.bg, color: colors.text }}>
                          {client.status.replace('_', ' ').toUpperCase()}
                        </span>
+                       {summary?.fitness_level && (
+                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold capitalize" style={{ backgroundColor: '#f0fdfa', color: '#0d9488' }}>
+                           {summary.fitness_level}
+                         </span>
+                       )}
+                       {summary && summary.conditionCount > 0 && (
+                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
+                           {summary.conditionCount} condition{summary.conditionCount > 1 ? 's' : ''}
+                         </span>
+                       )}
+                       {summary?.incomplete && (
+                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: '#fffbeb', color: '#d97706' }}>
+                           Profile incomplete
+                         </span>
+                       )}
                     </div>
                   </div>
                   <ChevronRight size={20} className="text-gray-400 shrink-0" />

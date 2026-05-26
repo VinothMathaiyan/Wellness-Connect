@@ -48,7 +48,7 @@ const ACTIVITY_LABELS = ["Sedentary", "Lightly active", "Moderately active", "Ac
 
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { upsertClientProfile } from '../../../services/supabaseService';
+import { upsertClientProfile, createAssessmentRequest } from '../../../services/supabaseService';
 
 export default function HealthProfileScreen() {
   const navigate = useNavigate();
@@ -293,6 +293,11 @@ export default function HealthProfileScreen() {
         setSaveError(`Save failed: ${result.errorMessage ?? 'Unknown error'}`);
         return;
       }
+
+      // Auto-create the assessment record so this client surfaces in the
+      // Assessment App queue. Silent + non-blocking — failure must not stop the
+      // onboarding flow (the assessment row can also be created on a later save).
+      await createAssessmentRequest(userId);
     } else {
       console.warn('[HealthProfile] No userId — skipping Supabase save');
     }
