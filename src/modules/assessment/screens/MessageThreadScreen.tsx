@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Send } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import {
@@ -172,6 +173,7 @@ export default function MessageThreadScreen() {
               </h1>
               <p className="text-white/70 text-xs">Assessment conversation</p>
             </div>
+            <ProfileMenu />
           </div>
         </div>
 

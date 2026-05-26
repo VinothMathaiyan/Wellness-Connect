@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Loader2, AlertTriangle } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
@@ -270,6 +271,9 @@ export default function ClientAssessmentFormScreen() {
             {profile && (
               <p className="text-sm font-medium text-gray-500">{profile.full_name}</p>
             )}
+          </div>
+          <div className="ml-auto">
+            <ProfileMenu />
           </div>
         </div>
       </div>

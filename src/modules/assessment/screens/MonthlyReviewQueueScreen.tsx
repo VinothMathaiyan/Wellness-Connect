@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
@@ -577,6 +578,9 @@ export default function MonthlyReviewQueueScreen() {
                   {dueClients.length} due this month
                 </p>
               )}
+            </div>
+            <div className="ml-auto">
+              <ProfileMenu />
             </div>
           </div>
         </div>

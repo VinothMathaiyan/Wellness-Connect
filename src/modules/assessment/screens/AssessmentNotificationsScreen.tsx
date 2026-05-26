@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { ElementType } from 'react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
@@ -158,6 +159,9 @@ export default function AssessmentNotificationsScreen() {
                 {unreadCount} unread
               </p>
             )}
+          </div>
+          <div className="ml-auto">
+            <ProfileMenu />
           </div>
         </div>
       </div>

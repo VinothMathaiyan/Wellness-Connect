@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, AlertTriangle, Users } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { getNewClientQueue, type Assessment } from '../../../services/supabaseService';
@@ -119,6 +120,9 @@ export default function NewClientQueueScreen() {
             <p className="text-sm font-medium text-gray-500">
               {queue.filter(q => q.status === 'pending').length} awaiting assessment
             </p>
+          </div>
+          <div className="ml-auto">
+            <ProfileMenu />
           </div>
         </div>
         

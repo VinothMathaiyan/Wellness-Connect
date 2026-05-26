@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, Loader2, AlertTriangle, Users } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
@@ -224,6 +225,9 @@ export default function TrainerApprovalQueueScreen() {
             <p className="text-sm font-medium text-gray-500">
               {isLoading ? '—' : `${pendingCount} pending review`}
             </p>
+          </div>
+          <div className="ml-auto">
+            <ProfileMenu />
           </div>
         </div>
 

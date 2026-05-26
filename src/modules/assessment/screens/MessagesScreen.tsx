@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageSquare } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { getMessageThreads } from '../../../services/supabaseService';
@@ -96,12 +97,17 @@ export default function MessagesScreen() {
           className="px-5 pt-10 pb-5 rounded-b-3xl shadow-sm text-white"
           style={{ background: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)' }}
         >
-          <h1 className="text-2xl font-bold mb-1">Messages</h1>
-          {unreadTotal > 0 && !isLoading && (
-            <p className="text-white/80 text-sm font-medium">
-              {unreadTotal} unread
-            </p>
-          )}
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-2xl font-bold mb-1">Messages</h1>
+              {unreadTotal > 0 && !isLoading && (
+                <p className="text-white/80 text-sm font-medium">
+                  {unreadTotal} unread
+                </p>
+              )}
+            </div>
+            <ProfileMenu />
+          </div>
         </div>
 
         <div className="px-4 mt-4 space-y-2">
