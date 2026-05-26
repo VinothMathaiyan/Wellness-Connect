@@ -9,6 +9,7 @@ import RoleSelectionScreen from './RoleSelectionScreen';
 import HealthProfileScreen from '../../client/screens/HealthProfileScreen';
 import AssessmentBookingScreen from '../../client/screens/AssessmentBookingScreen';
 import AccountReadyScreen from '../../client/screens/AccountReadyScreen';
+import AssessmentPendingScreen from '../../client/screens/AssessmentPendingScreen';
 import HomeScreen from '../../client/screens/HomeScreen';
 import DailyCheckInScreen from '../../client/screens/DailyCheckInScreen';
 import NutritionLogFlow from '../../client/screens/NutritionLogFlow';
@@ -53,7 +54,7 @@ import AdminDashboardScreen from '../../admin/screens/AdminDashboardScreen';
 import DevNav from '../../../components/DevNav';
 
 function AppRoutes() {
-  const { isAuthLoading, userId, userRole } = useWellness();
+  const { isAuthLoading, userId, userRole, isClientCleared } = useWellness();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -86,13 +87,40 @@ function AppRoutes() {
       navigate('/trainer/dashboard', { replace: true });
       return;
     }
-    if (userRole === 'client' && !path.startsWith('/client') && !path.startsWith('/onboarding')) {
-      navigate('/client/dashboard', { replace: true });
-      return;
-    }
-  }, [userId, userRole, isAuthLoading, location.pathname, navigate]);
+    if (userRole === 'client') {
+      // Assessment gate — wait for the clearance lookup before deciding.
+      if (isClientCleared === null) return;
 
-  if (isAuthLoading) {
+      const onOnboarding = path.startsWith('/onboarding');
+
+      if (!isClientCleared) {
+        // Not yet cleared: only the pending screen and the health-profile
+        // (onboarding) flow are reachable. Everything else → pending screen.
+        if (path !== '/client/pending' && !onOnboarding) {
+          navigate('/client/pending', { replace: true });
+        }
+        return;
+      }
+
+      // Cleared: keep them in the client area. The pending screen owns its own
+      // redirect to the dashboard (so its "you're cleared" success can play), so
+      // we don't redirect away from /client/pending here.
+      if (!path.startsWith('/client') && !onOnboarding) {
+        navigate('/client/dashboard', { replace: true });
+        return;
+      }
+    }
+  }, [userId, userRole, isClientCleared, isAuthLoading, location.pathname, navigate]);
+
+  // Hold protected client routes behind a spinner until clearance resolves, so
+  // gated content never flashes before the redirect to /client/pending.
+  const awaitingClearance =
+    userRole === 'client' &&
+    isClientCleared === null &&
+    location.pathname.startsWith('/client') &&
+    location.pathname !== '/client/pending';
+
+  if (isAuthLoading || awaitingClearance) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
         <div className="w-8 h-8 border-2 border-[#1D9E75] border-t-transparent rounded-full animate-spin" />
@@ -107,6 +135,7 @@ function AppRoutes() {
       <Route path="/onboarding/profile" element={<HealthProfileScreen />} />
       <Route path="/onboarding/assessment" element={<AssessmentBookingScreen />} />
       <Route path="/onboarding/ready" element={<AccountReadyScreen />} />
+      <Route path="/client/pending" element={<AssessmentPendingScreen />} />
       <Route path="/client/dashboard" element={<HomeScreen />} />
       <Route path="/client/check-in" element={<DailyCheckInScreen existingLog={null} />} />
       <Route path="/client/nutrition" element={<NutritionLogFlow />} />

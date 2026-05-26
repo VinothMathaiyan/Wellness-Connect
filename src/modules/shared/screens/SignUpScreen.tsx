@@ -231,7 +231,9 @@ export default function SignUpScreen() {
       destination = complete ? '/trainer/dashboard' : '/trainer/onboarding';
       setUserRole('trainer');
     } else if (profile?.role === 'client') {
-      destination = '/client/dashboard';
+      // Always land clients on the pending screen; the AssessmentGate in
+      // App.tsx forwards already-cleared clients straight to the dashboard.
+      destination = '/client/pending';
       setUserRole('client');
     } else if (profile?.role === 'assessor') {
       destination = '/assessment/dashboard';
