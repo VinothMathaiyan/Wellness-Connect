@@ -18,6 +18,9 @@ import {
   MessageSquare,
   XCircle,
   Loader2,
+  MapPin,
+  Navigation,
+  Phone,
 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
@@ -194,6 +197,10 @@ export default function SessionDetailScreen() {
   const isCompleted = session.status === 'completed';
   const isImminent = !isCompleted && !isCancelled && diffMinutes <= 10 && currentTime < endTime;
 
+  // A meeting URL is only "real" if set and not the legacy placeholder landing link.
+  const hasValidMeetingUrl =
+    !!session.meeting_url && session.meeting_url !== 'https://meet.google.com/landing';
+
   const formatFullDate = (iso: string) => {
     const d = new Date(iso);
     const today = new Date();
@@ -255,9 +262,19 @@ export default function SessionDetailScreen() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="bg-[#E6F1FB] text-[#185FA5] px-2 py-0.5 rounded-full text-[11px] font-bold flex items-center gap-1">
-              <Video size={10} /> Virtual
-            </span>
+            {session.session_type === 'in-person' ? (
+              <span className="bg-[#FEF3C7] text-[#92400E] px-2 py-0.5 rounded-full text-[11px] font-bold flex items-center gap-1">
+                <MapPin size={10} /> In-person
+              </span>
+            ) : session.session_type === 'phone' ? (
+              <span className="bg-[#EDE9FE] text-[#6D28D9] px-2 py-0.5 rounded-full text-[11px] font-bold flex items-center gap-1">
+                <Phone size={10} /> Phone
+              </span>
+            ) : (
+              <span className="bg-[#E6F1FB] text-[#185FA5] px-2 py-0.5 rounded-full text-[11px] font-bold flex items-center gap-1">
+                <Video size={10} /> Virtual
+              </span>
+            )}
             {getTimingTag(session.scheduled_at)}
           </div>
 
@@ -502,42 +519,68 @@ export default function SessionDetailScreen() {
                 Session completed · {formatDate(session.scheduled_at)}, {formatTime(session.scheduled_at)}
               </div>
             </div>
-          ) : session.meeting_url ? (
-            /* meeting_url present — show join button regardless of session type */
-            isImminent ? (
-              <div className="space-y-2">
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  animate={{ boxShadow: ["0 0 0px rgba(29, 158, 117, 0.4)", "0 0 15px rgba(29, 158, 117, 0.4)", "0 0 0px rgba(29, 158, 117, 0.4)"] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  onClick={() => window.open(session.meeting_url!, '_blank')}
-                  className="w-full h-12 rounded-[12px] bg-[#1D9E75] text-white flex items-center justify-center gap-2 font-bold cursor-pointer"
-                >
-                  <Video size={20} /> Join Video Session — Live now
-                </motion.button>
-                <p className="text-[11px] text-[#1D9E75] text-center font-medium">Session is active · Tap to join now</p>
-              </div>
+          ) : session.session_type === 'video' ? (
+            /* ── Video session ─────────────────────────────────────────────── */
+            hasValidMeetingUrl ? (
+              isImminent ? (
+                <div className="space-y-2">
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
+                    animate={{ boxShadow: ["0 0 0px rgba(29, 158, 117, 0.4)", "0 0 15px rgba(29, 158, 117, 0.4)", "0 0 0px rgba(29, 158, 117, 0.4)"] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    onClick={() => window.open(session.meeting_url!, '_blank')}
+                    className="w-full h-12 rounded-[12px] bg-[#1D9E75] text-white flex items-center justify-center gap-2 font-bold cursor-pointer"
+                  >
+                    <Video size={20} /> Join Video Session — Live now
+                  </motion.button>
+                  <p className="text-[11px] text-[#1D9E75] text-center font-medium">Session is active · Tap to join now</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => window.open(session.meeting_url!, '_blank')}
+                    className="w-full h-12 rounded-[12px] border-2 border-[#1D9E75] text-[#1D9E75] bg-white flex items-center justify-center gap-2 font-bold cursor-pointer active:bg-gray-50 transition-colors"
+                  >
+                    <Video size={20} /> Join Video Session
+                  </button>
+                  <p className="text-[11px] text-[#9CA3AF] text-center">Link will be active 10 minutes before the session.</p>
+                </div>
+              )
             ) : (
-              <div className="space-y-2">
-                <button
-                  onClick={() => window.open(session.meeting_url!, '_blank')}
-                  className="w-full h-12 rounded-[12px] border-2 border-[#1D9E75] text-[#1D9E75] bg-white flex items-center justify-center gap-2 font-bold cursor-pointer active:bg-gray-50 transition-colors"
-                >
-                  <Video size={20} /> Join Video Session
-                </button>
-                <p className="text-[11px] text-[#9CA3AF] text-center">Link will be active 10 minutes before the session.</p>
+              /* video session but no usable meeting_url yet */
+              <div className="bg-gray-50 border border-gray-200 rounded-[12px] p-4 text-center">
+                <p className="text-[13px] text-[#6B7280] font-medium">Meeting link will be added by your trainer</p>
               </div>
             )
-          ) : session.session_type === 'video' ? (
-            /* video session but no meeting_url yet — show muted placeholder */
-            <div className="space-y-2">
-              <button disabled className="w-full h-12 rounded-[12px] border-2 border-gray-200 text-gray-400 bg-gray-50 flex items-center justify-center gap-2 font-bold opacity-40">
-                <Video size={20} /> Meet link not yet set
-              </button>
-              <p className="text-[11px] text-[#9CA3AF] text-center">Your trainer will add the link before the session.</p>
+          ) : session.session_type === 'in-person' ? (
+            /* ── In-person session ─────────────────────────────────────────── */
+            session.location ? (
+              <div className="space-y-2">
+                <div className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 flex items-start gap-2">
+                  <MapPin size={18} className="text-[#1D9E75] shrink-0 mt-0.5" />
+                  <p className="text-[14px] text-[#111827] leading-relaxed">{session.location}</p>
+                </div>
+                <button
+                  onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(session.location!)}`, '_blank')}
+                  className="w-full h-12 rounded-[12px] border-2 border-[#1D9E75] text-[#1D9E75] bg-white flex items-center justify-center gap-2 font-bold cursor-pointer active:bg-gray-50 transition-colors"
+                >
+                  <Navigation size={20} /> Get Directions
+                </button>
+              </div>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-[12px] p-4 text-center">
+                <p className="text-[13px] text-[#6B7280] font-medium">Location will be added by your trainer</p>
+              </div>
+            )
+          ) : session.session_type === 'phone' ? (
+            /* ── Phone session ─────────────────────────────────────────────── */
+            <div className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 flex items-start gap-2">
+              <Phone size={18} className="text-[#1D9E75] shrink-0 mt-0.5" />
+              <p className="text-[14px] text-[#111827] leading-relaxed">
+                Your trainer will call you at your registered number
+              </p>
             </div>
           ) : (
-            /* phone or in-person — hide meeting link section entirely */
             null
           )}
         </section>}

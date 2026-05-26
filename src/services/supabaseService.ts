@@ -661,6 +661,7 @@ export interface ScheduleSessionOptions {
   sessionType: string;               // 'video' | 'in-person' | 'phone'
   durationMinutes: number;
   meetingUrl?: string | null;
+  location?: string | null;          // physical address for in-person sessions
   trainerNote?: string | null;
   isRecurring: boolean;
   recurrenceFrequency?: string | null; // 'daily' | 'weekly' | 'twice_a_week'
@@ -703,6 +704,7 @@ export const scheduleSession = async (
     session_type:         options.sessionType,
     duration_minutes:     options.durationMinutes,
     meeting_url:          options.meetingUrl ?? null,
+    location:             options.location ?? null,
     trainer_note:         options.trainerNote ?? null,
     is_recurring:         options.isRecurring,
     recurrence_frequency: options.isRecurring ? (options.recurrenceFrequency ?? null) : null,
@@ -1772,6 +1774,7 @@ export const getTodaySession = async (clientId: string): Promise<ClientSession |
       session_type,
       duration_minutes,
       meeting_url,
+      location,
       status,
       trainer_note,
       trainer:profiles!sessions_trainer_id_fkey ( full_name )
@@ -1793,6 +1796,7 @@ export const getTodaySession = async (clientId: string): Promise<ClientSession |
     session_type: string;
     duration_minutes: number;
     meeting_url: string | null;
+    location: string | null;
     status: string;
     trainer_note: string | null;
     trainer: { full_name: string } | null;
@@ -1804,6 +1808,7 @@ export const getTodaySession = async (clientId: string): Promise<ClientSession |
     session_type:     row.session_type,
     duration_minutes: row.duration_minutes,
     meeting_url:      row.meeting_url ?? null,
+    location:         row.location ?? null,
     status:           row.status,
     trainer_note:     row.trainer_note ?? null,
     trainer_name:     row.trainer?.full_name ?? 'Your trainer',
@@ -1824,6 +1829,7 @@ export const getSessionDetail = async (sessionId: string): Promise<ClientSession
       session_type,
       duration_minutes,
       meeting_url,
+      location,
       status,
       trainer_note,
       trainer:profiles!sessions_trainer_id_fkey ( full_name )
@@ -1840,6 +1846,7 @@ export const getSessionDetail = async (sessionId: string): Promise<ClientSession
     session_type: string;
     duration_minutes: number;
     meeting_url: string | null;
+    location: string | null;
     status: string;
     trainer_note: string | null;
     trainer: { full_name: string } | null;
@@ -1851,6 +1858,7 @@ export const getSessionDetail = async (sessionId: string): Promise<ClientSession
     session_type:     row.session_type,
     duration_minutes: row.duration_minutes,
     meeting_url:      row.meeting_url ?? null,
+    location:         row.location ?? null,
     status:           row.status,
     trainer_note:     row.trainer_note ?? null,
     trainer_name:     row.trainer?.full_name ?? 'Your trainer',
@@ -1873,6 +1881,7 @@ export const getUpcomingSessions = async (clientId: string): Promise<ClientSessi
       session_type,
       duration_minutes,
       meeting_url,
+      location,
       status,
       trainer_note,
       trainer:profiles!sessions_trainer_id_fkey ( full_name )
@@ -1892,6 +1901,7 @@ export const getUpcomingSessions = async (clientId: string): Promise<ClientSessi
     session_type: string;
     duration_minutes: number;
     meeting_url: string | null;
+    location: string | null;
     status: string;
     trainer_note: string | null;
     trainer: { full_name: string } | null;
@@ -1903,6 +1913,7 @@ export const getUpcomingSessions = async (clientId: string): Promise<ClientSessi
     session_type:     row.session_type,
     duration_minutes: row.duration_minutes,
     meeting_url:      row.meeting_url ?? null,
+    location:         row.location ?? null,
     status:           row.status,
     trainer_note:     row.trainer_note ?? null,
     trainer_name:     row.trainer?.full_name ?? 'Your trainer',
@@ -2047,7 +2058,7 @@ export const getClientSessions = async (
 ): Promise<TrainerClientSession[]> => {
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, scheduled_at, session_type, duration_minutes, status, meeting_url, trainer_note')
+    .select('id, scheduled_at, session_type, duration_minutes, status, meeting_url, location, trainer_note')
     .eq('client_id', clientId)
     .eq('trainer_id', trainerId)
     .gte('scheduled_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
@@ -2064,6 +2075,7 @@ export const getClientSessions = async (
     duration_minutes: row.duration_minutes,
     status:           row.status,
     meeting_url:      row.meeting_url ?? null,
+    location:         row.location ?? null,
     trainer_note:     row.trainer_note ?? null,
   }));
 };

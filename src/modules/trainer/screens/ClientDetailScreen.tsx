@@ -441,6 +441,25 @@ export default function ClientDetailScreen() {
             <p style={{ fontSize: 12, color: '#6B7280', margin: '2px 0 0' }}>
               {SESSION_TYPE_LABEL[session.session_type] ?? session.session_type} · {session.duration_minutes} min
             </p>
+            {/* Type-specific detail — link / address / phone */}
+            <p
+              style={{
+                fontSize: 11,
+                color: session.session_type === 'phone' ? '#6B7280'
+                  : (session.session_type === 'video' ? session.meeting_url : session.location)
+                    ? '#6B7280' : '#9CA3AF',
+                margin: '2px 0 0',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {session.session_type === 'video'
+                ? (session.meeting_url || 'No link added')
+                : session.session_type === 'in-person'
+                  ? (session.location || 'No location added')
+                  : 'Phone call'}
+            </p>
           </div>
 
           {/* Right side — status-dependent action */}

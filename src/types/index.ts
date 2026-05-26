@@ -17,6 +17,7 @@ export interface ClientSession {
   session_type: string;              // 'video' | 'in-person' | 'phone'
   duration_minutes: number;
   meeting_url: string | null;
+  location: string | null;           // physical address for in-person sessions
   status: string;                    // 'scheduled' | 'completed' | 'cancelled'
   trainer_note: string | null;
   trainer_name: string;
@@ -336,6 +337,7 @@ export interface TrainerClientSession {
   duration_minutes: number;
   status: string;             // 'scheduled' | 'completed' | 'cancelled'
   meeting_url: string | null;
+  location: string | null;    // physical address for in-person sessions
   trainer_note: string | null;
 }
 

@@ -119,7 +119,7 @@ export default function ScheduleSessionScreen() {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('09:00');
   const [sessionType, setSessionType] = useState<SessionType>('video');
-  const [locationNote, setLocationNote] = useState('');
+  const [location, setLocation] = useState('');
   const [duration, setDuration] = useState('60');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('weekly');
@@ -168,7 +168,8 @@ export default function ScheduleSessionScreen() {
       scheduledAt:          scheduledAtISO,
       sessionType:          sessionType,
       durationMinutes:      parseInt(duration, 10),
-      meetingUrl:           meetingLink.trim() || null,
+      meetingUrl:           sessionType === 'video' ? meetingLink.trim() || null : null,
+      location:             sessionType === 'in-person' ? location.trim() || null : null,
       trainerNote:          null, // trainer adds notes separately after session creation
       isRecurring:          isRecurring,
       recurrenceFrequency:  isRecurring ? dbFrequency : null,
@@ -310,12 +311,12 @@ export default function ScheduleSessionScreen() {
               )}
               {sessionType === 'in-person' && (
                 <div>
-                  <label className="block text-[12px] font-medium text-gray-600 mb-1">Location Note</label>
+                  <label className="block text-[12px] font-medium text-gray-600 mb-1">Session Address</label>
                   <input
                     type="text"
-                    value={locationNote}
-                    onChange={e => setLocationNote(e.target.value)}
-                    placeholder="e.g. Studio 2, Ground Floor, Nungambakkam"
+                    value={location}
+                    onChange={e => setLocation(e.target.value)}
+                    placeholder="e.g. 42 Anna Salai, Chennai 600002"
                     className="w-full rounded-xl border border-gray-200 p-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                   <p className="text-[11px] text-gray-400 mt-1">Shown to client in session details</p>
