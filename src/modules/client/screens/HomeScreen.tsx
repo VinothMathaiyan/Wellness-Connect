@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect, type ComponentType } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Users, BarChart3, MessageSquare, Bell, BarChart2, Phone, MapPin, Video, LogOut } from 'lucide-react';
+import { Home, Users, BarChart3, MessageSquare, Bell, BarChart2, Phone, MapPin, Video } from 'lucide-react';
 import type { ClientSession, WeeklyReportStatus } from '../../../types';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '../../../components/ProfileMenu';
 import { formatDateLong } from '@/utils/dateUtils';
 
 
@@ -220,8 +221,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { getUserProfile } from '../../../services/supabaseService';
 export default function HomeScreen() {
   const navigate = useNavigate();
-  const { appState, userId, workoutProgress, logout } = useWellness();
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const { appState, userId, workoutProgress } = useWellness();
 
   // ── Live Supabase state ────────────────────────────────────────────────────
   const [readinessScore,    setReadinessScore]    = useState<number | null>(null);
@@ -329,7 +329,6 @@ export default function HomeScreen() {
   const todayRef = useRef<HTMLDivElement>(null);
 
   const firstName = (displayName || 'User').split(' ')[0];
-  const initial = firstName[0].toUpperCase();
   const habitsDone = checkinStatus.done;
   const habitsTotal = checkinStatus.total;
   const mealsLogged = mealsLoggedLive;
@@ -343,12 +342,6 @@ export default function HomeScreen() {
     console.log(`Phase 10: Last Session Adherence - ${lastSessionAdherence}%`);
   }
 
-  const handleLogout = async () => {
-    setShowProfileMenu(false);
-    await logout();
-    navigate('/', { replace: true });
-  };
-
   return (
     <MobileShell>
 
@@ -357,70 +350,8 @@ export default function HomeScreen() {
           <div className="w-[36px]" />
           <h1 className="text-[16px] font-bold text-[#111827]">WellnessConnect</h1>
 
-          {/* Avatar — tap to open profile / logout menu */}
-          <div className="relative">
-            <button
-              onClick={() => setShowProfileMenu(prev => !prev)}
-              className="w-[36px] h-[36px] rounded-full bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-bold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors"
-              aria-label="Profile menu"
-            >
-              {initial}
-            </button>
-
-            <AnimatePresence>
-              {showProfileMenu && (
-                <>
-                  {/* Backdrop — closes menu on outside tap */}
-                  <div
-                    onClick={() => setShowProfileMenu(false)}
-                    style={{
-                      position: 'fixed',
-                      inset: 0,
-                      zIndex: 99,
-                      backgroundColor: 'transparent',
-                    }}
-                  />
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                    transition={{ duration: 0.12 }}
-                    style={{
-                      position: 'fixed',
-                      top: '60px',
-                      right: '16px',
-                      zIndex: 100,
-                      backgroundColor: '#ffffff',
-                      borderRadius: '12px',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                      minWidth: '200px',
-                      overflow: 'hidden',
-                      border: '1px solid #E5E7EB',
-                    }}
-                  >
-                    {/* Name row */}
-                    <div className="px-4 py-3 border-b border-gray-100">
-                      <p className="text-[13px] font-semibold text-[#111827] truncate">
-                        {displayName || 'My Account'}
-                      </p>
-                      <p className="text-[11px] text-[#6B7280] mt-0.5">Client</p>
-                    </div>
-
-                    {/* Log out */}
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2.5 px-4 py-3 text-left active:bg-red-50 transition-colors"
-                    >
-                      <LogOut size={15} style={{ color: '#DC2626', flexShrink: 0 }} />
-                      <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>
-                        Log out
-                      </span>
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-          </div>
+          {/* Avatar + profile menu — shared component */}
+          <ProfileMenu />
         </header>
 
         {/* Scrollable Content */}

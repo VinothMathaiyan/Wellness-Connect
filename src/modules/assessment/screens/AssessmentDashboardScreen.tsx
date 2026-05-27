@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, Users, ShieldAlert, FileCheck, CalendarClock, AlertTriangle, LogOut } from 'lucide-react';
+import { ChevronRight, Users, ShieldAlert, FileCheck, CalendarClock, AlertTriangle } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '../../../components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { 
@@ -21,28 +21,7 @@ function getGreeting(): string {
 
 export default function AssessmentDashboardScreen() {
   const navigate = useNavigate();
-  const { userId, appState, logout } = useWellness();
-
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
-
-  // Close the profile menu when clicking/tapping outside of it.
-  useEffect(() => {
-    if (!showProfileMenu) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
-        setShowProfileMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showProfileMenu]);
-
-  const handleLogout = async () => {
-    setShowProfileMenu(false);
-    await logout();
-    navigate('/signup', { replace: true });
-  };
+  const { userId, appState } = useWellness();
 
   const [stats, setStats] = useState({
     newClientCount: 0,
@@ -101,12 +80,6 @@ export default function AssessmentDashboardScreen() {
   }, [userId]);
 
   const firstName = appState.full_name?.split(' ')[0] || 'Assessor';
-  const initials = appState.full_name
-    ?.split(' ')
-    .map(n => n[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase() || 'AS';
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -132,63 +105,8 @@ export default function AssessmentDashboardScreen() {
               <h1 className="text-2xl font-bold mb-1">{getGreeting()}, {firstName} 👋</h1>
               <p className="text-white/80 text-sm font-medium">Assessment Command Center</p>
             </div>
-            {/* Avatar — tap to open profile menu */}
-            <div className="relative" ref={profileMenuRef}>
-              <button
-                onClick={() => setShowProfileMenu(prev => !prev)}
-                aria-label="Profile menu"
-                className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm border border-white/30 text-white font-bold text-lg shadow-sm active:opacity-80 transition-opacity"
-              >
-                {initials}
-              </button>
-
-              <AnimatePresence>
-                {showProfileMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                    transition={{ duration: 0.12 }}
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      zIndex: 1000,
-                      marginTop: '8px',
-                      background: '#ffffff',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '12px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                      minWidth: '200px',
-                      padding: '8px 0',
-                    }}
-                  >
-                    {/* Name + role */}
-                    <div style={{ padding: '4px 16px 8px' }}>
-                      <p className="truncate" style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>
-                        {appState.full_name || 'Assessment Team'}
-                      </p>
-                      <p style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Assessor</p>
-                    </div>
-
-                    {/* Divider */}
-                    <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '4px 0' }} />
-
-                    {/* Sign out button */}
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2.5 transition-colors hover:bg-[#fef2f2]"
-                      style={{ padding: '8px 16px', textAlign: 'left' }}
-                    >
-                      <LogOut size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
-                      <span style={{ color: '#ef4444', fontSize: 14, fontWeight: 600 }}>
-                        Sign Out
-                      </span>
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            {/* Avatar + profile menu — shared component */}
+            <ProfileMenu variant="dark" initialsCount={2} logoutRedirect="/signup" logoutLabel="Sign Out" />
           </div>
         </div>
 

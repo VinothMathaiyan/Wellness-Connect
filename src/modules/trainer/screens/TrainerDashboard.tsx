@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
 
@@ -17,12 +17,12 @@ import {
   Clock,
   ArrowUpRight,
   Zap,
-  LogOut,
   Phone,
   X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '../../../components/ProfileMenu';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import {
@@ -42,11 +42,9 @@ import type { WeeklyCheckinRow } from '../../../services/supabaseService';
 
 export default function TrainerDashboard() {
   const navigate = useNavigate();
-  const { userId, logout } = useWellness();
+  const { userId } = useWellness();
 
   const [trainerName, setTrainerName] = useState('Trainer');
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [trainerAvatarSrc, setTrainerAvatarSrc] = useState<string | null>(null);
   const [clientCount, setClientCount] = useState(0);
   const [pendingClientsCount, setPendingClientsCount] = useState(0);
@@ -92,12 +90,6 @@ export default function TrainerDashboard() {
       };
     });
   })();
-
-  const handleLogout = async () => {
-    setShowProfileMenu(false);
-    await logout();
-    navigate('/', { replace: true });
-  };
 
   const refreshUnreadCount = async () => {
     if (!userId) return;
@@ -210,80 +202,8 @@ export default function TrainerDashboard() {
               <span className="text-white font-bold text-[15px] tracking-tight">WellnessConnect</span>
             </div>
             <div className="flex items-center gap-2.5">
-              {/* Avatar — tap to open profile menu */}
-              <div className="relative" ref={profileMenuRef}>
-                <button
-                  onClick={() => setShowProfileMenu(prev => !prev)}
-                  className="w-9 h-9 rounded-full overflow-hidden border-2 border-white/30 bg-white/20 flex items-center justify-center active:opacity-80 transition-opacity"
-                  aria-label="Profile menu"
-                >
-                  {trainerAvatarSrc ? (
-                    <img
-                      src={trainerAvatarSrc}
-                      alt={trainerName}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '15px' }}>
-                      {trainerName.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                </button>
-
-                {/* Backdrop — closes menu on outside tap */}
-                <AnimatePresence>
-                  {showProfileMenu && (
-                    <>
-                      <div
-                        onClick={() => setShowProfileMenu(false)}
-                        style={{
-                          position: 'fixed',
-                          inset: 0,
-                          zIndex: 99,
-                          backgroundColor: 'transparent',
-                        }}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                        transition={{ duration: 0.12 }}
-                        style={{
-                          position: 'fixed',
-                          top: '60px',
-                          right: '16px',
-                          zIndex: 100,
-                          backgroundColor: '#ffffff',
-                          borderRadius: '12px',
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                          minWidth: '200px',
-                          overflow: 'hidden',
-                          border: '1px solid #E5E7EB',
-                        }}
-                      >
-                        {/* Trainer name row */}
-                        <div className="px-4 py-3 border-b border-gray-100">
-                          <p className="text-[13px] font-semibold text-[#111827] truncate">
-                            {trainerName}
-                          </p>
-                          <p className="text-[11px] text-[#6B7280] mt-0.5">Trainer</p>
-                        </div>
-
-                        {/* Log out button */}
-                        <button
-                          onClick={handleLogout}
-                          className="w-full flex items-center gap-2.5 px-4 py-3 text-left active:bg-red-50 transition-colors"
-                        >
-                          <LogOut size={15} style={{ color: '#DC2626', flexShrink: 0 }} />
-                          <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>
-                            Log out
-                          </span>
-                        </button>
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
+              {/* Avatar + profile menu — shared component */}
+              <ProfileMenu variant="dark" avatarSrc={trainerAvatarSrc} />
             </div>
           </div>
 
