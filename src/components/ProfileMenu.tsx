@@ -23,7 +23,27 @@ const ROLE_LABELS: Record<string, string> = {
   assessor: 'Assessor',
 };
 
-export default function ProfileMenu() {
+interface ProfileMenuProps {
+  /** Render this image as the avatar instead of the text initial (e.g. trainer's uploaded photo). */
+  avatarSrc?: string | null;
+  /** Avatar trigger styling. 'light' (default) = green-bordered white circle for light headers;
+   *  'dark' = translucent white circle for colored/gradient headers. */
+  variant?: 'light' | 'dark';
+  /** Where to navigate after logout. Defaults to '/'. */
+  logoutRedirect?: string;
+  /** Logout button label. Defaults to 'Log out'. */
+  logoutLabel?: string;
+  /** Number of initials to show when no avatarSrc is given. Defaults to 1. */
+  initialsCount?: 1 | 2;
+}
+
+export default function ProfileMenu({
+  avatarSrc,
+  variant = 'light',
+  logoutRedirect = '/',
+  logoutLabel = 'Log out',
+  initialsCount = 1,
+}: ProfileMenuProps = {}) {
   const navigate = useNavigate();
   const { appState, userId, userRole, logout } = useWellness();
   const [open, setOpen] = useState(false);
@@ -46,13 +66,16 @@ export default function ProfileMenu() {
   }, [userId]);
 
   const displayName = name || appState.full_name || 'My Account';
-  const initial = (name || appState.full_name || 'User').charAt(0).toUpperCase();
+  const baseName = name || appState.full_name || 'User';
+  const initial = initialsCount === 2
+    ? baseName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+    : baseName.charAt(0).toUpperCase();
   const roleLabel = userRole ? ROLE_LABELS[userRole] : 'Account';
 
   const handleLogout = async () => {
     setOpen(false);
     await logout();
-    navigate('/', { replace: true });
+    navigate(logoutRedirect, { replace: true });
   };
 
   // Assessors have no profile edit screen, so the row is hidden for them.
@@ -64,8 +87,6 @@ export default function ProfileMenu() {
     : userRole === 'assessor' ? null
     : '/onboarding/profile';
 
-  console.log('[ProfileMenu] userRole:', userRole, 'editProfilePath:', editProfilePath);
-
   const handleEditProfile = () => {
     if (!editProfilePath) return;
     setOpen(false);
@@ -76,10 +97,18 @@ export default function ProfileMenu() {
     <div className="relative">
       <button
         onClick={() => setOpen(prev => !prev)}
-        className="w-[36px] h-[36px] rounded-full bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-bold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors"
+        className={
+          variant === 'dark'
+            ? 'w-[36px] h-[36px] rounded-full overflow-hidden bg-white/20 border border-white/30 backdrop-blur-sm flex items-center justify-center text-[14px] font-bold text-white active:opacity-80 transition-opacity'
+            : 'w-[36px] h-[36px] rounded-full overflow-hidden bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-bold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors'
+        }
         aria-label="Profile menu"
       >
-        {initial}
+        {avatarSrc ? (
+          <img src={avatarSrc} alt={displayName} className="w-full h-full object-cover" />
+        ) : (
+          initial
+        )}
       </button>
 
       <AnimatePresence>
@@ -133,7 +162,7 @@ export default function ProfileMenu() {
                 className="w-full flex items-center gap-2.5 px-4 py-3 text-left active:bg-red-50 transition-colors"
               >
                 <LogOut size={15} style={{ color: '#DC2626', flexShrink: 0 }} />
-                <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>Log out</span>
+                <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>{logoutLabel}</span>
               </button>
             </motion.div>
           </>
