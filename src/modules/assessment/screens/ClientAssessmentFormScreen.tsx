@@ -14,6 +14,7 @@ import {
   getScoredTrainerRecommendations,
   getAssessmentRecommendations,
   saveAssessmentRecommendations,
+  triggerRecommendationsAfterAssessment,
 } from '../../../services/supabaseService';
 
 // ── Option constants ────────────────────────────────────────────────────────────
@@ -553,6 +554,14 @@ export default function ClientAssessmentFormScreen() {
         clearance_status:       status,
       });
       if (!result.success) throw new Error(result.error ?? 'Could not save decision.');
+
+      // Trigger the recommendation engine for cleared/conditional clients (non-fatal)
+      if (status === 'cleared' || status === 'conditional') {
+        triggerRecommendationsAfterAssessment(clientId).catch(err =>
+          console.warn('handleClearance: engine trigger failed (non-fatal):', err),
+        );
+      }
+
       navigate('/assessment/clients/queue');
     } catch (err: unknown) {
       setDecisionError(err instanceof Error ? err.message : 'Could not save decision.');

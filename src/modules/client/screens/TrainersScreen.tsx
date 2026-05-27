@@ -19,6 +19,7 @@ import {
     MessageSquare,
     Bell,
     MapPin,
+    Clock,
 } from 'lucide-react';
 import type { TrainerProfile, User } from '../../../types';
 import TrainerDetailSubScreen from './TrainerDetailSubScreen';
@@ -37,7 +38,10 @@ import {
   getRecommendedTrainers,
   getExpertPickedTrainers,
   getAssessmentRecommendations,
+  getClientRecommendations,
+  getClientPendingTrainerLinks,
 } from '../../../services/supabaseService';
+import type { ClientRecommendation } from '../../../services/supabaseService';
 
 export default function TrainersScreen() {
   const navigate = useNavigate();
@@ -57,6 +61,13 @@ export default function TrainersScreen() {
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError,   setRecsError]   = useState(false);
 
+  // ── Engine + manual recommendations (Discover tab) ──────────────────────────
+  const [engineRecs, setEngineRecs] = useState<ClientRecommendation[]>([]);
+  const [manualRecs, setManualRecs] = useState<{ trainer_id: string; trainer: TrainerProfile }[]>([]);
+
+  // ── Requested tab state ─────────────────────────────────────────────────────
+  const [pendingLinks, setPendingLinks] = useState<{ trainer_id: string; trainer_name: string; created_at: string }[]>([]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -67,11 +78,13 @@ export default function TrainersScreen() {
       getTrainerProfiles(),
       userId ? getClientActiveTrainerIds(userId) : Promise.resolve([]),
       userId ? getAssessmentRecommendations(userId) : Promise.resolve([]),
-    ]).then(([profiles, activeIds, recIds]) => {
+      userId ? getClientPendingTrainerLinks(userId) : Promise.resolve([]),
+    ]).then(([profiles, activeIds, recIds, pending]) => {
       if (cancelled) return;
       setTrainers(profiles);
       setActiveTrainerIds(activeIds);
       setAssessmentRecIds(recIds);
+      setPendingLinks(pending);
     }).catch(err => {
       console.error('TrainersScreen fetch:', err);
       if (!cancelled) setFetchError(true);
@@ -82,7 +95,7 @@ export default function TrainersScreen() {
     return () => { cancelled = true; };
   }, [userId]);
 
-  // Fetch recommendations
+  // Fetch recommendations (My Trainer + Discover)
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
@@ -92,10 +105,13 @@ export default function TrainersScreen() {
     Promise.all([
       getRecommendedTrainers(userId),
       getExpertPickedTrainers(),
-    ]).then(([recs, experts]) => {
+      getClientRecommendations(userId),
+    ]).then(([recs, experts, clientRecs]) => {
       if (cancelled) return;
       setRecommended(recs);
       setExpertPicks(experts);
+      setEngineRecs(clientRecs.engineRecs);
+      setManualRecs(clientRecs.manualRecs);
     }).catch(err => {
       console.error('TrainersScreen recommendations fetch:', err);
       if (!cancelled) setRecsError(true);
@@ -107,7 +123,7 @@ export default function TrainersScreen() {
   }, [userId]);
 
 
-  const [activeTab,         setActiveTab]         = useState<'my' | 'discover'>('my');
+  const [activeTab,         setActiveTab]         = useState<'my' | 'discover' | 'requested'>('my');
   const [searchQuery,       setSearchQuery]       = useState('');
   const [selectedCategory,  setSelectedCategory]  = useState('All');
 
@@ -127,7 +143,11 @@ export default function TrainersScreen() {
     [recommended],
   );
 
-  // Discover list: exclude trainers shown in Recommended For You
+  // Engine + manual rec IDs for deduplication in Discover "All Trainers"
+  const engineRecIds = useMemo(() => new Set(engineRecs.map(r => r.trainer_id)), [engineRecs]);
+  const manualRecIds = useMemo(() => new Set(manualRecs.map(r => r.trainer_id)), [manualRecs]);
+
+  // Discover list: exclude trainers shown in Recommended For You (My Trainer tab)
   const filteredTrainers = useMemo(() => {
     const deduped = trainers.filter(t => !recommendedIds.has(t.id));
     return deduped.filter(t => {
@@ -138,23 +158,17 @@ export default function TrainersScreen() {
     });
   }, [trainers, recommendedIds, searchQuery, selectedCategory]);
 
+  // "All Trainers" in Discover: exclude engine + manual rec trainers + assessment recs
+  const allOtherTrainers = useMemo(
+    () => filteredTrainers.filter(t =>
+      !engineRecIds.has(t.id) && !manualRecIds.has(t.id) && !assessmentRecIds.includes(t.id),
+    ),
+    [filteredTrainers, engineRecIds, manualRecIds, assessmentRecIds],
+  );
+
   const anyExcluded = useMemo(
     () => trainers.some(t => recommendedIds.has(t.id)),
     [trainers, recommendedIds],
-  );
-
-  // Discover split: assessment-team recommendations (ordered by display_order)
-  // vs all other trainers. Recommendations respect the active search/category.
-  const assessmentRecommendedTrainers = useMemo(
-    () => assessmentRecIds
-      .map(id => filteredTrainers.find(t => t.id === id))
-      .filter((t): t is User => !!t),
-    [assessmentRecIds, filteredTrainers],
-  );
-
-  const otherTrainers = useMemo(
-    () => filteredTrainers.filter(t => !assessmentRecIds.includes(t.id)),
-    [filteredTrainers, assessmentRecIds],
   );
 
   const toTrainerProfile = (t: User): TrainerProfile => ({
@@ -177,17 +191,26 @@ export default function TrainersScreen() {
     setShowGoalApproval(true);
   }, []);
 
+  // Format "3 days ago" for Requested tab
+  const timeAgo = (isoDate: string) => {
+    const diff = Date.now() - new Date(isoDate).getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    return `${days} days ago`;
+  };
+
 
   return (
     <div className="max-w-md mx-auto w-full min-h-screen bg-gray-50 flex flex-col relative shadow-xl overflow-hidden">
       {/* Header */}
       <header className="pt-6 px-4 pb-2 bg-white flex flex-col z-20 shrink-0">
         <div className="flex items-center justify-between mb-4 px-2">
-          <h1 className="text-[20px] font-bold text-gray-900">Trainers & Experts</h1>
+          <h1 className="text-[20px] font-bold text-gray-900">Trainers &amp; Experts</h1>
           <ProfileMenu />
         </div>
 
-        {/* Tabs */}
+        {/* Tabs — 3 tabs */}
         <div className="flex bg-gray-100/50 p-1 rounded-xl w-full">
           <button
             onClick={() => setActiveTab('my')}
@@ -200,6 +223,20 @@ export default function TrainersScreen() {
             className={`flex-1 py-2 text-[13px] font-bold rounded-lg transition-all relative ${activeTab === 'discover' ? 'text-[#1D9E75] bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
             Discover
+          </button>
+          <button
+            onClick={() => setActiveTab('requested')}
+            className={`flex-1 py-2 text-[13px] font-bold rounded-lg transition-all relative ${activeTab === 'requested' ? 'text-[#1D9E75] bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Requested
+            {pendingLinks.length > 0 && (
+              <span
+                className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-bold"
+                style={{ backgroundColor: '#F59E0B', color: '#ffffff' }}
+              >
+                {pendingLinks.length}
+              </span>
+            )}
           </button>
         </div>
       </header>
@@ -236,6 +273,7 @@ export default function TrainersScreen() {
         )}
 
         <AnimatePresence mode="wait">
+          {/* ════════════════ MY TRAINER TAB ════════════════ */}
           {!loading && !fetchError && activeTab === 'my' ? (
             <motion.div
               key="my-trainer"
@@ -378,7 +416,9 @@ export default function TrainersScreen() {
                 </div>
               )}
             </motion.div>
-          ) : !loading && !fetchError ? (
+
+          /* ════════════════ DISCOVER TAB ════════════════ */
+          ) : !loading && !fetchError && activeTab === 'discover' ? (
             <motion.div
               key="discover"
               initial={{ opacity: 0, x: 10 }}
@@ -428,62 +468,213 @@ export default function TrainersScreen() {
                 </p>
               )}
 
-              {/* List of trainers — View Profile only */}
-              {filteredTrainers.length > 0 ? (
-                <div className="space-y-5 pt-1">
-
-                  {/* ── Recommended by Assessment Team ── */}
-                  {assessmentRecommendedTrainers.length > 0 && (
-                    <div>
-                      <h2 className="text-[16px] font-bold" style={{ color: '#B45309' }}>
-                        ⭐ Recommended by Assessment Team
-                      </h2>
-                      <p className="mb-3" style={{ fontSize: '12px', color: '#6B7280' }}>
-                        Selected specifically for your health profile
-                      </p>
-                      <div className="space-y-3">
-                        {assessmentRecommendedTrainers.map((t) => (
-                          <div key={t.id} className="relative">
-                            <div
-                              className="absolute top-3 right-3 z-10 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm"
-                              style={{ backgroundColor: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D' }}
-                            >
-                              Recommended ✓
-                            </div>
-                            <TrainerRecommendationCard
-                              trainer={toTrainerProfile(t)}
-                              onViewProfile={() => setSelectedTrainerDetail(t)}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── All Trainers ── */}
-                  {otherTrainers.length > 0 && (
-                    <div>
-                      {assessmentRecommendedTrainers.length > 0 && (
-                        <>
-                          <div className="border-t border-gray-200 mb-3" />
-                          <h2 className="text-[16px] font-bold text-gray-900 mb-3">All Trainers</h2>
-                        </>
-                      )}
-                      <div className="space-y-3">
-                        {otherTrainers.map((t) => (
-                          <TrainerRecommendationCard
-                            key={t.id}
-                            trainer={toTrainerProfile(t)}
-                            onViewProfile={() => setSelectedTrainerDetail(t)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              {/* ── Empty state: no recommendations at all ── */}
+              {manualRecs.length === 0 && engineRecs.length === 0 && !recsLoading && (
+                <div
+                  className="rounded-2xl p-4 flex items-start gap-3"
+                  style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}
+                >
+                  <span className="text-xl leading-none mt-0.5">💡</span>
+                  <div className="flex-1">
+                    <p className="text-[13px] font-bold" style={{ color: '#92400E' }}>
+                      Complete your assessment to get personalised trainer recommendations
+                    </p>
+                    <p className="text-[12px] mt-1" style={{ color: '#B45309' }}>
+                      Our team will match you with the best trainers based on your health profile and goals.
+                    </p>
+                  </div>
                 </div>
-              ) : (
+              )}
+
+              {/* ── SECTION 1: Recommended by Care Team ── */}
+              {manualRecs.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-[16px] font-bold" style={{ color: '#B45309' }}>
+                      ⭐ Recommended by Care Team
+                    </h2>
+                  </div>
+                  <p className="mb-3" style={{ fontSize: '12px', color: '#6B7280' }}>
+                    Selected specifically for your health profile by our assessment team
+                  </p>
+                  <div className="space-y-3">
+                    {manualRecs.map((rec) => (
+                      <div key={rec.trainer_id} className="relative">
+                        <div
+                          className="absolute top-3 right-3 z-10 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm"
+                          style={{ backgroundColor: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D' }}
+                        >
+                          Recommended by Care Team ✓
+                        </div>
+                        <TrainerRecommendationCard
+                          trainer={rec.trainer}
+                          onViewProfile={() => {
+                            const u = trainers.find(t => t.id === rec.trainer_id);
+                            if (u) setSelectedTrainerDetail(u);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── SECTION 2: Recommended For You (Engine) ── */}
+              {engineRecs.length > 0 && (
+                <div>
+                  {manualRecs.length > 0 && <div className="border-t border-gray-200 mb-3" />}
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-[16px] font-bold" style={{ color: '#0D9488' }}>
+                      🎯 Recommended For You
+                    </h2>
+                  </div>
+                  <p className="mb-3" style={{ fontSize: '12px', color: '#6B7280' }}>
+                    Matched based on your goals, preferences and health profile
+                  </p>
+                  <div className="space-y-3">
+                    {engineRecs.map((rec) => (
+                      <div key={rec.trainer_id} className="relative">
+                        {/* Match score pill */}
+                        <div
+                          className="absolute top-3 right-3 z-10 text-[11px] font-bold px-2.5 py-1 rounded-full shadow-sm"
+                          style={{ backgroundColor: '#F0FDFA', color: '#0D9488', border: '1px solid #5EEAD4' }}
+                        >
+                          {rec.score}% match
+                        </div>
+                        <TrainerRecommendationCard
+                          trainer={rec.trainer}
+                          onViewProfile={() => {
+                            const u = trainers.find(t => t.id === rec.trainer_id);
+                            if (u) setSelectedTrainerDetail(u);
+                          }}
+                        />
+                        {/* Reason tags */}
+                        {rec.reasons.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 px-4 -mt-2 pb-3">
+                            {rec.reasons.map((reason, i) => (
+                              <span
+                                key={i}
+                                className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                                style={{ backgroundColor: '#F3F4F6', color: '#6B7280' }}
+                              >
+                                {reason}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── SECTION 3: All Trainers ── */}
+              {allOtherTrainers.length > 0 && (
+                <div>
+                  {(manualRecs.length > 0 || engineRecs.length > 0) && (
+                    <div className="border-t border-gray-200 mb-3" />
+                  )}
+                  <h2 className="text-[16px] font-bold text-gray-900 mb-3">All Trainers</h2>
+                  <div className="space-y-3">
+                    {allOtherTrainers.map((t) => (
+                      <TrainerRecommendationCard
+                        key={t.id}
+                        trainer={toTrainerProfile(t)}
+                        onViewProfile={() => setSelectedTrainerDetail(t)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* No results for search/filter */}
+              {filteredTrainers.length === 0 && manualRecs.length === 0 && engineRecs.length === 0 && (
                 <div className="py-12 text-center">
                   <p className="text-gray-500 font-medium text-[14px]">No experts found matching your criteria.</p>
+                </div>
+              )}
+            </motion.div>
+
+          /* ════════════════ REQUESTED TAB ════════════════ */
+          ) : !loading && !fetchError && activeTab === 'requested' ? (
+            <motion.div
+              key="requested"
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.2 }}
+              className="p-4 space-y-3"
+            >
+              {pendingLinks.length > 0 ? (
+                <>
+                  <p style={{ fontSize: '12px', color: '#6B7280' }}>
+                    Trainers you've requested — awaiting their response
+                  </p>
+                  {pendingLinks.map((link) => (
+                    <div
+                      key={link.trainer_id}
+                      className="bg-white rounded-2xl p-4 shadow-sm"
+                      style={{ border: '1px solid #F3F4F6' }}
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Avatar placeholder */}
+                        <div
+                          className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold text-[16px]"
+                          style={{ backgroundColor: '#FEF3C7', color: '#B45309' }}
+                        >
+                          {link.trainer_name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-gray-900 truncate" style={{ fontSize: '15px' }}>
+                              {link.trainer_name}
+                            </p>
+                            <span
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                              style={{ backgroundColor: '#FEF3C7', color: '#D97706', border: '1px solid #FCD34D' }}
+                            >
+                              Pending ✓
+                            </span>
+                          </div>
+                          <p className="text-[12px] text-gray-500 mt-0.5">
+                            Request sent — awaiting trainer response
+                          </p>
+                          <div className="flex items-center gap-1 mt-1">
+                            <Clock size={11} color="#9CA3AF" />
+                            <span style={{ fontSize: '11px', color: '#9CA3AF' }}>
+                              {timeAgo(link.created_at)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="py-12 flex flex-col items-center text-center gap-3">
+                  <div
+                    className="w-14 h-14 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: '#F3F4F6' }}
+                  >
+                    <Users size={24} color="#9CA3AF" />
+                  </div>
+                  <p className="text-[14px] font-semibold text-gray-700">No pending requests</p>
+                  <p className="text-[12px] text-gray-400">
+                    When you request a trainer, it will appear here until they respond.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('discover')}
+                    className="font-semibold rounded-xl px-5 mt-2 transition-colors"
+                    style={{
+                      minHeight: '44px',
+                      backgroundColor: '#F0FDF4',
+                      color: '#166534',
+                      fontSize: '14px',
+                      border: '1px solid #BBF7D0',
+                    }}
+                  >
+                    Discover Trainers
+                  </button>
                 </div>
               )}
             </motion.div>

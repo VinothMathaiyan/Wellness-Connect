@@ -2583,6 +2583,391 @@ export async function saveAssessmentRecommendations(
   return true;
 }
 
+// ─── Weighted Recommendation Engine ──────────────────────────────────────────
+
+/**
+ * Production-grade weighted scoring engine that evaluates every active trainer
+ * against a client's full assessment profile. Applies hard filters first
+ * (rehab/medical certification, session mode, language, capacity), then scores
+ * across 8 weighted dimensions (100 pts max). Results are persisted to the
+ * trainer_recommendations table for the client Discover tab.
+ */
+export async function runRecommendationEngine(
+  clientId: string,
+): Promise<boolean> {
+  // 1. Fetch client data
+  const { data: cp } = await supabase
+    .from('client_profiles')
+    .select('*')
+    .eq('user_id', clientId)
+    .maybeSingle();
+
+  const prefs = ((cp as Record<string, unknown>)?.training_preferences ?? {}) as Record<string, unknown>;
+
+  // 2. Fetch all active trainers with their templates
+  const { data: trainers } = await supabase
+    .from('profiles')
+    .select(`
+      *, workout_templates(goals, focus_areas, session_type)
+    `)
+    .eq('role', 'trainer')
+    .eq('is_active', true);
+
+  if (!trainers || !cp) return false;
+
+  const results: {
+    trainerId: string;
+    score: number;
+    breakdown: Record<string, number>;
+    reasons: string[];
+    passed: boolean;
+  }[] = [];
+
+  for (const trainer of trainers as Record<string, unknown>[]) {
+    const breakdown: Record<string, number> = {};
+    const reasons: string[] = [];
+    let passed = true;
+
+    // ── HARD FILTERS ──────────────────────────────────
+
+    // Filter: rehab requirement
+    if ((cp as Record<string, unknown>).rehab_required && !(trainer as Record<string, unknown>).rehab_certified) {
+      passed = false;
+    }
+
+    // Filter: medical certified requirement
+    if ((cp as Record<string, unknown>).medical_certified_required && !(trainer as Record<string, unknown>).medical_certified) {
+      passed = false;
+    }
+
+    // Filter: session mode
+    const sessionMode = prefs.session_mode as string | undefined;
+    const trainerSessionTypes = (trainer.session_types as string[] | null) ?? [];
+    if (sessionMode && sessionMode !== 'Either' && trainerSessionTypes.length > 0) {
+      const modeMap: Record<string, string> = {
+        'Online': 'video', 'Offline': 'in-person', 'Hybrid': 'hybrid',
+      };
+      const required = modeMap[sessionMode];
+      if (required && !trainerSessionTypes.includes(required) &&
+          !trainerSessionTypes.includes('hybrid')) {
+        passed = false;
+      }
+    }
+
+    // Filter: language preference
+    const clientLangs = ((cp as Record<string, unknown>).trainer_languages as string[] | null) ?? [];
+    const trainerLangs = (trainer.languages as string[] | null) ?? [];
+    if (clientLangs.length > 0 && trainerLangs.length > 0) {
+      const hasLanguage = clientLangs.some((l: string) => trainerLangs.includes(l));
+      if (!hasLanguage) passed = false;
+    }
+
+    // Filter: capacity check
+    const currentClients = (trainer.session_count as number | null) ?? 0;
+    const maxClients = (trainer.max_clients as number | null) ?? 20;
+    if (currentClients >= maxClients) passed = false;
+
+    if (!passed) {
+      results.push({ trainerId: trainer.id as string, score: 0, breakdown: {}, reasons: [], passed: false });
+      continue;
+    }
+
+    // ── WEIGHTED SCORING ──────────────────────────────
+
+    const templates = (trainer.workout_templates as { goals: string[] | null; focus_areas: string[] | null; session_type: string | null }[] | null) ?? [];
+    const trainerGoals = templates.flatMap(t => t.goals ?? []).map(g => g.toLowerCase());
+    const trainerFocus = [
+      ...((trainer.focus_areas as string[] | null) ?? []),
+      ...templates.flatMap(t => t.focus_areas ?? []),
+    ].map(f => f.toLowerCase());
+
+    // 1. Fitness Goal Match — 25 points
+    let goalScore = 0;
+    const clientGoals = ((cp as Record<string, unknown>).goals as string[] | null) ?? [];
+    clientGoals.forEach((goal: string) => {
+      const g = goal.toLowerCase();
+      if (trainerGoals.some(tg => tg.includes(g) || g.includes(tg))) goalScore += 8;
+      if (trainerFocus.some(tf => tf.includes(g) || g.includes(tf))) goalScore += 5;
+    });
+    goalScore = Math.min(goalScore, 25);
+    breakdown['goal_match'] = goalScore;
+    if (goalScore >= 15) reasons.push('Strong goal alignment');
+
+    // 2. Workout Style Match — 20 points
+    let styleScore = 0;
+    const styles = (prefs.training_styles as string[] | null) ?? [];
+    const trainerSpecialties = (trainer.specialties as string[] | null) ?? [];
+    styles.forEach((style: string) => {
+      const s = style.toLowerCase();
+      if (trainerSpecialties.some(sp => sp.toLowerCase().includes(s) || s.includes(sp.toLowerCase()))) styleScore += 7;
+      if (trainerFocus.some(tf => tf.includes(s))) styleScore += 5;
+    });
+    styleScore = Math.min(styleScore, 20);
+    breakdown['style_match'] = styleScore;
+    if (styleScore >= 12) reasons.push(`Specialises in ${styles.slice(0, 2).join(', ')}`);
+
+    // 3. Medical/Rehab Expertise — 20 points
+    let medScore = 0;
+    if ((cp as Record<string, unknown>).rehab_required && trainer.rehab_certified) {
+      medScore += 20;
+      reasons.push('Rehabilitation certified');
+    }
+    if ((cp as Record<string, unknown>).medical_certified_required && trainer.medical_certified) {
+      medScore += 15;
+      reasons.push('Medical fitness certified');
+    }
+    const clientConditions = ((cp as Record<string, unknown>).medical_conditions as string[] | null) ?? [];
+    if (clientConditions.length > 0) {
+      if (trainer.medical_certified) medScore += 10;
+      if (trainerFocus.some(tf => tf.includes('medical') || tf.includes('condition'))) medScore += 5;
+    }
+    medScore = Math.min(medScore, 20);
+    breakdown['medical_match'] = medScore;
+
+    // 4. Fitness Level Match — 10 points
+    let levelScore = 0;
+    const clientLevel = ((cp as Record<string, unknown>).fitness_level as string | null)?.toLowerCase();
+    if (clientLevel === 'beginner' && trainerFocus.some(tf => tf.includes('beginner'))) {
+      levelScore = 10;
+      reasons.push('Great for beginners');
+    } else if (clientLevel === 'advanced' && ((trainer.experience_years as number | null) ?? 0) >= 5) {
+      levelScore = 10;
+    } else {
+      levelScore = 5;
+    }
+    breakdown['level_match'] = levelScore;
+
+    // 5. Availability Match — 10 points
+    let availScore = 0;
+    const clientTimes = ((cp as Record<string, unknown>).preferred_times as string[] | null) ??
+                        (prefs.preferred_times as string[] | null) ?? [];
+    const trainerAvail = (trainer.availability as Record<string, unknown> | null) ?? {};
+    if (clientTimes.length > 0 && Object.keys(trainerAvail).length > 0) {
+      const timeMap: Record<string, string[]> = {
+        'Early Morning': ['5am', '6am', '7am'],
+        'Morning': ['8am', '9am', '10am', '11am'],
+        'Afternoon': ['12pm', '1pm', '2pm', '3pm'],
+        'Evening': ['4pm', '5pm', '6pm', '7pm'],
+        'Night': ['8pm', '9pm', '10pm'],
+      };
+      const hasOverlap = clientTimes.some((t: string) => {
+        return Object.values(trainerAvail).some((slots: unknown) =>
+          Array.isArray(slots) && (timeMap[t] ?? []).some(tm =>
+            (slots as string[]).some((s: string) => s.toLowerCase().includes(tm))));
+      });
+      availScore = hasOverlap ? 10 : 3;
+      if (hasOverlap) reasons.push('Availability matches your schedule');
+    } else {
+      availScore = 5;
+    }
+    breakdown['availability_match'] = availScore;
+
+    // 6. Trainer Rating — 5 points
+    const ratingScore = Math.min(Math.round((((trainer.rating as number | null) ?? 3) / 5) * 5), 5);
+    breakdown['rating'] = ratingScore;
+    if (((trainer.rating as number | null) ?? 0) >= 4.5) reasons.push('Highly rated trainer');
+
+    // 7. Session Intensity Match — 5 points
+    let intensityScore = 0;
+    const clientIntensity = ((cp as Record<string, unknown>).session_intensity_pref as string | null) ??
+                            (prefs.preferred_intensity as string | null);
+    const trainerIntensity = trainer.session_intensity as string | null;
+    if (clientIntensity && trainerIntensity) {
+      intensityScore = clientIntensity.toLowerCase() === trainerIntensity.toLowerCase() ? 5 : 2;
+    } else {
+      intensityScore = 3;
+    }
+    breakdown['intensity_match'] = intensityScore;
+
+    // 8. Coaching Style Match — 5 points
+    let coachingScore = 0;
+    const clientStyle = ((cp as Record<string, unknown>).coaching_style_pref as string | null) ??
+                        (prefs.preferred_coaching_style as string | null);
+    const trainerStyles = (trainer.coaching_styles as string[] | null) ?? [];
+    if (clientStyle && trainerStyles.length > 0) {
+      coachingScore = trainerStyles.some((cs: string) =>
+        cs.toLowerCase().includes(clientStyle.toLowerCase())) ? 5 : 1;
+    } else {
+      coachingScore = 3;
+    }
+    breakdown['coaching_match'] = coachingScore;
+
+    const totalScore = Object.values(breakdown).reduce((sum, v) => sum + v, 0);
+
+    results.push({
+      trainerId: trainer.id as string,
+      score: Math.round(totalScore),
+      breakdown,
+      reasons: reasons.slice(0, 3),
+      passed: true,
+    });
+  }
+
+  // Sort by score, apply minimum threshold with progressive fallback
+  let qualified = results
+    .filter(r => r.passed && r.score >= 65)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  if (qualified.length === 0) {
+    qualified = results
+      .filter(r => r.passed && r.score >= 40)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }
+  if (qualified.length === 0) {
+    qualified = results
+      .filter(r => r.passed)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }
+
+  // Save to trainer_recommendations (engine type) — replace old results
+  await supabase.from('trainer_recommendations')
+    .delete()
+    .eq('client_id', clientId)
+    .eq('recommendation_type', 'engine');
+
+  if (qualified.length > 0) {
+    await supabase.from('trainer_recommendations').insert(
+      qualified.map((r, i) => ({
+        client_id: clientId,
+        trainer_id: r.trainerId,
+        recommendation_type: 'engine',
+        score: r.score,
+        score_breakdown: r.breakdown,
+        recommendation_reasons: r.reasons,
+        display_order: i + 1,
+        is_active: true,
+      })),
+    );
+  }
+
+  return true;
+}
+
+/**
+ * Trigger the recommendation engine after assessment clearance.
+ * Called from the assessment form after a 'cleared' or 'conditional' decision.
+ */
+export async function triggerRecommendationsAfterAssessment(
+  clientId: string,
+): Promise<void> {
+  await runRecommendationEngine(clientId);
+}
+
+/** Return type for client-facing Discover tab recommendation data. */
+export interface ClientRecommendation {
+  trainer_id: string;
+  score: number;
+  reasons: string[];
+  trainer: TrainerProfile;
+}
+
+/**
+ * Fetch engine + manual recommendations for the client Discover tab.
+ * Engine recs come from trainer_recommendations; manual recs from
+ * assessment_trainer_recommendations.
+ */
+export async function getClientRecommendations(clientId: string): Promise<{
+  engineRecs: ClientRecommendation[];
+  manualRecs: { trainer_id: string; trainer: TrainerProfile }[];
+}> {
+  // Engine recommendations
+  const { data: engineData } = await supabase
+    .from('trainer_recommendations')
+    .select(`
+      trainer_id, score, recommendation_reasons,
+      trainer:profiles!trainer_recommendations_trainer_id_fkey(
+        id, full_name, bio, rating, specialties, city, photo_url,
+        certifications, experience_years
+      )
+    `)
+    .eq('client_id', clientId)
+    .eq('recommendation_type', 'engine')
+    .eq('is_active', true)
+    .order('display_order');
+
+  // Manual (assessment team) recommendations — join through assessments
+  const { data: manualData } = await supabase
+    .from('assessment_trainer_recommendations')
+    .select(`
+      trainer_id, display_order,
+      assessments!inner(client_id),
+      trainer:profiles!assessment_trainer_recommendations_trainer_id_fkey(
+        id, full_name, bio, rating, specialties, city, photo_url,
+        certifications, experience_years
+      )
+    `)
+    .eq('assessments.client_id', clientId)
+    .order('display_order');
+
+  const toProfile = (row: Record<string, unknown>): TrainerProfile => {
+    const t = (Array.isArray(row) ? row[0] : row) as Record<string, unknown> | null;
+    return {
+      id:               (t?.id as string) ?? '',
+      full_name:        (t?.full_name as string) ?? '',
+      city:             (t?.city as string) ?? null,
+      specialties:      (t?.specialties as string[]) ?? null,
+      certifications:   (t?.certifications as string[]) ?? null,
+      bio:              (t?.bio as string) ?? null,
+      availability:     null,
+      experience_years: (t?.experience_years as number) ?? null,
+      session_count:    null,
+      rating:           (t?.rating as number) ?? null,
+      avatar_url:       null,
+      photo_url:        (t?.photo_url as string) ?? null,
+    };
+  };
+
+  return {
+    engineRecs: (engineData ?? []).map((r: Record<string, unknown>) => ({
+      trainer_id: r.trainer_id as string,
+      score:   r.score as number,
+      reasons: (r.recommendation_reasons as string[] | null) ?? [],
+      trainer: toProfile(r.trainer as Record<string, unknown>),
+    })),
+    manualRecs: (manualData ?? []).map((r: Record<string, unknown>) => ({
+      trainer_id: r.trainer_id as string,
+      trainer:    toProfile(r.trainer as Record<string, unknown>),
+    })),
+  };
+}
+
+/**
+ * Fetch pending trainer connection requests for a client.
+ * Used by the "Requested" tab on the Trainers screen.
+ */
+export async function getClientPendingTrainerLinks(clientId: string): Promise<{
+  trainer_id: string;
+  trainer_name: string;
+  created_at: string;
+}[]> {
+  const { data, error } = await supabase
+    .from('trainer_client_links')
+    .select(`
+      trainer_id, created_at,
+      trainer:profiles!trainer_client_links_trainer_id_fkey(full_name)
+    `)
+    .eq('client_id', clientId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('getClientPendingTrainerLinks:', error);
+    return [];
+  }
+
+  return (data ?? []).map((r: Record<string, unknown>) => {
+    const trainerRow = (Array.isArray(r.trainer) ? r.trainer[0] : r.trainer) as { full_name: string } | null;
+    return {
+      trainer_id:   r.trainer_id as string,
+      trainer_name: trainerRow?.full_name ?? 'Trainer',
+      created_at:   r.created_at as string,
+    };
+  });
+}
+
 // ─── Notifications & Messages (MVP) ──────────────────────────────────────────
 
 /**
