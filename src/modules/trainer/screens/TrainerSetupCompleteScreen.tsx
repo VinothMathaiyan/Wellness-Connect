@@ -19,6 +19,17 @@ interface CompletionState {
   city?: string;
   bio?: string;
   yearsOfExperience?: string;
+  // Recommendation-engine fields
+  focusAreas?: string[];
+  sessionTypes?: string[];
+  sessionIntensity?: string;
+  coachingStyles?: string[];
+  languages?: string[];
+  otherLanguage?: string;
+  specialCertifications?: string[];
+  medicalCertified?: boolean;
+  rehabCertified?: boolean;
+  maxClients?: number;
 }
 
 export default function TrainerSetupCompleteScreen() {
@@ -45,10 +56,17 @@ export default function TrainerSetupCompleteScreen() {
       city:              state.city ?? '',
       bio:               state.bio ?? '',
       yearsOfExperience: state.yearsOfExperience ?? '',
-      // fields not forwarded via navigation state — defaults only
-      sessionTypes:           [],
-      languages:              [],
-      otherLanguage:          '',
+      // Recommendation-engine fields forwarded from the onboarding flow
+      focusAreas:             state.focusAreas ?? [],
+      sessionTypes:           state.sessionTypes ?? [],
+      sessionIntensity:       state.sessionIntensity ?? '',
+      coachingStyles:         state.coachingStyles ?? [],
+      languages:              state.languages ?? [],
+      otherLanguage:          state.otherLanguage ?? '',
+      specialCertifications:  state.specialCertifications ?? [],
+      medicalCertified:       state.medicalCertified ?? false,
+      rehabCertified:         state.rehabCertified ?? false,
+      maxClients:             state.maxClients ?? 20,
       availabilitySlots:      state.availabilitySlots ?? [],
       certificationDocument:  null,
       selfieWithCertificate:  null,

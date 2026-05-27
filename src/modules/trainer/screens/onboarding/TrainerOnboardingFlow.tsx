@@ -55,6 +55,17 @@ export default function TrainerOnboardingFlow() {
                 city: data.city,
                 bio: data.bio,
                 yearsOfExperience: data.yearsOfExperience,
+                // Recommendation-engine fields
+                focusAreas: data.focusAreas,
+                sessionTypes: data.sessionTypes,
+                sessionIntensity: data.sessionIntensity,
+                coachingStyles: data.coachingStyles,
+                languages: data.languages,
+                otherLanguage: data.otherLanguage,
+                specialCertifications: data.specialCertifications,
+                medicalCertified: data.medicalCertified,
+                rehabCertified: data.rehabCertified,
+                maxClients: data.maxClients,
               },
             }),
   };
