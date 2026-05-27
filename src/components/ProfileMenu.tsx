@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut } from 'lucide-react';
+import { LogOut, UserCog } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '@/context/WellnessContext';
 import { supabase } from '@/lib/supabaseClient';
@@ -55,6 +55,18 @@ export default function ProfileMenu() {
     navigate('/', { replace: true });
   };
 
+  // Assessors have no profile edit screen, so the row is hidden for them.
+  const editProfilePath =
+    userRole === 'trainer' ? '/trainer/onboarding'
+    : userRole === 'client' ? '/onboarding/profile'
+    : null;
+
+  const handleEditProfile = () => {
+    if (!editProfilePath) return;
+    setOpen(false);
+    navigate(editProfilePath);
+  };
+
   return (
     <div className="relative">
       <button
@@ -95,6 +107,17 @@ export default function ProfileMenu() {
                 <p className="text-[13px] font-semibold text-[#111827] truncate">{displayName}</p>
                 <p className="text-[11px] text-[#6B7280] mt-0.5">{roleLabel}</p>
               </div>
+
+              {editProfilePath && (
+                <button
+                  onClick={handleEditProfile}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors hover:bg-[#f3f4f6]"
+                  style={{ borderBottom: '1px solid #e5e7eb' }}
+                >
+                  <UserCog size={15} style={{ color: '#374151', flexShrink: 0 }} />
+                  <span style={{ color: '#374151', fontSize: 14, fontWeight: 600 }}>Edit Profile</span>
+                </button>
+              )}
 
               <button
                 onClick={handleLogout}
