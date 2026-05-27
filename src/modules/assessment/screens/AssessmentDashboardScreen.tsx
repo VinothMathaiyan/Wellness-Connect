@@ -106,7 +106,7 @@ export default function AssessmentDashboardScreen() {
               <p className="text-white/80 text-sm font-medium">Assessment Command Center</p>
             </div>
             {/* Avatar + profile menu — shared component */}
-            <ProfileMenu variant="dark" initialsCount={2} logoutRedirect="/signup" logoutLabel="Sign Out" />
+            <ProfileMenu variant="dark" initialsCount={2} logoutLabel="Sign Out" />
           </div>
         </div>
 
