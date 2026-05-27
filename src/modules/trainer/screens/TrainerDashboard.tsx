@@ -19,6 +19,7 @@ import {
   Zap,
   LogOut,
   Phone,
+  X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
@@ -35,6 +36,7 @@ import {
   getCallbackRequests,
   updateCallbackStatus,
   getPendingClientRequests,
+  isTrainerProfileIncomplete,
 } from '../../../services/supabaseService';
 import type { WeeklyCheckinRow } from '../../../services/supabaseService';
 
@@ -55,6 +57,10 @@ export default function TrainerDashboard() {
   const [pendingCheckinsCount, setPendingCheckinsCount] = useState(0);
   const [weeklyCheckins, setWeeklyCheckins] = useState<WeeklyCheckinRow[]>([]);
   const [callbackRequests, setCallbackRequests] = useState<any[]>([]);
+  const [showProfileBanner, setShowProfileBanner] = useState(false);
+  const [profileBannerDismissed, setProfileBannerDismissed] = useState(
+    () => localStorage.getItem('profile_banner_dismissed') === 'true',
+  );
 
   // Week strip — Mon–Sun of the current week, computed on mount
   // Always use local date arithmetic — never .toISOString() which returns UTC.
@@ -111,7 +117,7 @@ export default function TrainerDashboard() {
         // getTrainerClients throws on DB error (unlike the other helpers which return
         // fallback values).  Isolate it with .catch so a single RLS / schema miss
         // cannot block the name + session data from rendering.
-        const [profile, clients, alertSummary, sessions, badgeCount, pendingCheckins, weeklyCheckinsResult, callbacks, pendingLinks] = await Promise.all([
+        const [profile, clients, alertSummary, sessions, badgeCount, pendingCheckins, weeklyCheckinsResult, callbacks, pendingLinks, profileIncomplete] = await Promise.all([
           getTrainerProfile(userId),
           getTrainerClients(userId).catch(() => []),
           getTrainerAlertSummary(userId),
@@ -121,6 +127,7 @@ export default function TrainerDashboard() {
           getWeeklyCheckinSummary(userId).catch(() => ({ data: [] as WeeklyCheckinRow[] })),
           getCallbackRequests(userId).catch(() => []),
           getPendingClientRequests(userId).catch(() => []),
+          isTrainerProfileIncomplete(userId).catch(() => false),
         ]);
         // Always set name — fall back to 'Trainer' only if profile is null
         setTrainerName(profile?.full_name ?? 'Trainer');
@@ -133,6 +140,7 @@ export default function TrainerDashboard() {
         setUnreadCount(badgeCount);
         setPendingCheckinsCount(pendingCheckins);
         setWeeklyCheckins(weeklyCheckinsResult.data);
+        setShowProfileBanner(profileIncomplete);
         setCallbackRequests(callbacks);
       } catch (err) {
         console.error('Dashboard load error:', err);
@@ -290,6 +298,68 @@ export default function TrainerDashboard() {
             </p>
           </div>
         </div>
+
+        {/* ─── Profile Completeness Banner ─────────────────────────────────────── */}
+        <AnimatePresence>
+          {showProfileBanner && !profileBannerDismissed && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25 }}
+              className="px-5 pt-4"
+            >
+              <div
+                style={{
+                  backgroundColor: '#FEF3C7',
+                  borderLeft: '4px solid #F59E0B',
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  position: 'relative',
+                }}
+              >
+                {/* Dismiss button */}
+                <button
+                  onClick={() => {
+                    setProfileBannerDismissed(true);
+                    localStorage.setItem('profile_banner_dismissed', 'true');
+                  }}
+                  className="absolute top-2.5 right-2.5 p-1 rounded-full hover:bg-amber-200/60 transition-colors"
+                  aria-label="Dismiss banner"
+                >
+                  <X size={16} style={{ color: '#92400E' }} />
+                </button>
+
+                <div className="flex items-start gap-3 pr-6">
+                  <AlertTriangle size={20} style={{ color: '#F59E0B', flexShrink: 0, marginTop: '1px' }} />
+                  <div className="flex-1">
+                    <p style={{ fontWeight: 700, fontSize: '14px', color: '#92400E', lineHeight: 1.3 }}>
+                      Complete your trainer profile
+                    </p>
+                    <p style={{ fontSize: '13px', color: '#92400E', opacity: 0.85, marginTop: '4px', lineHeight: 1.45 }}>
+                      Our matching engine uses your specialisations, goals, and focus areas to recommend you to the right clients. Incomplete profiles receive fewer matches.
+                    </p>
+                    <button
+                      onClick={() => navigate('/trainer/onboarding')}
+                      className="mt-3 flex items-center gap-1 active:opacity-70 transition-opacity"
+                      style={{
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        color: '#92400E',
+                        border: '1.5px solid #F59E0B',
+                        borderRadius: '8px',
+                        padding: '6px 14px',
+                        backgroundColor: 'transparent',
+                      }}
+                    >
+                      Update Profile <ArrowUpRight size={13} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ─── Loading Skeleton ───────────────────────────────────────────────────── */}
         {isLoading ? (

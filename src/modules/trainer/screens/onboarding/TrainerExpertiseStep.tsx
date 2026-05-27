@@ -139,6 +139,15 @@ export default function TrainerExpertiseStep({
             }}
             error={errors.specialisations}
           />
+          <p style={{
+            fontSize: '12px',
+            color: '#6b7280',
+            fontStyle: 'italic',
+            marginTop: '10px',
+            lineHeight: 1.5,
+          }}>
+            💡 Tip: Selecting accurate specialisations and focus areas helps our engine match you with the right clients. Clients are recommended trainers based on their health profile and training preferences.
+          </p>
         </div>
 
         {/* ── Session Types ─────────────────────────────────────────────── */}

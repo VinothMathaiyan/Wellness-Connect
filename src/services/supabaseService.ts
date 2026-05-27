@@ -2348,6 +2348,41 @@ export const getRecommendedTrainers = async (clientId: string): Promise<TrainerP
   }));
 };
 
+// ─── Trainer Profile Completeness Check ──────────────────────────────────────
+
+/**
+ * Returns true when the trainer's matching-relevant data is incomplete.
+ * The matching engine scores trainers using workout_templates.goals and
+ * workout_templates.focus_areas.  If a trainer has NO templates, or every
+ * template has empty goals AND empty focus_areas, we consider the profile
+ * incomplete and surface a banner prompting them to fill it in.
+ */
+export const isTrainerProfileIncomplete = async (
+  trainerId: string,
+): Promise<boolean> => {
+  const { data, error } = await supabase
+    .from('workout_templates')
+    .select('goals, focus_areas')
+    .eq('trainer_id', trainerId);
+
+  if (error) {
+    console.error('isTrainerProfileIncomplete:', error);
+    // Default to "not incomplete" so we don't nag on transient errors
+    return false;
+  }
+
+  // No templates at all → incomplete
+  if (!data || data.length === 0) return true;
+
+  // Every template has empty goals AND empty focus_areas → incomplete
+  const allEmpty = data.every(
+    (t) =>
+      (!t.goals || t.goals.length === 0) &&
+      (!t.focus_areas || t.focus_areas.length === 0),
+  );
+  return allEmpty;
+};
+
 // ─── Assessment-driven Trainer Matching (Assessment App) ─────────────────────
 
 /**
