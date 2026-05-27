@@ -285,6 +285,11 @@ export interface User {
 // ─── Client Training Preferences (client_profiles.training_preferences jsonb) ──
 export interface TrainingPreferences {
   training_styles?: string[];
+  session_mode?: string;
+  preferred_times?: string[];
+  secondary_goals?: string[];
+  goal_priority?: string;
+  // Legacy keys — kept for backward compatibility with earlier saves / matcher
   session_preference?: string;
   availability?: string[];
   main_goal?: string;

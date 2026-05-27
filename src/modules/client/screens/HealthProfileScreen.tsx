@@ -7,8 +7,9 @@ import Button from '../../../components/Button';
 import Input from '../../../components/Input';
 import ProgressBar from '../../../components/ProgressBar';
 import OnboardingLayout from '../components/OnboardingLayout';
-
-
+import { useNavigate } from 'react-router-dom';
+import { useWellness } from '../../../context/WellnessContext';
+import { upsertClientProfile, createAssessmentRequest } from '../../../services/supabaseService';
 
 const CITIES = [
   "Chennai", "Bangalore", "Mumbai", "Delhi", "Hyderabad", "Pune",
@@ -17,54 +18,21 @@ const CITIES = [
   "Bhopal", "Lucknow", "Patna", "Bhubaneswar", "Guwahati"
 ];
 
+// SECTION 2 — Goals (max 3)
 const GOAL_OPTIONS = [
-  "General fitness", "Fat loss", "Muscle gain", "Flexibility",
-  "Stress relief", "Rehabilitation", "Yoga"
+  "Weight Loss", "Muscle Gain", "General Fitness", "Flexibility",
+  "Rehabilitation", "Mobility", "Athletic Performance", "Stress Reduction",
 ];
 
-const CONDITION_GROUPS = [
-  {
-    title: "Pain & Mobility",
-    options: ["Back pain", "Knee issue", "Joint pain"]
-  },
-  {
-    title: "Medical Conditions",
-    options: ["Diabetes", "Blood pressure", "Heart condition", "Respiratory condition"]
-  },
-  {
-    title: "Recovery & Hormonal Health",
-    options: ["PCOS / PCOD", "Injury recovery"]
-  }
-];
-
-const ACTIVITY_DESCRIPTIONS = [
-  "Little or no exercise — mostly desk-based",
-  "Light exercise 1–3 days per week",
-  "Moderate exercise 3–5 days per week",
-  "Hard exercise 6–7 days per week",
-  "Very hard daily exercise or physical job"
-];
-
-const ACTIVITY_LABELS = ["Sedentary", "Lightly active", "Moderately active", "Active", "Very active"];
-
-// ── Training Preferences (closed-ended) ─────────────────────────────────────────
+// SECTION 2 — Training styles → training_preferences.training_styles
 const TRAINING_STYLE_OPTIONS = [
-  "Strength Training", "Yoga & Flexibility", "Cardio & HIIT",
-  "Rehabilitation", "Weight Loss", "Mixed / General Fitness",
-];
-const SESSION_PREFERENCE_OPTIONS = ["Online (Video)", "In-Person", "Either works"];
-const TRAINING_AVAILABILITY_OPTIONS = ["Weekday Mornings", "Weekday Evenings", "Weekends"];
-const MAIN_GOAL_OPTIONS = [
-  "Lose Weight", "Build Muscle", "Improve Flexibility",
-  "Recover from Injury", "General Fitness",
-];
-const INJURY_LEVEL_OPTIONS = [
-  "No injuries", "Minor - needs careful programming", "Significant - needs specialist",
+  "Yoga", "Strength Training", "HIIT", "Cardio",
+  "Pilates", "Functional Training", "Rehab Training", "Mobility Training",
 ];
 
-import { useNavigate } from 'react-router-dom';
-import { useWellness } from '../../../context/WellnessContext';
-import { upsertClientProfile, createAssessmentRequest } from '../../../services/supabaseService';
+// SECTION 3 — Schedule
+const SESSION_MODE_OPTIONS = ["Online", "In-Person", "Either"];
+const PREFERRED_TIME_OPTIONS = ["Early Morning", "Morning", "Afternoon", "Evening", "Night"];
 
 export default function HealthProfileScreen() {
   const navigate = useNavigate();
@@ -85,18 +53,13 @@ export default function HealthProfileScreen() {
     weightUnit: initialData?.weight_unit || 'kg',
     city: initialData?.city || '',
     fitnessGoals: initialData?.goals || ([] as string[]),
-    conditions: initialData?.conditions || ([] as string[]),
-    activityLevel: initialData?.activity_level || 0,
-    fitnessLevel: initialData?.fitness_level || ''
   });
 
   // Training preferences (closed-ended) — saved to client_profiles.training_preferences
   const [trainingPrefs, setTrainingPrefs] = useState<TrainingPreferences>({
     training_styles: [],
-    session_preference: '',
-    availability: [],
-    main_goal: '',
-    injury_level: '',
+    session_mode: '',
+    preferred_times: [],
   });
 
   // Pre-populate training preferences from DB if already saved
@@ -113,11 +76,9 @@ export default function HealthProfileScreen() {
         const prefs = data?.training_preferences as TrainingPreferences | null;
         if (prefs) {
           setTrainingPrefs({
-            training_styles:    prefs.training_styles ?? [],
-            session_preference: prefs.session_preference ?? '',
-            availability:       prefs.availability ?? [],
-            main_goal:          prefs.main_goal ?? '',
-            injury_level:       prefs.injury_level ?? '',
+            training_styles: prefs.training_styles ?? [],
+            session_mode:    prefs.session_mode ?? '',
+            preferred_times: prefs.preferred_times ?? [],
           });
         }
       });
@@ -136,12 +97,12 @@ export default function HealthProfileScreen() {
     });
   };
 
-  const toggleTrainingAvailability = (slot: string) => {
+  const togglePreferredTime = (slot: string) => {
     setTrainingPrefs(prev => {
-      const current = prev.availability ?? [];
+      const current = prev.preferred_times ?? [];
       return {
         ...prev,
-        availability: current.includes(slot)
+        preferred_times: current.includes(slot)
           ? current.filter(s => s !== slot)
           : [...current, slot],
       };
@@ -178,6 +139,33 @@ export default function HealthProfileScreen() {
     }
     return age;
   }, [dobString]);
+
+  // Compute height_cm / weight_kg from whichever unit is active
+  const heightCm = useMemo<number | null>(() => {
+    if (!formData.heightValue) return null;
+    if (formData.heightUnit === 'cm') {
+      const v = parseFloat(formData.heightValue);
+      return isNaN(v) ? null : v;
+    }
+    const ft = parseInt(formData.heightValue);
+    const inch = parseInt(formData.heightInches || '0');
+    if (isNaN(ft)) return null;
+    return Math.round(ft * 30.48 + inch * 2.54);
+  }, [formData.heightValue, formData.heightInches, formData.heightUnit]);
+
+  const weightKg = useMemo<number | null>(() => {
+    if (!formData.weightValue) return null;
+    const v = parseFloat(formData.weightValue);
+    if (isNaN(v)) return null;
+    return formData.weightUnit === 'kg' ? v : Math.round((v / 2.20462) * 10) / 10;
+  }, [formData.weightValue, formData.weightUnit]);
+
+  // Auto-calculated BMI (display only — `bmi` is a generated DB column)
+  const bmi = useMemo<number | null>(() => {
+    if (!heightCm || !weightKg || heightCm <= 0) return null;
+    const m = heightCm / 100;
+    return Math.round((weightKg / (m * m)) * 10) / 10;
+  }, [heightCm, weightKg]);
 
   // Validation
   const validate = () => {
@@ -239,8 +227,13 @@ export default function HealthProfileScreen() {
   };
 
   const isFormFilledEnough = useMemo(() => {
-    return formData.dobDay || formData.dobMonth || formData.dobYear || formData.gender || formData.heightValue || formData.weightValue || formData.city || formData.fitnessGoals.length > 0 || formData.activityLevel > 0 || formData.fitnessLevel;
-  }, [formData]);
+    return formData.dobDay || formData.dobMonth || formData.dobYear || formData.gender ||
+      formData.heightValue || formData.weightValue || formData.city ||
+      formData.fitnessGoals.length > 0 ||
+      (trainingPrefs.training_styles?.length ?? 0) > 0 ||
+      !!trainingPrefs.session_mode ||
+      (trainingPrefs.preferred_times?.length ?? 0) > 0;
+  }, [formData, trainingPrefs]);
 
   const canContinue = true;
 
@@ -248,30 +241,10 @@ export default function HealthProfileScreen() {
     setFormData(prev => {
       const isSelected = prev.fitnessGoals.includes(goal);
       if (isSelected) {
-        return {
-          ...prev,
-          fitnessGoals: prev.fitnessGoals.filter(g => g !== goal)
-        };
-      } else {
-        if (prev.fitnessGoals.length >= 3) return prev;
-        return {
-          ...prev,
-          fitnessGoals: [...prev.fitnessGoals, goal]
-        };
+        return { ...prev, fitnessGoals: prev.fitnessGoals.filter(g => g !== goal) };
       }
-    });
-  };
-
-  const handleToggleCondition = (condition: string) => {
-    setFormData(prev => {
-      if (condition === "None") return { ...prev, conditions: ["None"] };
-      const filtered = prev.conditions.filter(c => c !== "None");
-      return {
-        ...prev,
-        conditions: filtered.includes(condition)
-          ? filtered.filter(c => c !== condition)
-          : [...filtered, condition]
-      };
+      if (prev.fitnessGoals.length >= 3) return prev;
+      return { ...prev, fitnessGoals: [...prev.fitnessGoals, goal] };
     });
   };
 
@@ -310,28 +283,7 @@ export default function HealthProfileScreen() {
     setSaveError(null);
     setIsSaving(true);
 
-    // Compute height_cm regardless of input unit
-    let height_cm: number | null = null;
-    if (formData.heightValue) {
-      if (formData.heightUnit === 'cm') {
-        height_cm = parseFloat(formData.heightValue);
-      } else {
-        const ft = parseInt(formData.heightValue);
-        const inch = parseInt(formData.heightInches || '0');
-        if (!isNaN(ft)) height_cm = Math.round(ft * 30.48 + inch * 2.54);
-      }
-    }
-
-    // Compute weight_kg regardless of input unit
-    let weight_kg: number | null = null;
-    if (formData.weightValue) {
-      const val = parseFloat(formData.weightValue);
-      if (!isNaN(val)) {
-        weight_kg = formData.weightUnit === 'kg' ? val : Math.round((val / 2.20462) * 10) / 10;
-      }
-    }
-
-    // Update WellnessContext (unchanged behaviour)
+    // Update WellnessContext (keep the simplified subset)
     handleHealthProfileContinue({
       dob: dobString || null,
       gender: formData.gender || null,
@@ -341,28 +293,22 @@ export default function HealthProfileScreen() {
       weight_unit: formData.weightUnit,
       city: formData.city || null,
       goals: formData.fitnessGoals,
-      conditions: formData.conditions,
-      activity_level: formData.activityLevel || null,
-      fitness_level: formData.fitnessLevel || null,
     });
 
-    // Persist all fields to Supabase
+    // Persist the simplified client-owned fields to Supabase. Medical
+    // conditions, fitness level and activity level are intentionally omitted —
+    // the assessment team owns those, so we never overwrite them here.
     if (userId) {
       const payload = {
-        dob:                dobString || null,
-        gender:             formData.gender || null,
-        height_cm,
-        weight_kg,
-        medical_conditions: formData.conditions.filter(c => c !== 'None'),
-        activity_level:     formData.activityLevel || null,
-        fitness_level:      formData.fitnessLevel || null,
-        goals:              formData.fitnessGoals,
+        dob:        dobString || null,
+        gender:     formData.gender || null,
+        height_cm:  heightCm,
+        weight_kg:  weightKg,
+        goals:      formData.fitnessGoals,
         training_preferences: {
-          training_styles:    trainingPrefs.training_styles ?? [],
-          session_preference: trainingPrefs.session_preference || '',
-          availability:       trainingPrefs.availability ?? [],
-          main_goal:          trainingPrefs.main_goal || '',
-          injury_level:       trainingPrefs.injury_level || '',
+          training_styles: trainingPrefs.training_styles ?? [],
+          session_mode:    trainingPrefs.session_mode || '',
+          preferred_times: trainingPrefs.preferred_times ?? [],
         },
       };
       console.log('[HealthProfile] Saving to Supabase:', { userId, payload, city: formData.city });
@@ -376,8 +322,7 @@ export default function HealthProfileScreen() {
       }
 
       // Auto-create the assessment record so this client surfaces in the
-      // Assessment App queue. Silent + non-blocking — failure must not stop the
-      // onboarding flow (the assessment row can also be created on a later save).
+      // Assessment App queue. Silent + non-blocking.
       await createAssessmentRequest(userId);
     } else {
       console.warn('[HealthProfile] No userId — skipping Supabase save');
@@ -406,13 +351,8 @@ export default function HealthProfileScreen() {
             <button
               type="button"
               onClick={() => {
-                console.log('Back button clicked. isFormFilledEnough:', isFormFilledEnough);
-                if (isFormFilledEnough) {
-                  setShowConfirmBack(true);
-                } else {
-                  console.log('Calling navigate(-1)');
-                  navigate(-1);
-                }
+                if (isFormFilledEnough) setShowConfirmBack(true);
+                else navigate(-1);
               }}
               className="p-1 -ml-1 text-text-primary relative z-50"
             >
@@ -451,13 +391,13 @@ export default function HealthProfileScreen() {
           >
             <div className="text-blue shrink-0 pt-0.5"><AlertCircle size={20} /></div>
             <p className="text-[12px] text-blue leading-relaxed font-medium">
-              Don't worry, our assessment team can help you complete any missing details during your review call.
+              Just a few basics — our assessment team will go through the detailed health questions with you during your review call.
             </p>
           </motion.div>
 
-          {/* SECTION 1: PERSONAL DETAILS */}
+          {/* SECTION 1: ABOUT YOU */}
           <section className="space-y-6">
-            <h2 className="label-caps !text-[11px] text-text-secondary">Section 1 — Personal Details</h2>
+            <h2 className="label-caps !text-[11px] text-text-secondary">Section 1 — About You</h2>
 
             {/* DOB */}
             <div className="space-y-2">
@@ -473,7 +413,7 @@ export default function HealthProfileScreen() {
                   className="text-center"
                   value={formData.dobDay}
                   onChange={(e) => setFormData(prev => ({ ...prev, dobDay: e.target.value.slice(0, 2) }))}
-                  error={errors.dateOfBirth ? '' : undefined} // Only show the main error below
+                  error={errors.dateOfBirth ? '' : undefined}
                 />
                 <Input
                   type="number"
@@ -609,6 +549,12 @@ export default function HealthProfileScreen() {
                 onChange={(e) => setFormData(prev => ({ ...prev, weightValue: e.target.value }))}
                 error={errors.weight}
               />
+              {/* Auto-calculated BMI (read-only) */}
+              {bmi !== null && (
+                <div className="bg-green-light/20 border border-primary/15 rounded-xl px-3 py-2 mt-1">
+                  <p className="text-[12px] font-semibold text-primary">Your BMI: {bmi.toFixed(1)}</p>
+                </div>
+              )}
             </div>
 
             {/* City */}
@@ -632,220 +578,53 @@ export default function HealthProfileScreen() {
             </div>
           </section>
 
-          {/* SECTION 2: FITNESS GOALS */}
+          {/* SECTION 2: YOUR FITNESS GOALS */}
           <section className="space-y-6">
-            <div className="space-y-1">
-              <div className="flex justify-between items-end">
-                <h2 className="label-caps !text-[11px] text-text-secondary">Section 2 — Fitness Goals</h2>
-                <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
+            <h2 className="label-caps !text-[11px] text-text-secondary">Section 2 — Your Fitness Goals</h2>
+
+            {/* Q1 — Main goals (max 3) */}
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-[13px] font-medium text-text-primary">What's your main fitness goal?</p>
+                <p className="text-[12px] text-text-secondary">Select up to 3</p>
               </div>
-              <p className="text-[13px] font-medium text-text-primary pt-2">What are your fitness goals?</p>
-              <p className="text-[12px] text-text-secondary">Select up to 3 goals</p>
-            </div>
-            <div className="flex flex-wrap gap-2.5">
-              {GOAL_OPTIONS.map(goal => {
-                const isSelected = formData.fitnessGoals.includes(goal);
-                const isDisabled = !isSelected && formData.fitnessGoals.length >= 3;
-                return (
-                  <button
-                    key={goal}
-                    onClick={() => !isDisabled && handleToggleGoal(goal)}
-                    disabled={isDisabled}
-                    className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
-                      isSelected
-                        ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
-                        : isDisabled
-                        ? 'bg-[#F3F4F6] text-[#D1D5DB] border border-[#E5E7EB] cursor-not-allowed opacity-50'
-                        : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
-                      }`}
-                  >
-                    {goal}
-                  </button>
-                );
-              })}
-            </div>
-            {formData.fitnessGoals.includes("Rehabilitation") && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-amber-light/30 border border-amber/20 p-4 rounded-xl flex gap-3"
-              >
-                <div className="text-amber shrink-0 pt-0.5">⚠️</div>
-                <p className="text-[12px] text-amber-dark leading-relaxed font-medium">
-                  Our assessment team will take extra care during your health review given your rehabilitation goal.
-                </p>
-              </motion.div>
-            )}
-          </section>
-
-          {/* SECTION 3: HEALTH CONDITIONS */}
-          <section className="space-y-6">
-            <div className="space-y-1">
-              <div className="flex justify-between items-end">
-                <h2 className="label-caps !text-[11px] text-text-secondary">Section 3 — Health Conditions</h2>
-                <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
+              <div className="flex flex-wrap gap-2.5">
+                {GOAL_OPTIONS.map(goal => {
+                  const isSelected = formData.fitnessGoals.includes(goal);
+                  const isDisabled = !isSelected && formData.fitnessGoals.length >= 3;
+                  return (
+                    <button
+                      key={goal}
+                      onClick={() => !isDisabled && handleToggleGoal(goal)}
+                      disabled={isDisabled}
+                      className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
+                        isSelected
+                          ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
+                          : isDisabled
+                          ? 'bg-[#F3F4F6] text-[#D1D5DB] border border-[#E5E7EB] cursor-not-allowed opacity-50'
+                          : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
+                        }`}
+                    >
+                      {goal}
+                    </button>
+                  );
+                })}
               </div>
-              <p className="text-[13px] font-medium text-text-primary pt-2">Any existing health conditions?</p>
-              <p className="text-[12px] text-text-secondary">This helps us personalize your wellness plan safely. Select all that apply.</p>
-            </div>
-
-            <div className="space-y-5">
-              {CONDITION_GROUPS.map(group => (
-                <div key={group.title} className="space-y-2.5">
-                  <h3 className="text-[11px] font-medium text-text-secondary/60 tracking-wide">{group.title}</h3>
-                  <div className="flex flex-wrap gap-2.5">
-                    {group.options.map(cond => (
-                      <button
-                        key={cond}
-                        onClick={() => handleToggleCondition(cond)}
-                        className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${formData.conditions.includes(cond)
-                            ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
-                            : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
-                          }`}
-                      >
-                        {cond}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-
-              <div className="pt-1 border-t border-gray-100/60">
-                <button
-                  onClick={() => handleToggleCondition("None")}
-                  className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${formData.conditions.includes("None")
-                      ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
-                      : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
-                    }`}
+              {formData.fitnessGoals.includes("Rehabilitation") && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-amber-light/30 border border-amber/20 p-4 rounded-xl flex gap-3"
                 >
-                  None
-                </button>
-              </div>
-            </div>
-
-            {(formData.conditions.includes("Heart condition") || formData.conditions.includes("Respiratory condition")) && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-red-light/30 border border-red-500/20 p-4 rounded-xl flex gap-3"
-              >
-                <div className="text-red-500 shrink-0 pt-0.5">🔴</div>
-                <p className="text-[12px] text-red-dark leading-relaxed font-medium">
-                  Clients with cardiac or respiratory conditions require medical clearance before starting a program. Our assessment team will guide you.
-                </p>
-              </motion.div>
-            )}
-          </section>
-
-          {/* SECTION 4: ACTIVITY & FITNESS LEVEL */}
-          <section className="space-y-10">
-            <h2 className="label-caps !text-[11px] text-text-secondary">Section 4 — Activity & Fitness Level</h2>
-
-            {/* Activity Level Slider */}
-            <div className="space-y-8">
-              <div className="flex justify-between items-center">
-                <label className="text-[13px] font-medium text-text-primary">Current activity level</label>
-                <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
-              </div>
-              <div className="px-2">
-                <input
-                  type="range"
-                  min="1"
-                  max="5"
-                  step="1"
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary slider-thumb"
-                  value={formData.activityLevel === 0 ? 2 : formData.activityLevel}
-                  onChange={(e) => setFormData(prev => ({ ...prev, activityLevel: parseInt(e.target.value) }))}
-                />
-                <style>{`
-                  input[type='range']::-webkit-slider-thumb {
-                    width: 24px;
-                    height: 24px;
-                    background: white;
-                    border: 2px solid #00A99D;
-                    border-radius: 50%;
-                    cursor: pointer;
-                    -webkit-appearance: none;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                  }
-                  input[type='range']::-moz-range-thumb {
-                    width: 24px;
-                    height: 24px;
-                    background: white;
-                    border: 2px solid #00A99D;
-                    border-radius: 50%;
-                    cursor: pointer;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                  }
-                `}</style>
-                <div className="relative mt-4 h-12">
-                  <div className="absolute inset-0 flex justify-between pointer-events-none">
-                    {ACTIVITY_LABELS.map((label, i) => (
-                      <div
-                        key={label}
-                        className="flex flex-col items-center"
-                        style={{ width: '1%', minWidth: '60px', marginLeft: i === 0 ? '-15px' : '0', marginRight: i === 4 ? '-15px' : '0' }}
-                      >
-                        <span
-                          className={`text-[9px] font-semibold leading-tight text-center transition-colors ${formData.activityLevel === i + 1 ? 'text-primary' : 'text-text-secondary opacity-60'}`}
-                          style={{ width: '60px' }}
-                        >
-                          {label.split(' ').map((word, wi) => (
-                            <span key={wi} className="block">{word}</span>
-                          ))}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {formData.activityLevel > 0 && (
-                <div className="bg-[#F9FAFB] p-4 rounded-xl border border-gray-300 text-center">
-                  <p className="text-[13px] font-semibold text-primary mb-1">{ACTIVITY_LABELS[formData.activityLevel - 1]}</p>
-                  <p className="text-[12px] text-text-secondary">{ACTIVITY_DESCRIPTIONS[formData.activityLevel - 1]}</p>
-                </div>
+                  <div className="text-amber shrink-0 pt-0.5">⚠️</div>
+                  <p className="text-[12px] text-amber-dark leading-relaxed font-medium">
+                    Our assessment team will take extra care during your health review given your rehabilitation goal.
+                  </p>
+                </motion.div>
               )}
             </div>
 
-            {/* Fitness Level */}
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <label className="text-[13px] font-medium text-text-primary">How would you describe your fitness level?</label>
-                  <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md shrink-0">Optional</span>
-                </div>
-                <p className="text-[11px] text-text-secondary font-normal">Be honest — this helps us set the right starting intensity for you</p>
-              </div>
-              <div className="flex bg-input-bg border border-gray-300 rounded-xl p-1 gap-1">
-                {["Beginner", "Intermediate", "Advanced"].map(level => (
-                  <button
-                    key={level}
-                    onClick={() => setFormData(prev => ({ ...prev, fitnessLevel: level }))}
-                    className={`flex-1 py-3.5 rounded-lg text-[13px] font-medium transition-all ${formData.fitnessLevel === level
-                        ? 'bg-primary text-white shadow-sm'
-                        : 'bg-transparent text-text-secondary hover:bg-white/50'
-                      }`}
-                  >
-                    {level}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* SECTION 5: TRAINING PREFERENCES */}
-          <section className="space-y-8">
-            <div className="space-y-1">
-              <div className="flex justify-between items-end">
-                <h2 className="label-caps !text-[11px] text-text-secondary">Section 5 — Training Preferences</h2>
-                <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
-              </div>
-              <p className="text-[12px] text-text-secondary pt-2">
-                Helps us match you with the right trainer.
-              </p>
-            </div>
-
-            {/* Q1 — Training styles (multi-select) */}
+            {/* Q2 — Training styles (multi-select) */}
             <div className="space-y-3">
               <label className="text-[13px] font-medium text-text-primary">What type of training interests you?</label>
               <div className="flex flex-wrap gap-2.5">
@@ -858,7 +637,7 @@ export default function HealthProfileScreen() {
                       onClick={() => toggleTrainingStyle(style)}
                       className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
                         isSelected
-                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
+                          ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
                           : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
                       }`}
                     >
@@ -868,21 +647,26 @@ export default function HealthProfileScreen() {
                 })}
               </div>
             </div>
+          </section>
 
-            {/* Q2 — Session preference (single select) */}
+          {/* SECTION 3: YOUR SCHEDULE */}
+          <section className="space-y-6">
+            <h2 className="label-caps !text-[11px] text-text-secondary">Section 3 — Your Schedule</h2>
+
+            {/* Q3 — Session mode (single select) */}
             <div className="space-y-3">
               <label className="text-[13px] font-medium text-text-primary">How do you prefer to train?</label>
               <div className="flex flex-wrap gap-2.5">
-                {SESSION_PREFERENCE_OPTIONS.map(opt => {
-                  const isSelected = trainingPrefs.session_preference === opt;
+                {SESSION_MODE_OPTIONS.map(opt => {
+                  const isSelected = trainingPrefs.session_mode === opt;
                   return (
                     <button
                       key={opt}
                       type="button"
-                      onClick={() => setTrainingPrefs(prev => ({ ...prev, session_preference: opt }))}
+                      onClick={() => setTrainingPrefs(prev => ({ ...prev, session_mode: opt }))}
                       className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
                         isSelected
-                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
+                          ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
                           : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
                       }`}
                     >
@@ -893,72 +677,24 @@ export default function HealthProfileScreen() {
               </div>
             </div>
 
-            {/* Q3 — Availability (multi-select) */}
+            {/* Q4 — Preferred times (multi-select) */}
             <div className="space-y-3">
               <label className="text-[13px] font-medium text-text-primary">When are you available?</label>
               <div className="flex flex-wrap gap-2.5">
-                {TRAINING_AVAILABILITY_OPTIONS.map(slot => {
-                  const isSelected = (trainingPrefs.availability ?? []).includes(slot);
+                {PREFERRED_TIME_OPTIONS.map(slot => {
+                  const isSelected = (trainingPrefs.preferred_times ?? []).includes(slot);
                   return (
                     <button
                       key={slot}
                       type="button"
-                      onClick={() => toggleTrainingAvailability(slot)}
+                      onClick={() => togglePreferredTime(slot)}
                       className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
                         isSelected
-                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
+                          ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
                           : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
                       }`}
                     >
                       {slot}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Q4 — Main goal (single select) */}
-            <div className="space-y-3">
-              <label className="text-[13px] font-medium text-text-primary">What's your main goal?</label>
-              <div className="flex flex-wrap gap-2.5">
-                {MAIN_GOAL_OPTIONS.map(opt => {
-                  const isSelected = trainingPrefs.main_goal === opt;
-                  return (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setTrainingPrefs(prev => ({ ...prev, main_goal: opt }))}
-                      className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
-                        isSelected
-                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
-                          : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Q5 — Injury level (single select) */}
-            <div className="space-y-3">
-              <label className="text-[13px] font-medium text-text-primary">Do you have any injuries or medical conditions?</label>
-              <div className="flex flex-wrap gap-2.5">
-                {INJURY_LEVEL_OPTIONS.map(opt => {
-                  const isSelected = trainingPrefs.injury_level === opt;
-                  return (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setTrainingPrefs(prev => ({ ...prev, injury_level: opt }))}
-                      className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
-                        isSelected
-                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
-                          : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
-                      }`}
-                    >
-                      {opt}
                     </button>
                   );
                 })}

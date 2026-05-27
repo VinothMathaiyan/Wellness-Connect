@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Loader2, AlertTriangle, Check, Search, X, Star, Sparkles } from 'lucide-react';
+import type { TrainingPreferences } from '../../../types';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
@@ -15,46 +16,61 @@ import {
   saveAssessmentRecommendations,
 } from '../../../services/supabaseService';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Option constants ────────────────────────────────────────────────────────────
 
-const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say'] as const;
+const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say'];
 
+// Section B
 const GOAL_OPTIONS = [
-  'General fitness',
-  'Fat loss',
-  'Muscle gain',
-  'Flexibility',
-  'Stress relief',
-  'Rehabilitation',
-  'Yoga',
-] as const;
+  'Weight Loss', 'Muscle Gain', 'General Fitness', 'Flexibility',
+  'Rehabilitation', 'Mobility', 'Athletic Performance', 'Stress Reduction',
+];
+const GOAL_PRIORITY_OPTIONS = ['High', 'Medium', 'Low'];
+const TRAINING_STYLE_OPTIONS = [
+  'Yoga', 'Strength Training', 'HIIT', 'Cardio', 'Pilates',
+  'Functional Training', 'CrossFit', 'Rehab Training', 'Mobility Training',
+];
+const SESSION_INTENSITY_OPTIONS = ['Low', 'Medium', 'High'];
+const COACHING_STYLE_OPTIONS = ['Motivational', 'Strict', 'Supportive', 'Educational'];
 
-const CONDITION_OPTIONS = [
-  'Back pain',
-  'Knee issue',
-  'Joint pain',
-  'Diabetes',
-  'Blood pressure',
-  'Heart condition',
-  'Respiratory condition',
-  'PCOS / PCOD',
-  'Injury recovery',
-  'Other',
-] as const;
-
-const FITNESS_LEVELS: { value: 'beginner' | 'intermediate' | 'advanced'; label: string }[] = [
+// Section C
+const FITNESS_LEVEL_OPTIONS: { value: 'beginner' | 'intermediate' | 'advanced'; label: string }[] = [
   { value: 'beginner',     label: 'Beginner'     },
   { value: 'intermediate', label: 'Intermediate' },
   { value: 'advanced',     label: 'Advanced'     },
 ];
-
-const ACTIVITY_LEVELS: { value: number; label: string }[] = [
-  { value: 1, label: '1 — Sedentary' },
-  { value: 2, label: '2 — Lightly active' },
-  { value: 3, label: '3 — Moderately active' },
-  { value: 4, label: '4 — Active' },
-  { value: 5, label: '5 — Very active' },
+const ACTIVITY_LEVEL_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: 'Sedentary' },
+  { value: 2, label: 'Lightly Active' },
+  { value: 3, label: 'Moderately Active' },
+  { value: 4, label: 'Very Active' },
 ];
+const WEEKLY_FREQUENCY_OPTIONS = ['1-2', '3-4', '5-6', 'Daily'];
+
+// Section D
+const MEDICAL_CONDITION_OPTIONS = [
+  'Diabetes', 'Hypertension', 'Heart Condition', 'Asthma',
+  'Arthritis', 'PCOS', 'Obesity', 'None',
+];
+const INJURY_OPTIONS = [
+  'Knee Injury', 'Back Pain', 'Shoulder Injury', 'Neck Pain', 'Hip Injury', 'None',
+];
+
+// Section E
+const SESSION_MODE_OPTIONS = ['Online', 'Offline', 'Hybrid'];
+const PREFERRED_TIME_OPTIONS = ['Early Morning', 'Morning', 'Afternoon', 'Evening', 'Night'];
+const PREFERRED_DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const EQUIPMENT_OPTIONS = ['Dumbbells', 'Resistance Bands', 'Treadmill', 'None'];
+
+// Section F
+const TRAINER_GENDER_OPTIONS = ['Male', 'Female', 'No Preference'];
+const TRAINER_LANGUAGE_OPTIONS = ['English', 'Tamil', 'Hindi', 'Malayalam', 'Telugu', 'Kannada'];
+const TRAINER_EXPERIENCE_OPTIONS = ['Junior', 'Mid-Level', 'Senior', 'Any'];
+
+// Section G
+const SLEEP_QUALITY_OPTIONS = ['Poor', 'Average', 'Good'];
+const STRESS_LEVEL_OPTIONS = ['Low', 'Moderate', 'High'];
+const MOTIVATION_OPTIONS = ['Low', 'Medium', 'High'];
 
 const CLEARANCE_OPTIONS: {
   value: 'cleared' | 'conditional' | 'hold';
@@ -103,15 +119,44 @@ interface ProfileRow {
   city: string | null;
 }
 
-interface ProfileForm {
+interface ClientForm {
+  // A
   dob: string;
   gender: string;
   height_cm: string;
   weight_kg: string;
-  activity_level: number | null;
-  fitness_level: string;
+  // B
   goals: string[];
+  secondary_goals: string[];
+  goal_priority: string;
+  training_styles: string[];
+  session_intensity_pref: string;
+  coaching_style_pref: string;
+  // C
+  fitness_level: string;
+  activity_level: number | null;
+  weekly_frequency: string;
+  // D
   medical_conditions: string[];
+  injuries: string[];
+  rehab_required: boolean;
+  medical_certified_required: boolean;
+  doctor_clearance: boolean;
+  // E
+  session_mode: string;
+  preferred_times: string[];
+  preferred_days: string[];
+  equipment_available: string[];
+  // F
+  trainer_gender_pref: string;
+  trainer_languages: string[];
+  trainer_experience_pref: string;
+  // G
+  sleep_quality: string;
+  stress_level: string;
+  motivation_level: string;
+  // H
+  assessment_notes: string;
 }
 
 interface AssessmentForm {
@@ -155,16 +200,45 @@ function calculateAge(dob: string): number | null {
   return age;
 }
 
-const EMPTY_PROFILE: ProfileForm = {
-  dob: '',
-  gender: '',
-  height_cm: '',
-  weight_kg: '',
-  activity_level: null,
-  fitness_level: '',
-  goals: [],
-  medical_conditions: [],
+function bmiCategory(bmi: number): { label: string; color: string } {
+  if (bmi < 18.5) return { label: 'Underweight', color: '#2563eb' };
+  if (bmi < 25)   return { label: 'Normal',      color: '#16a34a' };
+  if (bmi < 30)   return { label: 'Overweight',  color: '#d97706' };
+  return { label: 'Obese', color: '#dc2626' };
+}
+
+// Normalise the lowercase DB defaults back to their UI label.
+function normalisePref(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const map: Record<string, string> = {
+    no_preference: 'No Preference',
+    any: 'Any',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+  };
+  return map[raw] ?? raw;
+}
+
+const EMPTY_FORM: ClientForm = {
+  dob: '', gender: '', height_cm: '', weight_kg: '',
+  goals: [], secondary_goals: [], goal_priority: '',
+  training_styles: [], session_intensity_pref: '', coaching_style_pref: '',
+  fitness_level: '', activity_level: null, weekly_frequency: '',
+  medical_conditions: [], injuries: [],
+  rehab_required: false, medical_certified_required: false, doctor_clearance: false,
+  session_mode: '', preferred_times: [], preferred_days: [], equipment_available: [],
+  trainer_gender_pref: '', trainer_languages: [], trainer_experience_pref: '',
+  sleep_quality: '', stress_level: '', motivation_level: '',
+  assessment_notes: '',
 };
+
+// Array fields where selecting "None" clears the rest.
+type ArrayField =
+  | 'goals' | 'secondary_goals' | 'training_styles'
+  | 'medical_conditions' | 'injuries'
+  | 'preferred_times' | 'preferred_days' | 'equipment_available'
+  | 'trainer_languages';
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -179,13 +253,13 @@ export default function ClientAssessmentFormScreen() {
   const [isLoading, setIsLoading]     = useState(true);
   const [loadError, setLoadError]     = useState('');
 
-  // Section A — editable health profile
-  const [profileForm, setProfileForm] = useState<ProfileForm>(EMPTY_PROFILE);
+  // Sections A–H — editable client profile
+  const [form, setForm] = useState<ClientForm>(EMPTY_FORM);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSaved, setProfileSaved]       = useState(false);
   const [profileError, setProfileError]       = useState('');
 
-  // Section B — assessment decision
+  // Assessment decision
   const [assessmentForm, setAssessmentForm] = useState<AssessmentForm>({
     health_notes: '',
     fitness_level: null,
@@ -222,7 +296,15 @@ export default function ClientAssessmentFormScreen() {
             .maybeSingle(),
           supabase
             .from('client_profiles')
-            .select('dob, gender, height_cm, weight_kg, activity_level, fitness_level, goals, medical_conditions')
+            .select(`
+              dob, gender, height_cm, weight_kg, activity_level, fitness_level,
+              goals, medical_conditions, training_preferences, injuries,
+              rehab_required, medical_certified_required, doctor_clearance,
+              trainer_gender_pref, trainer_languages, trainer_experience_pref,
+              coaching_style_pref, session_intensity_pref, weekly_frequency,
+              preferred_days, preferred_times, equipment_available,
+              sleep_quality, stress_level, motivation_level, assessment_notes
+            `)
             .eq('user_id', id)
             .maybeSingle(),
           supabase
@@ -238,29 +320,43 @@ export default function ClientAssessmentFormScreen() {
 
         setProfile(profileRes.data as ProfileRow | null);
 
-        const health = healthRes.data as Partial<{
-          dob: string | null;
-          gender: string | null;
-          height_cm: number | null;
-          weight_kg: number | null;
-          activity_level: number | null;
-          fitness_level: string | null;
-          goals: string[] | null;
-          medical_conditions: string[] | null;
-        }> | null;
+        const h = healthRes.data as Record<string, unknown> | null;
+        setHasClientProfile(!!h);
 
-        setHasClientProfile(!!health);
-
-        if (health) {
-          setProfileForm({
-            dob:                health.dob ?? '',
-            gender:             health.gender ?? '',
-            height_cm:          health.height_cm != null ? String(health.height_cm) : '',
-            weight_kg:          health.weight_kg != null ? String(health.weight_kg) : '',
-            activity_level:     health.activity_level ?? null,
-            fitness_level:      health.fitness_level ?? '',
-            goals:              Array.isArray(health.goals) ? health.goals : [],
-            medical_conditions: Array.isArray(health.medical_conditions) ? health.medical_conditions : [],
+        if (h) {
+          const tp = (h.training_preferences ?? {}) as TrainingPreferences;
+          const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
+          const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+          setForm({
+            dob:                    str(h.dob),
+            gender:                 str(h.gender),
+            height_cm:              h.height_cm != null ? String(h.height_cm) : '',
+            weight_kg:              h.weight_kg != null ? String(h.weight_kg) : '',
+            goals:                  arr(h.goals),
+            secondary_goals:        arr(tp.secondary_goals),
+            goal_priority:          str(tp.goal_priority),
+            training_styles:        arr(tp.training_styles),
+            session_intensity_pref: normalisePref(str(h.session_intensity_pref)),
+            coaching_style_pref:    str(h.coaching_style_pref),
+            fitness_level:          str(h.fitness_level),
+            activity_level:         typeof h.activity_level === 'number' ? h.activity_level : null,
+            weekly_frequency:       str(h.weekly_frequency),
+            medical_conditions:     arr(h.medical_conditions),
+            injuries:               arr(h.injuries),
+            rehab_required:             h.rehab_required === true,
+            medical_certified_required: h.medical_certified_required === true,
+            doctor_clearance:           h.doctor_clearance === true,
+            session_mode:           str(tp.session_mode),
+            preferred_times:        arr(h.preferred_times),
+            preferred_days:         arr(h.preferred_days),
+            equipment_available:    arr(h.equipment_available),
+            trainer_gender_pref:    normalisePref(str(h.trainer_gender_pref)),
+            trainer_languages:      arr(h.trainer_languages),
+            trainer_experience_pref: normalisePref(str(h.trainer_experience_pref)),
+            sleep_quality:          str(h.sleep_quality),
+            stress_level:           str(h.stress_level),
+            motivation_level:       str(h.motivation_level),
+            assessment_notes:       str(h.assessment_notes),
           });
         }
 
@@ -312,7 +408,16 @@ export default function ClientAssessmentFormScreen() {
 
   // ── Derived ─────────────────────────────────────────────────────────────────
 
-  const age = calculateAge(profileForm.dob);
+  const age = calculateAge(form.dob);
+
+  const bmi = (() => {
+    const h = parseFloat(form.height_cm);
+    const w = parseFloat(form.weight_kg);
+    if (isNaN(h) || isNaN(w) || h <= 0) return null;
+    const m = h / 100;
+    return Math.round((w / (m * m)) * 10) / 10;
+  })();
+
   const canDecide =
     assessmentForm.fitness_level !== null &&
     assessmentForm.health_notes.trim().length > 0;
@@ -332,38 +437,32 @@ export default function ClientAssessmentFormScreen() {
   const initials = (name: string) =>
     name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
+  // ── Form mutators ─────────────────────────────────────────────────────────────
 
-  const setProfileField = <K extends keyof ProfileForm>(key: K, value: ProfileForm[K]) => {
-    setProfileForm(prev => ({ ...prev, [key]: value }));
+  const setField = <K extends keyof ClientForm>(key: K, value: ClientForm[K]) => {
+    setForm(prev => ({ ...prev, [key]: value }));
     setProfileSaved(false);
   };
 
-  const toggleGoal = (goal: string) => {
-    setProfileForm(prev => ({
-      ...prev,
-      goals: prev.goals.includes(goal)
-        ? prev.goals.filter(g => g !== goal)
-        : [...prev.goals, goal],
-    }));
-    setProfileSaved(false);
-  };
-
-  const toggleCondition = (cond: string) => {
-    setProfileForm(prev => ({
-      ...prev,
-      medical_conditions: prev.medical_conditions.includes(cond)
-        ? prev.medical_conditions.filter(c => c !== cond)
-        : [...prev.medical_conditions, cond],
-    }));
+  // Toggle a value in an array field. Selecting "None" clears the rest, and
+  // selecting any other value clears "None".
+  const toggleArray = (key: ArrayField, value: string) => {
+    setForm(prev => {
+      const cur = prev[key];
+      let next: string[];
+      if (value === 'None') {
+        next = cur.includes('None') ? [] : ['None'];
+      } else {
+        const without = cur.filter(v => v !== 'None');
+        next = without.includes(value) ? without.filter(v => v !== value) : [...without, value];
+      }
+      return { ...prev, [key]: next };
+    });
     setProfileSaved(false);
   };
 
   const addTrainer = (id: string) => {
-    setSelectedTrainers(prev => {
-      if (prev.includes(id) || prev.length >= 2) return prev;
-      return [...prev, id];
-    });
+    setSelectedTrainers(prev => (prev.includes(id) || prev.length >= 2 ? prev : [...prev, id]));
     setProfileSaved(false);
   };
 
@@ -372,31 +471,57 @@ export default function ClientAssessmentFormScreen() {
     setProfileSaved(false);
   };
 
+  // ── Save (Sections A–H) ─────────────────────────────────────────────────────
+
   const handleSaveProfile = async () => {
     if (!clientId || !userId) return;
     setIsSavingProfile(true);
     setProfileError('');
     setProfileSaved(false);
     try {
+      const training_preferences: TrainingPreferences = {
+        training_styles: form.training_styles,
+        session_mode:    form.session_mode || '',
+        secondary_goals: form.secondary_goals,
+        goal_priority:   form.goal_priority || '',
+      };
+
       const result = await upsertClientProfile(
         clientId,
         {
-          dob:                profileForm.dob || null,
-          gender:             profileForm.gender || null,
-          height_cm:          profileForm.height_cm ? Number(profileForm.height_cm) : null,
-          weight_kg:          profileForm.weight_kg ? Number(profileForm.weight_kg) : null,
-          medical_conditions: profileForm.medical_conditions,
-          activity_level:     profileForm.activity_level,
-          fitness_level:      profileForm.fitness_level || null,
-          goals:              profileForm.goals,
+          dob:                        form.dob || null,
+          gender:                     form.gender || null,
+          height_cm:                  form.height_cm ? Number(form.height_cm) : null,
+          weight_kg:                  form.weight_kg ? Number(form.weight_kg) : null,
+          goals:                      form.goals,
+          training_preferences,
+          fitness_level:              form.fitness_level || null,
+          activity_level:             form.activity_level,
+          weekly_frequency:           form.weekly_frequency || null,
+          medical_conditions:         form.medical_conditions,
+          injuries:                   form.injuries,
+          rehab_required:             form.rehab_required,
+          medical_certified_required: form.medical_certified_required,
+          doctor_clearance:           form.doctor_clearance,
+          preferred_times:            form.preferred_times,
+          preferred_days:             form.preferred_days,
+          equipment_available:        form.equipment_available,
+          trainer_gender_pref:        form.trainer_gender_pref || null,
+          trainer_languages:          form.trainer_languages,
+          trainer_experience_pref:    form.trainer_experience_pref || null,
+          coaching_style_pref:        form.coaching_style_pref || null,
+          session_intensity_pref:     form.session_intensity_pref || null,
+          sleep_quality:              form.sleep_quality || null,
+          stress_level:               form.stress_level || null,
+          motivation_level:           form.motivation_level || null,
+          assessment_notes:           form.assessment_notes || null,
         },
         null, // city is owned by the client profile screen — leave untouched
       );
 
       if (!result.ok) throw new Error(result.errorMessage ?? 'Save failed.');
 
-      // Persist the assessor's trainer recommendations. Non-fatal: a failure
-      // here must not block the profile save the assessor just confirmed.
+      // Persist the assessor's trainer recommendations. Non-fatal.
       if (assessmentId) {
         const recSaved = await saveAssessmentRecommendations(assessmentId, selectedTrainers);
         if (!recSaved) console.warn('handleSaveProfile: trainer recommendations failed to save');
@@ -435,7 +560,95 @@ export default function ClientAssessmentFormScreen() {
     }
   };
 
+  // ── Reusable chip renderers ───────────────────────────────────────────────────
+
+  const SELECTED_TEAL  = { backgroundColor: '#f0fdfa', border: '1.5px solid #5eead4', color: '#0d9488' };
+  const UNSELECTED      = { backgroundColor: '#ffffff', border: '1.5px solid #e5e7eb', color: '#6b7280' };
+  const SELECTED_RED    = { backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', color: '#dc2626' };
+
+  const fieldLabel = (text: string) => (
+    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{text}</label>
+  );
+
+  const multiChips = (
+    options: string[],
+    selected: string[],
+    onToggle: (v: string) => void,
+    redWhenSelected = false,
+  ) => (
+    <div className="flex flex-wrap gap-2 mt-2">
+      {options.map(opt => {
+        const isSel = selected.includes(opt);
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onToggle(opt)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold active:scale-95 transition-transform"
+            style={isSel ? (redWhenSelected ? SELECTED_RED : SELECTED_TEAL) : UNSELECTED}
+          >
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const singleChips = (
+    options: string[],
+    value: string,
+    onSelect: (v: string) => void,
+  ) => (
+    <div className="flex flex-wrap gap-2 mt-2">
+      {options.map(opt => {
+        const isSel = value === opt;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onSelect(opt)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold active:scale-95 transition-transform"
+            style={isSel ? SELECTED_TEAL : UNSELECTED}
+          >
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const yesNoToggle = (value: boolean, onSelect: (v: boolean) => void) => (
+    <div className="flex gap-2 mt-2">
+      {[{ label: 'Yes', val: true }, { label: 'No', val: false }].map(o => {
+        const isSel = value === o.val;
+        return (
+          <button
+            key={o.label}
+            type="button"
+            onClick={() => { onSelect(o.val); setProfileSaved(false); }}
+            className="px-5 py-2 rounded-lg text-xs font-semibold active:scale-95 transition-transform"
+            style={isSel ? SELECTED_TEAL : UNSELECTED}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const sectionCard = (title: string, subtitle: string | null, children: React.ReactNode) => (
+    <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-5">
+      <div>
+        <h2 className="text-base font-bold text-gray-900">{title}</h2>
+        {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+      </div>
+      {children}
+    </section>
+  );
+
   // ── Render ───────────────────────────────────────────────────────────────────
+
+  const bmiInfo = bmi !== null ? bmiCategory(bmi) : null;
 
   return (
     <MobileShell className="bg-[#F2F8F7]">
@@ -482,175 +695,261 @@ export default function ClientAssessmentFormScreen() {
         ) : (
           <div className="px-5 pt-4 space-y-6">
 
-            {/* ════ SECTION A — Client Health Profile (editable) ════ */}
-            <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-5">
-              <div>
-                <h2 className="text-base font-bold text-gray-900">Client Health Profile</h2>
-                {!hasClientProfile && (
-                  <p className="text-xs text-amber-600 font-medium mt-1">
-                    Client hasn't filled this in — you can complete it below.
-                  </p>
-                )}
-              </div>
-
-              {/* Full name (read only) */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Full Name</label>
-                <p className="text-sm font-medium text-gray-900 mt-1">{profile?.full_name ?? '—'}</p>
-              </div>
-
-              {/* Phone (read only) */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Phone</label>
-                <p className="text-sm font-medium text-gray-900 mt-1">
-                  {profile?.phone_number || 'Not provided'}
+            {!hasClientProfile && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-xs text-amber-700 font-medium">
+                  Client hasn't filled this in — you can complete it during the assessment call.
                 </p>
               </div>
+            )}
 
-              {/* Date of birth */}
+            {/* ════ SECTION A — Basic Profile ════ */}
+            {sectionCard('A · Basic Profile', 'Pre-filled from the client — editable', (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    {fieldLabel('Full Name')}
+                    <p className="text-sm font-medium text-gray-900 mt-1">{profile?.full_name ?? '—'}</p>
+                  </div>
+                  <div>
+                    {fieldLabel('Phone')}
+                    <p className="text-sm font-medium text-gray-900 mt-1">{profile?.phone_number || 'Not provided'}</p>
+                  </div>
+                </div>
+
+                <div>
+                  {fieldLabel('Date of Birth')}
+                  <input
+                    type="date"
+                    value={form.dob}
+                    onChange={e => setField('dob', e.target.value)}
+                    className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  />
+                  {age !== null && <p className="text-xs text-gray-500 mt-1">Age: {age} years</p>}
+                </div>
+
+                <div>
+                  {fieldLabel('Gender')}
+                  {singleChips(GENDER_OPTIONS, form.gender, v => setField('gender', v))}
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    {fieldLabel('Height (cm)')}
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="Not filled"
+                      value={form.height_cm}
+                      onChange={e => setField('height_cm', e.target.value)}
+                      className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    {fieldLabel('Weight (kg)')}
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="Not filled"
+                      value={form.weight_kg}
+                      onChange={e => setField('weight_kg', e.target.value)}
+                      className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    />
+                  </div>
+                </div>
+
+                {/* BMI (read-only, colour coded) */}
+                <div>
+                  {fieldLabel('BMI (auto-calculated)')}
+                  {bmiInfo ? (
+                    <div
+                      className="mt-1.5 rounded-xl px-3 py-2.5 flex items-center justify-between"
+                      style={{ backgroundColor: `${bmiInfo.color}14`, border: `1px solid ${bmiInfo.color}40` }}
+                    >
+                      <span className="text-sm font-bold" style={{ color: bmiInfo.color }}>{bmi?.toFixed(1)}</span>
+                      <span className="text-xs font-semibold" style={{ color: bmiInfo.color }}>{bmiInfo.label}</span>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 mt-1.5">Enter height and weight to calculate</p>
+                  )}
+                </div>
+              </>
+            ))}
+
+            {/* ════ SECTION B — Fitness Goals & Preferences ════ */}
+            {sectionCard('B · Fitness Goals & Preferences', null, (
+              <>
+                <div>
+                  {fieldLabel('Primary Goals')}
+                  {multiChips(GOAL_OPTIONS, form.goals, v => toggleArray('goals', v))}
+                </div>
+                <div>
+                  {fieldLabel('Secondary Goals')}
+                  {multiChips(GOAL_OPTIONS, form.secondary_goals, v => toggleArray('secondary_goals', v))}
+                </div>
+                <div>
+                  {fieldLabel('Goal Priority')}
+                  {singleChips(GOAL_PRIORITY_OPTIONS, form.goal_priority, v => setField('goal_priority', v))}
+                </div>
+                <div>
+                  {fieldLabel('Preferred Training Styles')}
+                  {multiChips(TRAINING_STYLE_OPTIONS, form.training_styles, v => toggleArray('training_styles', v))}
+                </div>
+                <div>
+                  {fieldLabel('Preferred Session Intensity')}
+                  {singleChips(SESSION_INTENSITY_OPTIONS, form.session_intensity_pref, v => setField('session_intensity_pref', v))}
+                </div>
+                <div>
+                  {fieldLabel('Preferred Coaching Style')}
+                  {singleChips(COACHING_STYLE_OPTIONS, form.coaching_style_pref, v => setField('coaching_style_pref', v))}
+                </div>
+              </>
+            ))}
+
+            {/* ════ SECTION C — Fitness & Activity Level ════ */}
+            {sectionCard('C · Fitness & Activity Level', 'Assessed during the call', (
+              <>
+                <div>
+                  {fieldLabel('Current Fitness Level')}
+                  {singleChips(
+                    FITNESS_LEVEL_OPTIONS.map(f => f.label),
+                    FITNESS_LEVEL_OPTIONS.find(f => f.value === form.fitness_level)?.label ?? '',
+                    label => {
+                      const match = FITNESS_LEVEL_OPTIONS.find(f => f.label === label);
+                      setField('fitness_level', match ? match.value : '');
+                    },
+                  )}
+                </div>
+                <div>
+                  {fieldLabel('Activity Level')}
+                  {singleChips(
+                    ACTIVITY_LEVEL_OPTIONS.map(a => a.label),
+                    ACTIVITY_LEVEL_OPTIONS.find(a => a.value === form.activity_level)?.label ?? '',
+                    label => {
+                      const match = ACTIVITY_LEVEL_OPTIONS.find(a => a.label === label);
+                      setField('activity_level', match ? match.value : null);
+                    },
+                  )}
+                </div>
+                <div>
+                  {fieldLabel('Weekly Workout Frequency')}
+                  {singleChips(WEEKLY_FREQUENCY_OPTIONS, form.weekly_frequency, v => setField('weekly_frequency', v))}
+                </div>
+              </>
+            ))}
+
+            {/* ════ SECTION D — Medical Conditions & Injuries ════ */}
+            {sectionCard('D · Medical Conditions & Injuries', 'Critical for trainer matching', (
+              <>
+                <div>
+                  {fieldLabel('Existing Medical Conditions')}
+                  {multiChips(MEDICAL_CONDITION_OPTIONS, form.medical_conditions, v => toggleArray('medical_conditions', v), true)}
+                </div>
+                <div>
+                  {fieldLabel('Existing Injuries')}
+                  {multiChips(INJURY_OPTIONS, form.injuries, v => toggleArray('injuries', v), true)}
+                </div>
+                <div>
+                  {fieldLabel('Rehabilitation Required')}
+                  {yesNoToggle(form.rehab_required, v => setField('rehab_required', v))}
+                </div>
+                <div>
+                  {fieldLabel('Requires Medical-Certified Trainer')}
+                  {yesNoToggle(form.medical_certified_required, v => setField('medical_certified_required', v))}
+                </div>
+                <div>
+                  {fieldLabel('Doctor Clearance Available')}
+                  {yesNoToggle(form.doctor_clearance, v => setField('doctor_clearance', v))}
+                </div>
+              </>
+            ))}
+
+            {/* ════ SECTION E — Session Preferences ════ */}
+            {sectionCard('E · Session Preferences', null, (
+              <>
+                <div>
+                  {fieldLabel('Session Mode')}
+                  {singleChips(SESSION_MODE_OPTIONS, form.session_mode, v => setField('session_mode', v))}
+                </div>
+                <div>
+                  {fieldLabel('Preferred Times')}
+                  {multiChips(PREFERRED_TIME_OPTIONS, form.preferred_times, v => toggleArray('preferred_times', v))}
+                </div>
+                <div>
+                  {fieldLabel('Preferred Days')}
+                  {multiChips(PREFERRED_DAY_OPTIONS, form.preferred_days, v => toggleArray('preferred_days', v))}
+                </div>
+                <div>
+                  {fieldLabel('Home Equipment')}
+                  {multiChips(EQUIPMENT_OPTIONS, form.equipment_available, v => toggleArray('equipment_available', v))}
+                </div>
+              </>
+            ))}
+
+            {/* ════ SECTION F — Trainer Preferences ════ */}
+            {sectionCard('F · Trainer Preferences', null, (
+              <>
+                <div>
+                  {fieldLabel('Preferred Trainer Gender')}
+                  {singleChips(TRAINER_GENDER_OPTIONS, form.trainer_gender_pref, v => setField('trainer_gender_pref', v))}
+                </div>
+                <div>
+                  {fieldLabel('Preferred Languages')}
+                  {multiChips(TRAINER_LANGUAGE_OPTIONS, form.trainer_languages, v => toggleArray('trainer_languages', v))}
+                </div>
+                <div>
+                  {fieldLabel('Preferred Experience Level')}
+                  {singleChips(TRAINER_EXPERIENCE_OPTIONS, form.trainer_experience_pref, v => setField('trainer_experience_pref', v))}
+                </div>
+                <div>
+                  {fieldLabel('Preferred Coaching Style')}
+                  {singleChips(COACHING_STYLE_OPTIONS, form.coaching_style_pref, v => setField('coaching_style_pref', v))}
+                </div>
+              </>
+            ))}
+
+            {/* ════ SECTION G — Lifestyle & Wellness ════ */}
+            {sectionCard('G · Lifestyle & Wellness', null, (
+              <>
+                <div>
+                  {fieldLabel('Sleep Quality')}
+                  {singleChips(SLEEP_QUALITY_OPTIONS, form.sleep_quality, v => setField('sleep_quality', v))}
+                </div>
+                <div>
+                  {fieldLabel('Stress Level')}
+                  {singleChips(STRESS_LEVEL_OPTIONS, form.stress_level, v => setField('stress_level', v))}
+                </div>
+                <div>
+                  {fieldLabel('Motivation Consistency')}
+                  {singleChips(MOTIVATION_OPTIONS, form.motivation_level, v => setField('motivation_level', v))}
+                </div>
+              </>
+            ))}
+
+            {/* ════ SECTION H — Assessor Notes ════ */}
+            {sectionCard('H · Assessor Notes', 'These notes are internal — not visible to client', (
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date of Birth</label>
-                <input
-                  type="date"
-                  value={profileForm.dob}
-                  onChange={e => setProfileField('dob', e.target.value)}
-                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                {fieldLabel('Internal Assessment Notes')}
+                <textarea
+                  value={form.assessment_notes}
+                  onChange={e => setField('assessment_notes', e.target.value)}
+                  placeholder="Internal notes about this client's assessment..."
+                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-3 text-sm text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  style={{ minHeight: '90px' }}
                 />
-                {age !== null && (
-                  <p className="text-xs text-gray-500 mt-1">Age: {age} years</p>
-                )}
               </div>
+            ))}
 
-              {/* Gender */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gender</label>
-                <select
-                  value={profileForm.gender}
-                  onChange={e => setProfileField('gender', e.target.value)}
-                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-                >
-                  <option value="">Not filled by client</option>
-                  {GENDER_OPTIONS.map(g => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
-                </select>
+            {/* Save profile error */}
+            {profileError && (
+              <div className="bg-red-50 p-3 rounded-lg flex items-start gap-2 border border-red-100">
+                <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16} />
+                <p className="text-sm text-red-700">{profileError}</p>
               </div>
+            )}
 
-              {/* Height + Weight */}
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Height (cm)</label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="Not filled"
-                    value={profileForm.height_cm}
-                    onChange={e => setProfileField('height_cm', e.target.value)}
-                    className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weight (kg)</label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    placeholder="Not filled"
-                    value={profileForm.weight_kg}
-                    onChange={e => setProfileField('weight_kg', e.target.value)}
-                    className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-                  />
-                </div>
-              </div>
-
-              {/* Activity level */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Activity Level</label>
-                <select
-                  value={profileForm.activity_level ?? ''}
-                  onChange={e => setProfileField('activity_level', e.target.value ? Number(e.target.value) : null)}
-                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-                >
-                  <option value="">Not filled by client</option>
-                  {ACTIVITY_LEVELS.map(a => (
-                    <option key={a.value} value={a.value}>{a.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Fitness level */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fitness Level</label>
-                <select
-                  value={profileForm.fitness_level}
-                  onChange={e => setProfileField('fitness_level', e.target.value)}
-                  className="w-full mt-1.5 rounded-xl border border-gray-200 p-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-                >
-                  <option value="">Not filled by client</option>
-                  {FITNESS_LEVELS.map(f => (
-                    <option key={f.value} value={f.value}>{f.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Health goals */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Health Goals</label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {GOAL_OPTIONS.map(goal => {
-                    const selected = profileForm.goals.includes(goal);
-                    return (
-                      <button
-                        key={goal}
-                        type="button"
-                        onClick={() => toggleGoal(goal)}
-                        className="px-3 py-1.5 rounded-full text-xs font-semibold active:scale-95 transition-transform"
-                        style={
-                          selected
-                            ? { backgroundColor: '#f0fdfa', border: '1.5px solid #5eead4', color: '#0d9488' }
-                            : { backgroundColor: '#ffffff', border: '1.5px solid #e5e7eb', color: '#6b7280' }
-                        }
-                      >
-                        {goal}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Medical conditions */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Medical Conditions</label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {CONDITION_OPTIONS.map(cond => {
-                    const selected = profileForm.medical_conditions.includes(cond);
-                    return (
-                      <button
-                        key={cond}
-                        type="button"
-                        onClick={() => toggleCondition(cond)}
-                        className="px-3 py-1.5 rounded-full text-xs font-semibold active:scale-95 transition-transform"
-                        style={
-                          selected
-                            ? { backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', color: '#dc2626' }
-                            : { backgroundColor: '#ffffff', border: '1.5px solid #e5e7eb', color: '#6b7280' }
-                        }
-                      >
-                        {cond}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Save profile error */}
-              {profileError && (
-                <div className="bg-red-50 p-3 rounded-lg flex items-start gap-2 border border-red-100">
-                  <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16} />
-                  <p className="text-sm text-red-700">{profileError}</p>
-                </div>
-              )}
-
-              {/* Save profile button */}
+            {/* Save profile button */}
+            <div className="space-y-1">
               <button
                 onClick={handleSaveProfile}
                 disabled={isSavingProfile}
@@ -666,15 +965,15 @@ export default function ClientAssessmentFormScreen() {
                   The client has been notified to review their details.
                 </p>
               )}
-            </section>
+            </div>
 
-            {/* ════ SECTION B — Assessment Decision ════ */}
+            {/* ════ Assessment Decision ════ */}
             <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-5">
               <h2 className="text-base font-bold text-gray-900">Assessment Decision</h2>
 
               {/* Assessment notes */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Assessment Notes</label>
+                {fieldLabel('Assessment Notes')}
                 <textarea
                   value={assessmentForm.health_notes}
                   onChange={e => setAssessmentForm(prev => ({ ...prev, health_notes: e.target.value }))}
@@ -686,9 +985,9 @@ export default function ClientAssessmentFormScreen() {
 
               {/* Fitness level assessment */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fitness Level Assessment</label>
+                {fieldLabel('Fitness Level Assessment')}
                 <div className="flex gap-2 mt-2">
-                  {FITNESS_LEVELS.map(({ value, label }) => {
+                  {FITNESS_LEVEL_OPTIONS.map(({ value, label }) => {
                     const selected = assessmentForm.fitness_level === value;
                     return (
                       <button
@@ -711,7 +1010,7 @@ export default function ClientAssessmentFormScreen() {
 
               {/* Trainer recommendation */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Trainer Recommendation</label>
+                {fieldLabel('Trainer Recommendation')}
                 <textarea
                   value={assessmentForm.trainer_recommendation}
                   onChange={e => setAssessmentForm(prev => ({ ...prev, trainer_recommendation: e.target.value }))}
@@ -723,7 +1022,7 @@ export default function ClientAssessmentFormScreen() {
 
               {/* ── Assign Recommended Trainers ── */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Assign Recommended Trainers</label>
+                {fieldLabel('Assign Recommended Trainers')}
 
                 {/* Engine suggestions */}
                 {autoSuggested.length > 0 && (
@@ -804,7 +1103,7 @@ export default function ClientAssessmentFormScreen() {
 
               {/* Clearance decision */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Clearance Decision</label>
+                {fieldLabel('Clearance Decision')}
                 {!canDecide && (
                   <p className="text-xs text-gray-400 mt-1">
                     Select a fitness level and add assessment notes to enable a decision.

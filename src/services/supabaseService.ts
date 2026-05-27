@@ -2125,26 +2125,44 @@ export const updateSessionNote = async (
 // ─── Client Profile (Health Profile Screen) ───────────────────────────────────
 
 export interface ClientProfileData {
-  dob:                string | null;
-  gender:             string | null;
-  height_cm:          number | null;
-  weight_kg:          number | null;
-  medical_conditions: string[];
-  activity_level:     number | null;
-  fitness_level:      string | null;
-  goals:              string[];
-  /**
-   * Closed-ended training preferences captured on HealthProfileScreen.
-   * Optional: when omitted (e.g. the assessor save path) the existing
-   * training_preferences column is left untouched.
-   */
+  // Every field is optional: callers (client onboarding vs assessor form)
+  // supply only the fields they own. Fields left `undefined` are NOT written,
+  // so one screen never wipes values owned by the other. `bmi` is a generated
+  // column and is never written here.
+  dob?:                 string | null;
+  gender?:              string | null;
+  height_cm?:           number | null;
+  weight_kg?:           number | null;
+  medical_conditions?:  string[];
+  activity_level?:      number | null;
+  fitness_level?:       string | null;
+  goals?:               string[];
   training_preferences?: import('../types').TrainingPreferences | null;
+  // Assessment-team structured fields (Sections C–H)
+  injuries?:                    string[];
+  rehab_required?:              boolean;
+  medical_certified_required?:  boolean;
+  doctor_clearance?:            boolean;
+  trainer_gender_pref?:         string | null;
+  trainer_languages?:           string[];
+  trainer_experience_pref?:     string | null;
+  coaching_style_pref?:         string | null;
+  session_intensity_pref?:      string | null;
+  weekly_frequency?:            string | null;
+  preferred_days?:              string[];
+  preferred_times?:             string[];
+  equipment_available?:         string[];
+  sleep_quality?:               string | null;
+  stress_level?:                string | null;
+  motivation_level?:            string | null;
+  assessment_notes?:            string | null;
 }
 
 /**
- * Upsert all fields collected on HealthProfileScreen into client_profiles.
- * Uses user_id as the conflict key so re-submitting the form updates in place.
- * Also keeps profiles.city in sync.
+ * Upsert client_profiles fields. Uses user_id as the conflict key so
+ * re-submitting updates in place. Only the keys present on `data` are written
+ * (undefined keys are skipped), letting the client and assessor screens each
+ * own their slice of the row. Also keeps profiles.city in sync.
  */
 export const upsertClientProfile = async (
   userId: string,
@@ -2163,48 +2181,49 @@ export const upsertClientProfile = async (
     return { ok: false, errorMessage: `Fetch error: ${fetchError.message}` };
   }
 
-  const basePayload = {
-    user_id:            userId,
-    dob:                data.dob || null,
-    gender:             data.gender || null,
-    height_cm:          data.height_cm,
-    weight_kg:          data.weight_kg,
-    medical_conditions: data.medical_conditions,
-    updated_at:         new Date().toISOString(),
+  // Build the payload from only the fields the caller supplied.
+  const payload: Record<string, unknown> = {
+    user_id:    userId,
+    updated_at: new Date().toISOString(),
   };
-
-  const fullPayload = {
-    ...basePayload,
-    activity_level: data.activity_level,
-    fitness_level:  data.fitness_level || null,
-    goals:          data.goals,
-    // Only persist training_preferences when the caller supplied it, so the
-    // assessor save path (which omits it) never wipes the client's answers.
-    ...(data.training_preferences !== undefined
-      ? { training_preferences: data.training_preferences }
-      : {}),
+  const assign = <K extends keyof ClientProfileData>(key: K, col: string) => {
+    if (data[key] !== undefined) payload[col] = data[key];
   };
+  assign('dob', 'dob');
+  assign('gender', 'gender');
+  assign('height_cm', 'height_cm');
+  assign('weight_kg', 'weight_kg');
+  assign('medical_conditions', 'medical_conditions');
+  assign('activity_level', 'activity_level');
+  assign('fitness_level', 'fitness_level');
+  assign('goals', 'goals');
+  assign('training_preferences', 'training_preferences');
+  assign('injuries', 'injuries');
+  assign('rehab_required', 'rehab_required');
+  assign('medical_certified_required', 'medical_certified_required');
+  assign('doctor_clearance', 'doctor_clearance');
+  assign('trainer_gender_pref', 'trainer_gender_pref');
+  assign('trainer_languages', 'trainer_languages');
+  assign('trainer_experience_pref', 'trainer_experience_pref');
+  assign('coaching_style_pref', 'coaching_style_pref');
+  assign('session_intensity_pref', 'session_intensity_pref');
+  assign('weekly_frequency', 'weekly_frequency');
+  assign('preferred_days', 'preferred_days');
+  assign('preferred_times', 'preferred_times');
+  assign('equipment_available', 'equipment_available');
+  assign('sleep_quality', 'sleep_quality');
+  assign('stress_level', 'stress_level');
+  assign('motivation_level', 'motivation_level');
+  assign('assessment_notes', 'assessment_notes');
 
   // 2. Insert or update depending on whether a row exists
   const { error: cpError } = existing
-    ? await supabase.from('client_profiles').update(fullPayload).eq('user_id', userId)
-    : await supabase.from('client_profiles').insert(fullPayload);
+    ? await supabase.from('client_profiles').update(payload).eq('user_id', userId)
+    : await supabase.from('client_profiles').insert(payload);
 
   if (cpError) {
     console.error('upsertClientProfile error code:', cpError.code, 'message:', cpError.message);
-    // If the extra columns don't exist yet, fall back to base columns only
-    if (cpError.message?.includes('activity_level') || cpError.message?.includes('fitness_level') || cpError.message?.includes('goals') || cpError.message?.includes('training_preferences') || cpError.code === '42703') {
-      console.warn('upsertClientProfile: extra columns missing — saving base fields only');
-      const { error: fallbackError } = existing
-        ? await supabase.from('client_profiles').update(basePayload).eq('user_id', userId)
-        : await supabase.from('client_profiles').insert(basePayload);
-      if (fallbackError) {
-        console.error('upsertClientProfile (fallback):', fallbackError);
-        return { ok: false, errorMessage: `Save error: ${fallbackError.message}` };
-      }
-    } else {
-      return { ok: false, errorMessage: `Save error [${cpError.code}]: ${cpError.message}` };
-    }
+    return { ok: false, errorMessage: `Save error [${cpError.code}]: ${cpError.message}` };
   }
 
   // 3. Keep profiles.city in sync (city lives in the main profiles table)
