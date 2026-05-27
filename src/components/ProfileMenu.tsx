@@ -56,10 +56,15 @@ export default function ProfileMenu() {
   };
 
   // Assessors have no profile edit screen, so the row is hidden for them.
+  // Unknown/unresolved roles fall back to the client profile screen so the
+  // option still appears if userRole hasn't hydrated yet when the menu opens.
   const editProfilePath =
     userRole === 'trainer' ? '/trainer/onboarding'
     : userRole === 'client' ? '/onboarding/profile'
-    : null;
+    : userRole === 'assessor' ? null
+    : '/onboarding/profile';
+
+  console.log('[ProfileMenu] userRole:', userRole, 'editProfilePath:', editProfilePath);
 
   const handleEditProfile = () => {
     if (!editProfilePath) return;
@@ -109,14 +114,18 @@ export default function ProfileMenu() {
               </div>
 
               {editProfilePath && (
-                <button
-                  onClick={handleEditProfile}
-                  className="w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors hover:bg-[#f3f4f6]"
-                  style={{ borderBottom: '1px solid #e5e7eb' }}
-                >
-                  <UserCog size={15} style={{ color: '#374151', flexShrink: 0 }} />
-                  <span style={{ color: '#374151', fontSize: 14, fontWeight: 600 }}>Edit Profile</span>
-                </button>
+                <>
+                  <button
+                    onClick={handleEditProfile}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors"
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f3f4f6')}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <UserCog size={15} style={{ color: '#374151', flexShrink: 0 }} />
+                    <span style={{ color: '#374151', fontSize: 14, fontWeight: 600 }}>Edit Profile</span>
+                  </button>
+                  <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '4px 0' }} />
+                </>
               )}
 
               <button
