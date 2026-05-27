@@ -36,6 +36,7 @@ import {
   getClientActiveTrainerIds,
   getRecommendedTrainers,
   getExpertPickedTrainers,
+  getAssessmentRecommendations,
 } from '../../../services/supabaseService';
 
 export default function TrainersScreen() {
@@ -46,6 +47,7 @@ export default function TrainersScreen() {
   // ── Live Supabase state ──────────────────────────────────────────────────────
   const [trainers,         setTrainers]         = useState<User[]>([]);
   const [activeTrainerIds, setActiveTrainerIds] = useState<string[]>([]);
+  const [assessmentRecIds, setAssessmentRecIds] = useState<string[]>([]);
   const [loading,          setLoading]          = useState(true);
   const [fetchError,       setFetchError]       = useState(false);
 
@@ -64,10 +66,12 @@ export default function TrainersScreen() {
     Promise.all([
       getTrainerProfiles(),
       userId ? getClientActiveTrainerIds(userId) : Promise.resolve([]),
-    ]).then(([profiles, activeIds]) => {
+      userId ? getAssessmentRecommendations(userId) : Promise.resolve([]),
+    ]).then(([profiles, activeIds, recIds]) => {
       if (cancelled) return;
       setTrainers(profiles);
       setActiveTrainerIds(activeIds);
+      setAssessmentRecIds(recIds);
     }).catch(err => {
       console.error('TrainersScreen fetch:', err);
       if (!cancelled) setFetchError(true);
@@ -138,6 +142,35 @@ export default function TrainersScreen() {
     () => trainers.some(t => recommendedIds.has(t.id)),
     [trainers, recommendedIds],
   );
+
+  // Discover split: assessment-team recommendations (ordered by display_order)
+  // vs all other trainers. Recommendations respect the active search/category.
+  const assessmentRecommendedTrainers = useMemo(
+    () => assessmentRecIds
+      .map(id => filteredTrainers.find(t => t.id === id))
+      .filter((t): t is User => !!t),
+    [assessmentRecIds, filteredTrainers],
+  );
+
+  const otherTrainers = useMemo(
+    () => filteredTrainers.filter(t => !assessmentRecIds.includes(t.id)),
+    [filteredTrainers, assessmentRecIds],
+  );
+
+  const toTrainerProfile = (t: User): TrainerProfile => ({
+    id:               t.id,
+    full_name:        t.full_name,
+    city:             t.city ?? null,
+    specialties:      t.specialties ?? null,
+    certifications:   t.certifications ?? null,
+    bio:              t.bio ?? null,
+    availability:     null,
+    experience_years: null,
+    session_count:    t.sessionCount != null ? Number(t.sessionCount) : null,
+    rating:           t.rating ?? null,
+    avatar_url:       null,
+    photo_url:        t.photo_url ?? null,
+  });
 
   const handleViewPlan = useCallback((trainer: User) => {
     setSelectedTrainerDetail(trainer);
@@ -396,38 +429,63 @@ export default function TrainersScreen() {
               )}
 
               {/* List of trainers — View Profile only */}
-              <div className="space-y-3 pt-1">
-                {filteredTrainers.length > 0 ? (
-                  filteredTrainers.map((t) => {
-                    const trainerProfile: TrainerProfile = {
-                      id:               t.id,
-                      full_name:        t.full_name,
-                      city:             t.city ?? null,
-                      specialties:      t.specialties ?? null,
-                      certifications:   t.certifications ?? null,
-                      bio:              t.bio ?? null,
-                      availability:     null,
-                      experience_years: null,
-                      session_count:    t.sessionCount != null ? Number(t.sessionCount) : null,
-                      rating:           t.rating ?? null,
-                      avatar_url:       null,
-                      photo_url:        t.photo_url ?? null,
-                    };
+              {filteredTrainers.length > 0 ? (
+                <div className="space-y-5 pt-1">
 
-                    return (
-                      <TrainerRecommendationCard
-                        key={t.id}
-                        trainer={trainerProfile}
-                        onViewProfile={() => setSelectedTrainerDetail(t)}
-                      />
-                    );
-                  })
-                ) : (
-                  <div className="py-12 text-center">
-                    <p className="text-gray-500 font-medium text-[14px]">No experts found matching your criteria.</p>
-                  </div>
-                )}
-              </div>
+                  {/* ── Recommended by Assessment Team ── */}
+                  {assessmentRecommendedTrainers.length > 0 && (
+                    <div>
+                      <h2 className="text-[16px] font-bold" style={{ color: '#B45309' }}>
+                        ⭐ Recommended by Assessment Team
+                      </h2>
+                      <p className="mb-3" style={{ fontSize: '12px', color: '#6B7280' }}>
+                        Selected specifically for your health profile
+                      </p>
+                      <div className="space-y-3">
+                        {assessmentRecommendedTrainers.map((t) => (
+                          <div key={t.id} className="relative">
+                            <div
+                              className="absolute top-3 right-3 z-10 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm"
+                              style={{ backgroundColor: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D' }}
+                            >
+                              Recommended ✓
+                            </div>
+                            <TrainerRecommendationCard
+                              trainer={toTrainerProfile(t)}
+                              onViewProfile={() => setSelectedTrainerDetail(t)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── All Trainers ── */}
+                  {otherTrainers.length > 0 && (
+                    <div>
+                      {assessmentRecommendedTrainers.length > 0 && (
+                        <>
+                          <div className="border-t border-gray-200 mb-3" />
+                          <h2 className="text-[16px] font-bold text-gray-900 mb-3">All Trainers</h2>
+                        </>
+                      )}
+                      <div className="space-y-3">
+                        {otherTrainers.map((t) => (
+                          <TrainerRecommendationCard
+                            key={t.id}
+                            trainer={toTrainerProfile(t)}
+                            onViewProfile={() => setSelectedTrainerDetail(t)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="py-12 text-center">
+                  <p className="text-gray-500 font-medium text-[14px]">No experts found matching your criteria.</p>
+                </div>
+              )}
             </motion.div>
           ) : null}
         </AnimatePresence>

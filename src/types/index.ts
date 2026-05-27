@@ -282,6 +282,15 @@ export interface User {
 }
 
 // ─── Trainer Profile (TrainersScreen recommendations + TrainerDetailSubScreen) ─
+// ─── Client Training Preferences (client_profiles.training_preferences jsonb) ──
+export interface TrainingPreferences {
+  training_styles?: string[];
+  session_preference?: string;
+  availability?: string[];
+  main_goal?: string;
+  injury_level?: string;
+}
+
 export interface TrainerProfile {
   id: string;
   full_name: string;

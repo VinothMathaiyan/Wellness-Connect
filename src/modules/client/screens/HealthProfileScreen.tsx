@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Search, Check, AlertCircle, MapPin } from 'lucide-react';
-import type { } from '../../../types';
+import type { TrainingPreferences } from '../../../types';
+import { supabase } from '../../../lib/supabaseClient';
 import Button from '../../../components/Button';
 import Input from '../../../components/Input';
 import ProgressBar from '../../../components/ProgressBar';
@@ -46,6 +47,21 @@ const ACTIVITY_DESCRIPTIONS = [
 
 const ACTIVITY_LABELS = ["Sedentary", "Lightly active", "Moderately active", "Active", "Very active"];
 
+// ── Training Preferences (closed-ended) ─────────────────────────────────────────
+const TRAINING_STYLE_OPTIONS = [
+  "Strength Training", "Yoga & Flexibility", "Cardio & HIIT",
+  "Rehabilitation", "Weight Loss", "Mixed / General Fitness",
+];
+const SESSION_PREFERENCE_OPTIONS = ["Online (Video)", "In-Person", "Either works"];
+const TRAINING_AVAILABILITY_OPTIONS = ["Weekday Mornings", "Weekday Evenings", "Weekends"];
+const MAIN_GOAL_OPTIONS = [
+  "Lose Weight", "Build Muscle", "Improve Flexibility",
+  "Recover from Injury", "General Fitness",
+];
+const INJURY_LEVEL_OPTIONS = [
+  "No injuries", "Minor - needs careful programming", "Significant - needs specialist",
+];
+
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
 import { upsertClientProfile, createAssessmentRequest } from '../../../services/supabaseService';
@@ -73,6 +89,64 @@ export default function HealthProfileScreen() {
     activityLevel: initialData?.activity_level || 0,
     fitnessLevel: initialData?.fitness_level || ''
   });
+
+  // Training preferences (closed-ended) — saved to client_profiles.training_preferences
+  const [trainingPrefs, setTrainingPrefs] = useState<TrainingPreferences>({
+    training_styles: [],
+    session_preference: '',
+    availability: [],
+    main_goal: '',
+    injury_level: '',
+  });
+
+  // Pre-populate training preferences from DB if already saved
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    supabase
+      .from('client_profiles')
+      .select('training_preferences')
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const prefs = data?.training_preferences as TrainingPreferences | null;
+        if (prefs) {
+          setTrainingPrefs({
+            training_styles:    prefs.training_styles ?? [],
+            session_preference: prefs.session_preference ?? '',
+            availability:       prefs.availability ?? [],
+            main_goal:          prefs.main_goal ?? '',
+            injury_level:       prefs.injury_level ?? '',
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const toggleTrainingStyle = (style: string) => {
+    setTrainingPrefs(prev => {
+      const current = prev.training_styles ?? [];
+      return {
+        ...prev,
+        training_styles: current.includes(style)
+          ? current.filter(s => s !== style)
+          : [...current, style],
+      };
+    });
+  };
+
+  const toggleTrainingAvailability = (slot: string) => {
+    setTrainingPrefs(prev => {
+      const current = prev.availability ?? [];
+      return {
+        ...prev,
+        availability: current.includes(slot)
+          ? current.filter(s => s !== slot)
+          : [...current, slot],
+      };
+    });
+  };
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isCitySheetOpen, setIsCitySheetOpen] = useState(false);
@@ -283,6 +357,13 @@ export default function HealthProfileScreen() {
         activity_level:     formData.activityLevel || null,
         fitness_level:      formData.fitnessLevel || null,
         goals:              formData.fitnessGoals,
+        training_preferences: {
+          training_styles:    trainingPrefs.training_styles ?? [],
+          session_preference: trainingPrefs.session_preference || '',
+          availability:       trainingPrefs.availability ?? [],
+          main_goal:          trainingPrefs.main_goal || '',
+          injury_level:       trainingPrefs.injury_level || '',
+        },
       };
       console.log('[HealthProfile] Saving to Supabase:', { userId, payload, city: formData.city });
 
@@ -748,6 +829,139 @@ export default function HealthProfileScreen() {
                     {level}
                   </button>
                 ))}
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION 5: TRAINING PREFERENCES */}
+          <section className="space-y-8">
+            <div className="space-y-1">
+              <div className="flex justify-between items-end">
+                <h2 className="label-caps !text-[11px] text-text-secondary">Section 5 — Training Preferences</h2>
+                <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
+              </div>
+              <p className="text-[12px] text-text-secondary pt-2">
+                Helps us match you with the right trainer.
+              </p>
+            </div>
+
+            {/* Q1 — Training styles (multi-select) */}
+            <div className="space-y-3">
+              <label className="text-[13px] font-medium text-text-primary">What type of training interests you?</label>
+              <div className="flex flex-wrap gap-2.5">
+                {TRAINING_STYLE_OPTIONS.map(style => {
+                  const isSelected = (trainingPrefs.training_styles ?? []).includes(style);
+                  return (
+                    <button
+                      key={style}
+                      type="button"
+                      onClick={() => toggleTrainingStyle(style)}
+                      className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
+                        isSelected
+                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
+                          : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
+                      }`}
+                    >
+                      {style}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Q2 — Session preference (single select) */}
+            <div className="space-y-3">
+              <label className="text-[13px] font-medium text-text-primary">How do you prefer to train?</label>
+              <div className="flex flex-wrap gap-2.5">
+                {SESSION_PREFERENCE_OPTIONS.map(opt => {
+                  const isSelected = trainingPrefs.session_preference === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setTrainingPrefs(prev => ({ ...prev, session_preference: opt }))}
+                      className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
+                        isSelected
+                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
+                          : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Q3 — Availability (multi-select) */}
+            <div className="space-y-3">
+              <label className="text-[13px] font-medium text-text-primary">When are you available?</label>
+              <div className="flex flex-wrap gap-2.5">
+                {TRAINING_AVAILABILITY_OPTIONS.map(slot => {
+                  const isSelected = (trainingPrefs.availability ?? []).includes(slot);
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => toggleTrainingAvailability(slot)}
+                      className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
+                        isSelected
+                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
+                          : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
+                      }`}
+                    >
+                      {slot}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Q4 — Main goal (single select) */}
+            <div className="space-y-3">
+              <label className="text-[13px] font-medium text-text-primary">What's your main goal?</label>
+              <div className="flex flex-wrap gap-2.5">
+                {MAIN_GOAL_OPTIONS.map(opt => {
+                  const isSelected = trainingPrefs.main_goal === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setTrainingPrefs(prev => ({ ...prev, main_goal: opt }))}
+                      className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
+                        isSelected
+                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
+                          : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Q5 — Injury level (single select) */}
+            <div className="space-y-3">
+              <label className="text-[13px] font-medium text-text-primary">Do you have any injuries or medical conditions?</label>
+              <div className="flex flex-wrap gap-2.5">
+                {INJURY_LEVEL_OPTIONS.map(opt => {
+                  const isSelected = trainingPrefs.injury_level === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setTrainingPrefs(prev => ({ ...prev, injury_level: opt }))}
+                      className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
+                        isSelected
+                          ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20 scale-105'
+                          : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </section>

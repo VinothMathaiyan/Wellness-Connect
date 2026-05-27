@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Loader2, AlertTriangle, Check } from 'lucide-react';
+import { ChevronLeft, Loader2, AlertTriangle, Check, Search, X, Star, Sparkles } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '@/components/ProfileMenu';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
@@ -10,6 +10,9 @@ import {
   upsertClientProfile,
   notifyClientProfileUpdated,
   completeAssessment,
+  getScoredTrainerRecommendations,
+  getAssessmentRecommendations,
+  saveAssessmentRecommendations,
 } from '../../../services/supabaseService';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -118,10 +121,25 @@ interface AssessmentForm {
 }
 
 interface ExistingAssessment {
+  id: string;
   fitness_level: 'beginner' | 'intermediate' | 'advanced' | null;
   health_notes: string | null;
   trainer_recommendation: string | null;
   clearance_status: 'cleared' | 'conditional' | 'hold' | null;
+}
+
+interface TrainerPoolItem {
+  id: string;
+  full_name: string;
+  rating: number | null;
+  specialties: string[] | null;
+  bio: string | null;
+}
+
+interface SuggestedTrainer {
+  id: string;
+  full_name: string;
+  reason: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -176,6 +194,14 @@ export default function ClientAssessmentFormScreen() {
   const [decidingStatus, setDecidingStatus] = useState<'cleared' | 'conditional' | 'hold' | null>(null);
   const [decisionError, setDecisionError]   = useState('');
 
+  // Trainer assignment (recommended trainers — max 2)
+  const [assessmentId, setAssessmentId]     = useState<string | null>(null);
+  const [allTrainers, setAllTrainers]       = useState<TrainerPoolItem[]>([]);
+  const [autoSuggested, setAutoSuggested]   = useState<SuggestedTrainer[]>([]);
+  const [selectedTrainers, setSelectedTrainers] = useState<string[]>([]);
+  const [showTrainerModal, setShowTrainerModal] = useState(false);
+  const [trainerSearch, setTrainerSearch]   = useState('');
+
   // ── Fetch on mount ──────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -201,7 +227,7 @@ export default function ClientAssessmentFormScreen() {
             .maybeSingle(),
           supabase
             .from('assessments')
-            .select('fitness_level, health_notes, trainer_recommendation, clearance_status')
+            .select('id, fitness_level, health_notes, trainer_recommendation, clearance_status')
             .eq('client_id', id)
             .maybeSingle(),
         ]);
@@ -241,12 +267,36 @@ export default function ClientAssessmentFormScreen() {
         // Pre-populate the assessment decision section from any existing row.
         const existing = assessmentRes.data as ExistingAssessment | null;
         if (existing) {
+          setAssessmentId(existing.id);
           setAssessmentForm({
             health_notes:           existing.health_notes ?? '',
             fitness_level:          existing.fitness_level ?? null,
             trainer_recommendation: existing.trainer_recommendation ?? '',
           });
         }
+
+        // ── Trainer assignment data — auto-suggestions, full pool, existing recs ──
+        const [suggested, trainerPoolRes, existingRecs] = await Promise.all([
+          getScoredTrainerRecommendations(id),
+          supabase
+            .from('profiles')
+            .select('id, full_name, rating, specialties, bio')
+            .eq('role', 'trainer')
+            .eq('is_active', true),
+          getAssessmentRecommendations(id),
+        ]);
+
+        if (!isMounted) return;
+
+        setAutoSuggested(
+          suggested.slice(0, 3).map(s => ({
+            id:        s.trainer.id,
+            full_name: s.trainer.full_name,
+            reason:    s.reason,
+          })),
+        );
+        setAllTrainers((trainerPoolRes.data ?? []) as TrainerPoolItem[]);
+        setSelectedTrainers(existingRecs.slice(0, 2));
       } catch (err: unknown) {
         if (isMounted) {
           setLoadError(err instanceof Error ? err.message : 'Failed to load client data.');
@@ -266,6 +316,21 @@ export default function ClientAssessmentFormScreen() {
   const canDecide =
     assessmentForm.fitness_level !== null &&
     assessmentForm.health_notes.trim().length > 0;
+
+  // Trainer assignment derived helpers
+  const suggestedIds = new Set(autoSuggested.map(s => s.id));
+  const trainerById = (id: string): TrainerPoolItem | undefined =>
+    allTrainers.find(t => t.id === id);
+  const filteredTrainerPool = allTrainers.filter(t => {
+    const q = trainerSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      t.full_name.toLowerCase().includes(q) ||
+      (t.specialties ?? []).some(s => s.toLowerCase().includes(q))
+    );
+  });
+  const initials = (name: string) =>
+    name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -294,6 +359,19 @@ export default function ClientAssessmentFormScreen() {
     setProfileSaved(false);
   };
 
+  const addTrainer = (id: string) => {
+    setSelectedTrainers(prev => {
+      if (prev.includes(id) || prev.length >= 2) return prev;
+      return [...prev, id];
+    });
+    setProfileSaved(false);
+  };
+
+  const removeTrainer = (id: string) => {
+    setSelectedTrainers(prev => prev.filter(t => t !== id));
+    setProfileSaved(false);
+  };
+
   const handleSaveProfile = async () => {
     if (!clientId || !userId) return;
     setIsSavingProfile(true);
@@ -316,6 +394,13 @@ export default function ClientAssessmentFormScreen() {
       );
 
       if (!result.ok) throw new Error(result.errorMessage ?? 'Save failed.');
+
+      // Persist the assessor's trainer recommendations. Non-fatal: a failure
+      // here must not block the profile save the assessor just confirmed.
+      if (assessmentId) {
+        const recSaved = await saveAssessmentRecommendations(assessmentId, selectedTrainers);
+        if (!recSaved) console.warn('handleSaveProfile: trainer recommendations failed to save');
+      }
 
       setHasClientProfile(true);
       await notifyClientProfileUpdated(clientId, userId);
@@ -636,6 +721,87 @@ export default function ClientAssessmentFormScreen() {
                 />
               </div>
 
+              {/* ── Assign Recommended Trainers ── */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Assign Recommended Trainers</label>
+
+                {/* Engine suggestions */}
+                {autoSuggested.length > 0 && (
+                  <div className="mt-2 rounded-xl p-3 border" style={{ backgroundColor: '#fffbeb', borderColor: '#fde68a' }}>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Sparkles size={14} style={{ color: '#d97706' }} />
+                      <p className="text-xs font-bold" style={{ color: '#b45309' }}>Engine Suggestions</p>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mb-2">Based on client preferences:</p>
+                    <div className="space-y-2">
+                      {autoSuggested.map(s => {
+                        const isSelected = selectedTrainers.includes(s.id);
+                        const isFull = selectedTrainers.length >= 2;
+                        return (
+                          <div key={s.id} className="flex items-center gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-800 truncate">{s.full_name}</p>
+                              <p className="text-[11px] text-gray-500 truncate">{s.reason}</p>
+                            </div>
+                            {isSelected ? (
+                              <span className="text-[11px] font-semibold px-2 py-1 rounded-lg shrink-0" style={{ backgroundColor: '#f0fdfa', color: '#0d9488' }}>
+                                Added
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={isFull}
+                                onClick={() => addTrainer(s.id)}
+                                className="text-[11px] font-semibold px-2.5 py-1 rounded-lg shrink-0 active:scale-95 transition-transform disabled:opacity-40"
+                                style={{ backgroundColor: '#0d9488', color: '#ffffff' }}
+                              >
+                                Add to Recommendation
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Current selection */}
+                <div className="mt-3">
+                  {selectedTrainers.length === 0 ? (
+                    <div className="rounded-xl p-3 text-sm font-medium" style={{ backgroundColor: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}>
+                      No trainers assigned yet
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedTrainers.map(id => {
+                        const t = trainerById(id);
+                        return (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-full"
+                            style={{ backgroundColor: '#f0fdfa', color: '#0d9488', border: '1.5px solid #5eead4' }}
+                          >
+                            {t?.full_name ?? 'Trainer'}
+                            <button type="button" onClick={() => removeTrainer(id)} className="active:scale-90 transition-transform">
+                              <X size={13} />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => { setTrainerSearch(''); setShowTrainerModal(true); }}
+                  className="w-full mt-3 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                  style={{ backgroundColor: '#f0fdfa', color: '#0d9488', border: '1.5px solid #5eead4' }}
+                >
+                  <Search size={16} /> Browse &amp; Assign Trainers
+                </button>
+              </div>
+
               {/* Clearance decision */}
               <div>
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Clearance Decision</label>
@@ -688,6 +854,114 @@ export default function ClientAssessmentFormScreen() {
           </div>
         )}
       </div>
+
+      {/* ── Trainer assignment modal ── */}
+      {showTrainerModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setShowTrainerModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full flex flex-col overflow-hidden"
+            style={{ maxWidth: '480px', maxHeight: '80vh' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-gray-900">Assign Trainers (max 2)</h3>
+                <button onClick={() => setShowTrainerModal(false)} className="text-gray-400 active:scale-90 transition-transform">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="relative mt-3">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={trainerSearch}
+                  onChange={e => setTrainerSearch(e.target.value)}
+                  placeholder="Search by name or specialisation..."
+                  className="w-full rounded-xl border border-gray-200 pl-9 pr-3 py-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-2">
+              {filteredTrainerPool.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">No trainers match your search.</p>
+              ) : (
+                filteredTrainerPool.map(t => {
+                  const isSelected = selectedTrainers.includes(t.id);
+                  const isFull = selectedTrainers.length >= 2;
+                  return (
+                    <div key={t.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                        style={{ backgroundColor: '#f0fdfa', color: '#0d9488' }}
+                      >
+                        {initials(t.full_name)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{t.full_name}</p>
+                          {suggestedIds.has(t.id) && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: '#fffbeb', color: '#b45309' }}>
+                              ⭐ Suggested
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-500 truncate">
+                          {(t.specialties ?? []).join(', ') || 'No specialisations listed'}
+                        </p>
+                        {t.rating != null && (
+                          <div className="flex items-center gap-0.5 mt-0.5">
+                            <Star size={11} style={{ color: '#f59e0b', fill: '#f59e0b' }} />
+                            <span className="text-[11px] font-medium text-gray-600">{Number(t.rating).toFixed(1)}</span>
+                          </div>
+                        )}
+                      </div>
+                      {isSelected ? (
+                        <button
+                          type="button"
+                          onClick={() => removeTrainer(t.id)}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-lg shrink-0 active:scale-95 transition-transform"
+                          style={{ backgroundColor: '#ffffff', color: '#dc2626', border: '1.5px solid #fca5a5' }}
+                        >
+                          Remove
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isFull}
+                          onClick={() => addTrainer(t.id)}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-lg shrink-0 active:scale-95 transition-transform disabled:opacity-40"
+                          style={{ backgroundColor: '#0d9488', color: '#ffffff' }}
+                        >
+                          Add
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowTrainerModal(false)}
+                className="w-full py-3 rounded-xl text-white font-bold text-sm active:scale-[0.98] transition-transform"
+                style={{ backgroundColor: '#0d9488' }}
+              >
+                Save Selection ({selectedTrainers.length}/2)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AssessmentBottomNav />
     </MobileShell>

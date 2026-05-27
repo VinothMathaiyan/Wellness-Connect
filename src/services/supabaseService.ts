@@ -2133,6 +2133,12 @@ export interface ClientProfileData {
   activity_level:     number | null;
   fitness_level:      string | null;
   goals:              string[];
+  /**
+   * Closed-ended training preferences captured on HealthProfileScreen.
+   * Optional: when omitted (e.g. the assessor save path) the existing
+   * training_preferences column is left untouched.
+   */
+  training_preferences?: import('../types').TrainingPreferences | null;
 }
 
 /**
@@ -2172,6 +2178,11 @@ export const upsertClientProfile = async (
     activity_level: data.activity_level,
     fitness_level:  data.fitness_level || null,
     goals:          data.goals,
+    // Only persist training_preferences when the caller supplied it, so the
+    // assessor save path (which omits it) never wipes the client's answers.
+    ...(data.training_preferences !== undefined
+      ? { training_preferences: data.training_preferences }
+      : {}),
   };
 
   // 2. Insert or update depending on whether a row exists
@@ -2182,7 +2193,7 @@ export const upsertClientProfile = async (
   if (cpError) {
     console.error('upsertClientProfile error code:', cpError.code, 'message:', cpError.message);
     // If the extra columns don't exist yet, fall back to base columns only
-    if (cpError.message?.includes('activity_level') || cpError.message?.includes('fitness_level') || cpError.message?.includes('goals') || cpError.code === '42703') {
+    if (cpError.message?.includes('activity_level') || cpError.message?.includes('fitness_level') || cpError.message?.includes('goals') || cpError.message?.includes('training_preferences') || cpError.code === '42703') {
       console.warn('upsertClientProfile: extra columns missing — saving base fields only');
       const { error: fallbackError } = existing
         ? await supabase.from('client_profiles').update(basePayload).eq('user_id', userId)
@@ -2336,6 +2347,187 @@ export const getRecommendedTrainers = async (clientId: string): Promise<TrainerP
     photo_url:        t.photo_url ?? null,
   }));
 };
+
+// ─── Assessment-driven Trainer Matching (Assessment App) ─────────────────────
+
+/**
+ * Score every active trainer against a client's closed-ended training
+ * preferences (client_profiles.training_preferences). Used by the Assessment
+ * App to surface auto-suggestions to the assessor. Returns only trainers with
+ * a positive score, highest first, each with a short human-readable reason.
+ *
+ * Note: kept distinct from getRecommendedTrainers (city/goal matcher used by
+ * the client My Trainer tab) so neither flow affects the other.
+ */
+export const getScoredTrainerRecommendations = async (
+  clientId: string,
+): Promise<{ trainer: TrainerProfile; score: number; reason: string }[]> => {
+  // Client preferences
+  const { data: cp } = await supabase
+    .from('client_profiles')
+    .select('training_preferences, fitness_level, medical_conditions')
+    .eq('user_id', clientId)
+    .maybeSingle();
+
+  const prefs = (cp?.training_preferences ?? null) as import('../types').TrainingPreferences | null;
+  if (!prefs) return [];
+
+  // All active trainers with their templates
+  const { data: trainers, error } = await supabase
+    .from('profiles')
+    .select(`
+      id, full_name, bio, rating, certifications, availability,
+      specialties, city,
+      workout_templates(goals, focus_areas, session_type)
+    `)
+    .eq('role', 'trainer')
+    .eq('is_active', true);
+
+  if (error) {
+    console.error('getScoredTrainerRecommendations (trainers):', error);
+    return [];
+  }
+  if (!trainers) return [];
+
+  type TrainerRow = {
+    id: string;
+    full_name: string;
+    bio: string | null;
+    rating: number | null;
+    certifications: string[] | null;
+    availability: TrainerProfile['availability'];
+    specialties: string[] | null;
+    city: string | null;
+    workout_templates: { goals: string[] | null; focus_areas: string[] | null; session_type: string | null }[] | null;
+  };
+
+  const scored = (trainers as unknown as TrainerRow[]).map((t) => {
+    let score = 0;
+    const reasons: string[] = [];
+    const templates = t.workout_templates ?? [];
+
+    const trainerGoals = templates.flatMap(tpl => tpl.goals ?? []);
+    const trainerFocus = [
+      ...templates.flatMap(tpl => tpl.focus_areas ?? []),
+      ...(t.specialties ?? []),
+    ];
+    const sessionTypes = templates.map(tpl => tpl.session_type).filter(Boolean) as string[];
+
+    // Training styles (+3 focus match, +2 goal match)
+    if (prefs.training_styles) {
+      prefs.training_styles.forEach(style => {
+        const styleLC = style.toLowerCase();
+        if (trainerFocus.some(f => f.toLowerCase().includes(styleLC) || styleLC.includes(f.toLowerCase()))) {
+          score += 3;
+          reasons.push(`Specializes in ${style}`);
+        }
+        if (trainerGoals.some(g => g.toLowerCase().includes(styleLC))) score += 2;
+      });
+    }
+
+    // Session preference (+2 exact, +1 flexible)
+    if (prefs.session_preference) {
+      if (prefs.session_preference === 'Online (Video)' && sessionTypes.includes('video')) {
+        score += 2;
+        reasons.push('Offers online sessions');
+      }
+      if (prefs.session_preference === 'In-Person' && sessionTypes.includes('in-person')) {
+        score += 2;
+        reasons.push('Offers in-person sessions');
+      }
+      if (prefs.session_preference === 'Either works') score += 1;
+    }
+
+    // Injury — specialist match (+4)
+    if (prefs.injury_level === 'Significant - needs specialist') {
+      if (trainerFocus.some(f => f.toLowerCase().includes('rehab') || f.toLowerCase().includes('recovery'))) {
+        score += 4;
+        reasons.push('Rehab / recovery specialist');
+      }
+    }
+
+    // Rating bonus (+1 per star above 4.0)
+    if (t.rating && Number(t.rating) > 4.0) {
+      score += Math.floor(Number(t.rating) - 4.0);
+      if (reasons.length === 0) reasons.push(`Highly rated (${Number(t.rating).toFixed(1)}★)`);
+    }
+
+    const trainer: TrainerProfile = {
+      id:               t.id,
+      full_name:        t.full_name,
+      city:             t.city ?? null,
+      specialties:      t.specialties ?? null,
+      certifications:   t.certifications ?? null,
+      bio:              t.bio ?? null,
+      availability:     t.availability ?? null,
+      experience_years: null,
+      session_count:    null,
+      rating:           t.rating ?? null,
+      avatar_url:       null,
+      photo_url:        null,
+    };
+
+    return { trainer, score, reason: reasons[0] ?? 'Matches client preferences' };
+  });
+
+  return scored
+    .filter(t => t.score > 0)
+    .sort((a, b) => b.score - a.score);
+};
+
+/**
+ * Returns the trainer IDs recommended by the assessment team for a client,
+ * ordered by display_order. Joins through assessments to scope by client.
+ */
+export async function getAssessmentRecommendations(clientId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('assessment_trainer_recommendations')
+    .select('trainer_id, display_order, assessments!inner(client_id)')
+    .eq('assessments.client_id', clientId)
+    .order('display_order', { ascending: true });
+
+  if (error) {
+    console.error('getAssessmentRecommendations:', error);
+    return [];
+  }
+  return (data ?? []).map((r: { trainer_id: string }) => r.trainer_id);
+}
+
+/**
+ * Replace the assessment team's trainer recommendations for an assessment.
+ * Deletes existing rows then inserts the new ordered selection (max handled
+ * by the caller). Returns false on insert error.
+ */
+export async function saveAssessmentRecommendations(
+  assessmentId: string,
+  trainerIds: string[],
+): Promise<boolean> {
+  const { error: deleteError } = await supabase
+    .from('assessment_trainer_recommendations')
+    .delete()
+    .eq('assessment_id', assessmentId);
+
+  if (deleteError) {
+    console.error('saveAssessmentRecommendations (delete):', deleteError);
+    return false;
+  }
+
+  if (trainerIds.length === 0) return true;
+
+  const { error } = await supabase
+    .from('assessment_trainer_recommendations')
+    .insert(trainerIds.map((id, i) => ({
+      assessment_id: assessmentId,
+      trainer_id:    id,
+      display_order: i + 1,
+    })));
+
+  if (error) {
+    console.error('saveAssessmentRecommendations (insert):', error);
+    return false;
+  }
+  return true;
+}
 
 // ─── Notifications & Messages (MVP) ──────────────────────────────────────────
 
