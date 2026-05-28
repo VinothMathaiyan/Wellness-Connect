@@ -90,7 +90,9 @@ export default function TrainerPendingScreen() {
   };
 
   const handleResubmit = () => {
-    navigate('/trainer/onboarding', { state: { mode: 'edit', resubmit: true } });
+    navigate('/trainer/onboarding', {
+      state: { mode: 'edit', resubmit: true, reviewNotes },
+    });
   };
 
   const handleSendToAssessmentTeam = async () => {

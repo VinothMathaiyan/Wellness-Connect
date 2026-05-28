@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 import {
   useTrainerOnboarding,
   TOTAL_STEPS,
@@ -23,6 +24,11 @@ export default function TrainerOnboardingFlow() {
   // "Edit Profile" (from ProfileMenu) passes this intent so a returning trainer
   // can re-open their onboarding form instead of being bounced to the dashboard.
   const isEditMode = location.state?.mode === 'edit';
+  // Resubmission flow (D4): the pending screen passes resubmit=true + the
+  // assessor's review notes so we can show a banner explaining why the form
+  // is open again. submitTrainerForApproval flips rejected → pending on submit.
+  const isResubmit = location.state?.resubmit === true;
+  const reviewNotes = (location.state?.reviewNotes as string | null | undefined) ?? null;
   const { userId } = useWellness();
   const { step, data, updateData, nextStep, prevStep } = useTrainerOnboarding();
 
@@ -77,6 +83,21 @@ export default function TrainerOnboardingFlow() {
 
   return (
     <>
+      {isResubmit && (
+        <div
+          className="w-full px-4 py-3 flex items-start gap-2.5 sticky top-0 z-30"
+          style={{ backgroundColor: '#FFFBEB', borderBottom: '1px solid #FDE68A' }}
+        >
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: '#D97706' }} />
+          <p className="text-[13px] leading-snug" style={{ color: '#92400E' }}>
+            <span className="font-bold">Your previous submission was rejected.</span>{' '}
+            {reviewNotes?.trim()
+              ? <>Reviewer notes: <span className="italic">{reviewNotes}</span>. </>
+              : null}
+            Please update and resubmit.
+          </p>
+        </div>
+      )}
       {step === 1 && <TrainerProfileStep {...stepProps} />}
       {step === 2 && <TrainerExpertiseStep {...stepProps} />}
       {step === 3 && <TrainerAvailabilityStep {...stepProps} />}
