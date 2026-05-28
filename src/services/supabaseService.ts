@@ -1666,15 +1666,28 @@ export const getClientSession = async (sessionId: string): Promise<TrainingSessi
 
 // ─── TrainersScreen Live Data ────────────────────────────────────────────────
 
+// Returns the set of trainer ids that pass the approved+active gate (D6).
+// Used to filter client-facing surfaces whose primary query joins workout
+// templates / recommendation tables and can't easily swap the base relation
+// to the approved_trainers view.
+export async function getApprovedTrainerIdSet(): Promise<Set<string>> {
+  const { data, error } = await supabase.from('approved_trainers').select('id');
+  if (error) {
+    console.error('getApprovedTrainerIdSet:', error);
+    return new Set();
+  }
+  return new Set((data ?? []).map((r: { id: string }) => r.id));
+}
+
 /**
- * Fetch all trainer profiles from the profiles table.
+ * Fetch all approved+active trainer profiles for the client TrainersScreen.
+ * D6: pending/rejected trainers are excluded via the approved_trainers view.
  * Returns [] on error — screen handles empty state.
  */
 export const getTrainerProfiles = async (): Promise<User[]> => {
   const { data, error } = await supabase
-    .from('profiles')
+    .from('approved_trainers')
     .select('id, full_name, role, specialties, city, rating, photo_url')
-    .eq('role', 'trainer')
     .order('full_name', { ascending: true });
 
   if (error) { console.error('getTrainerProfiles:', error); return []; }
@@ -2296,11 +2309,10 @@ export const getRecommendedTrainers = async (clientId: string): Promise<TrainerP
   // 4. If neither city nor goals exist, return empty
   if (!clientCity && mappedGoals.length === 0) return [];
 
-  // 5. Fetch all trainer profiles
+  // 5. Fetch all approved+active trainer profiles (D6 gate).
   const { data: trainers, error: trainersErr } = await supabase
-    .from('profiles')
-    .select('id, full_name, city, specialties, rating, photo_url')
-    .eq('role', 'trainer');
+    .from('approved_trainers')
+    .select('id, full_name, city, specialties, rating, photo_url');
 
   if (trainersErr) {
     console.error('getRecommendedTrainers (trainers):', trainersErr);
@@ -2604,16 +2616,20 @@ export async function runRecommendationEngine(
 
   const prefs = ((cp as Record<string, unknown>)?.training_preferences ?? {}) as Record<string, unknown>;
 
-  // 2. Fetch all active trainers with their templates
+  // 2. Fetch all approved+active trainers with their templates (D6 gate).
+  // Eligibility for engine scoring requires the trainer has cleared the
+  // assessment-team approval, not just is_active=true.
+  const approvedIds = await getApprovedTrainerIdSet();
+  if (approvedIds.size === 0 || !cp) return false;
+
   const { data: trainers } = await supabase
     .from('profiles')
     .select(`
       *, workout_templates(goals, focus_areas, session_type)
     `)
-    .eq('role', 'trainer')
-    .eq('is_active', true);
+    .in('id', Array.from(approvedIds));
 
-  if (!trainers || !cp) return false;
+  if (!trainers) return false;
 
   const results: {
     trainerId: string;
@@ -2920,17 +2936,26 @@ export async function getClientRecommendations(clientId: string): Promise<{
     };
   };
 
+  // D6 gate: drop any rec referencing a trainer who is no longer approved+active.
+  // The engine writes new rows only for approved trainers, but a previously-
+  // approved trainer can be rejected later, leaving stale rows in either table.
+  const approvedIds = await getApprovedTrainerIdSet();
+
   return {
-    engineRecs: (engineData ?? []).map((r: Record<string, unknown>) => ({
-      trainer_id: r.trainer_id as string,
-      score:   r.score as number,
-      reasons: (r.recommendation_reasons as string[] | null) ?? [],
-      trainer: toProfile(r.trainer as Record<string, unknown>),
-    })),
-    manualRecs: (manualData ?? []).map((r: Record<string, unknown>) => ({
-      trainer_id: r.trainer_id as string,
-      trainer:    toProfile(r.trainer as Record<string, unknown>),
-    })),
+    engineRecs: (engineData ?? [])
+      .map((r: Record<string, unknown>) => ({
+        trainer_id: r.trainer_id as string,
+        score:   r.score as number,
+        reasons: (r.recommendation_reasons as string[] | null) ?? [],
+        trainer: toProfile(r.trainer as Record<string, unknown>),
+      }))
+      .filter(r => approvedIds.has(r.trainer_id)),
+    manualRecs: (manualData ?? [])
+      .map((r: Record<string, unknown>) => ({
+        trainer_id: r.trainer_id as string,
+        trainer:    toProfile(r.trainer as Record<string, unknown>),
+      }))
+      .filter(r => approvedIds.has(r.trainer_id)),
   };
 }
 
@@ -4197,12 +4222,11 @@ export async function completeAssessment(
         .maybeSingle();
       const clientName = clientProfile?.full_name ?? 'A new client';
 
-      // Notify every active trainer.
+      // Notify every approved+active trainer (D6 gate — don't ping pending
+      // or rejected trainers about new clients).
       const { data: trainers } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('role', 'trainer')
-        .eq('is_active', true);
+        .from('approved_trainers')
+        .select('id');
 
       if (trainers && trainers.length > 0) {
         const rows = (trainers as Array<{ id: string }>).map(t => ({
