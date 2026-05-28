@@ -4249,6 +4249,31 @@ export async function updateAssessmentStatus(
 
 // ── Trainer Approvals ─────────────────────────────────────────────────────────
 
+export type TrainerApprovalStatus = 'pending' | 'approved' | 'rejected';
+
+// Reads the current trainer's approval row (null status = no row yet, i.e.
+// mid-onboarding). Used by the pending gate and the route guard.
+export async function getTrainerApprovalStatus(trainerId: string): Promise<{
+  status: TrainerApprovalStatus | null;
+  reviewNotes: string | null;
+}> {
+  const { data, error } = await supabase
+    .from('trainer_approvals')
+    .select('status, review_notes')
+    .eq('trainer_id', trainerId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('getTrainerApprovalStatus:', error);
+    return { status: null, reviewNotes: null };
+  }
+
+  return {
+    status: (data?.status as TrainerApprovalStatus | undefined) ?? null,
+    reviewNotes: data?.review_notes ?? null,
+  };
+}
+
 export async function getPendingTrainerApprovals(): Promise<{
   data: TrainerApproval[];
   error?: string;

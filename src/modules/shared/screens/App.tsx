@@ -26,6 +26,7 @@ import TrainerDashboard from '../../trainer/screens/TrainerDashboard';
 import TrainerOnboardingFlow from '../../trainer/screens/onboarding/TrainerOnboardingFlow';
 import TrainerWelcomeScreen from '../../trainer/screens/TrainerWelcomeScreen';
 import TrainerSetupCompleteScreen from '../../trainer/screens/TrainerSetupCompleteScreen';
+import TrainerPendingScreen from '../../trainer/screens/TrainerPendingScreen';
 import MyClientsScreen from '../../trainer/screens/MyClientsScreen';
 import ClientDetailScreen from '../../trainer/screens/ClientDetailScreen';
 import AcceptDeclineScreen from '../../trainer/screens/AcceptDeclineScreen';
@@ -151,6 +152,7 @@ function AppRoutes() {
       <Route path="/trainer/welcome" element={<TrainerWelcomeScreen />} />
       <Route path="/trainer/onboarding" element={<TrainerOnboardingFlow />} />
       <Route path="/trainer/setup-complete" element={<TrainerSetupCompleteScreen />} />
+      <Route path="/trainer/pending" element={<TrainerPendingScreen />} />
       <Route path="/trainer/dashboard" element={<TrainerDashboard />} />
       <Route path="/trainer/clients" element={<MyClientsScreen />} />
       <Route path="/trainer/client/:clientId" element={<ClientDetailScreen />} />
