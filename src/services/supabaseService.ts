@@ -4366,28 +4366,40 @@ export async function submitTrainerForApproval(
   return { status: 'pending' };
 }
 
-export async function submitTrainerApproval(
-  assessorId: string,
-  trainerId: string,
-  status: 'approved' | 'rejected',
-  notes: string,
-): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from('trainer_approvals')
-    .update({
-      status,
-      review_notes: notes,
-      assessor_id: assessorId,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq('trainer_id', trainerId)
-    .eq('status', 'pending');
-
+// Assessor approves a trainer: flips the approval row AND activates the
+// profile in one atomic step. Delegates to the approve_trainer SECURITY
+// DEFINER Postgres function — required because the "Users can update own
+// profile" RLS policy on profiles otherwise blocks writes to the trainer's
+// row from the assessor's session (silent zero-rows-affected). The RPC
+// derives assessor_id from auth.uid() so the JS caller doesn't pass it.
+// Throws on error.
+export async function approveTrainer(trainerId: string): Promise<void> {
+  const { error } = await supabase.rpc('approve_trainer', { p_trainer_id: trainerId });
   if (error) {
-    console.error('submitTrainerApproval:', error);
-    return { success: false, error: error.message };
+    console.error('approveTrainer:', error);
+    throw new Error(error.message);
   }
-  return { success: true };
+}
+
+// Assessor rejects a trainer: only the approval row changes — profiles.is_active
+// stays false so the trainer remains gated and can resubmit per D4. Delegates
+// to the reject_trainer SECURITY DEFINER Postgres function, symmetric with
+// approveTrainer. Authorization (caller must be an assessor) is enforced in
+// the function via auth.uid(). Future-proofs against enabling RLS on
+// trainer_approvals (currently disabled — flagged by the Supabase advisor).
+// Throws on error.
+export async function rejectTrainer(
+  trainerId: string,
+  reviewNotes: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('reject_trainer', {
+    p_trainer_id: trainerId,
+    p_review_notes: reviewNotes,
+  });
+  if (error) {
+    console.error('rejectTrainer:', error);
+    throw new Error(error.message);
+  }
 }
 
 // ── Escalations ───────────────────────────────────────────────────────────────

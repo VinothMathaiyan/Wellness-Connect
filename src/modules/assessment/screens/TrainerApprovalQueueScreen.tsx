@@ -7,8 +7,9 @@ import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
 import {
+  approveTrainer,
   getPendingTrainerApprovals,
-  submitTrainerApproval,
+  rejectTrainer,
   type TrainerApproval,
 } from '../../../services/supabaseService';
 
@@ -186,15 +187,21 @@ export default function TrainerApprovalQueueScreen() {
   const handleAction = async (trainerId: string, action: 'approved' | 'rejected') => {
     if (!userId) return;
     if (action === 'rejected' && !notes.trim()) {
-      setActionError('Notes are required when rejecting.');
+      // The trainer's resubmission flow surfaces these notes verbatim, so a
+      // rejection without a reason would leave the trainer with no guidance.
+      setActionError('Please provide a reason for rejection.');
       return;
     }
     setActionTarget(action);
     setActionLoading(true);
     setActionError('');
     try {
-      const result = await submitTrainerApproval(userId, trainerId, action, notes.trim());
-      if (!result.success) throw new Error(result.error ?? 'Action failed.');
+      if (action === 'approved') {
+        // assessor_id is derived server-side from auth.uid() inside the RPC.
+        await approveTrainer(trainerId);
+      } else {
+        await rejectTrainer(trainerId, notes.trim());
+      }
       setExpandedId(null);
       setNotes('');
       setTriggerFetch(t => t + 1);
