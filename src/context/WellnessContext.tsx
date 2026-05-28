@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
+import { getTrainerApprovalStatus, type TrainerApprovalStatus } from '../services/supabaseService';
 import type {
   WellnessAppState,
   DailyLog,
@@ -34,6 +35,12 @@ interface WellnessContextType {
   // Assessment gate: null = loading, true = cleared (or non-client), false = pending review.
   isClientCleared: boolean | null;
   recheckClearance: () => Promise<void>;
+
+  // Trainer approval gate. trainerApprovalStatus: null = no approval row yet
+  // (mid-onboarding) or loading; isTrainerApprovalLoading distinguishes the two.
+  trainerApprovalStatus: TrainerApprovalStatus | null;
+  isTrainerApprovalLoading: boolean;
+  recheckTrainerApproval: () => Promise<void>;
 
   setAppState: React.Dispatch<React.SetStateAction<WellnessAppState>>;
   setUserRole: React.Dispatch<React.SetStateAction<'client' | 'trainer' | 'assessor' | null>>;
@@ -90,6 +97,10 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   // Assessment gate clearance — see isClientCleared in the context type.
   const [isClientCleared, setIsClientCleared] = useState<boolean | null>(null);
+
+  // Trainer approval gate — see trainerApprovalStatus in the context type.
+  const [trainerApprovalStatus, setTrainerApprovalStatus] = useState<TrainerApprovalStatus | null>(null);
+  const [isTrainerApprovalLoading, setIsTrainerApprovalLoading] = useState(true);
 
   useEffect(() => {
     // Resolve the role: prefer user_metadata.role (fast, no network), but fall
@@ -195,6 +206,38 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
       setIsClientCleared(cleared);
     } catch (err) {
       console.error('WellnessContext recheckClearance:', err);
+    }
+  };
+
+  // ── Trainer approval gate ───────────────────────────────────────────────────
+  // Mirrors the clearance gate: fetch on user/role change; expose a poll-friendly
+  // recheck so the pending screen can keep the guard in sync after approval.
+  useEffect(() => {
+    let cancelled = false;
+    setTrainerApprovalStatus(null);
+
+    if (!userId || !userRole) return;
+    if (userRole !== 'trainer') {
+      setIsTrainerApprovalLoading(false);
+      return;
+    }
+
+    setIsTrainerApprovalLoading(true);
+    getTrainerApprovalStatus(userId)
+      .then(({ status }) => { if (!cancelled) setTrainerApprovalStatus(status); })
+      .catch(err => console.error('WellnessContext trainer approval:', err))
+      .finally(() => { if (!cancelled) setIsTrainerApprovalLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [userId, userRole]);
+
+  const recheckTrainerApproval = async (): Promise<void> => {
+    if (!userId || userRole !== 'trainer') return;
+    try {
+      const { status } = await getTrainerApprovalStatus(userId);
+      setTrainerApprovalStatus(status);
+    } catch (err) {
+      console.error('WellnessContext recheckTrainerApproval:', err);
     }
   };
 
@@ -327,6 +370,9 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
         isAuthLoading,
         isClientCleared,
         recheckClearance,
+        trainerApprovalStatus,
+        isTrainerApprovalLoading,
+        recheckTrainerApproval,
         setAppState,
         setUserRole,
         setActiveSession,

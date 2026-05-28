@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { CheckCircle2, RefreshCw, Loader2, PartyPopper, AlertTriangle } from 'lucide-react';
@@ -7,7 +7,6 @@ import {
   getTrainerApprovalStatus,
   getAssessorId,
   sendAssessmentMessage,
-  type TrainerApprovalStatus,
 } from '../../../services/supabaseService';
 
 /**
@@ -20,41 +19,46 @@ import {
  */
 export default function TrainerPendingScreen() {
   const navigate = useNavigate();
-  const { userId, logout } = useWellness();
+  const {
+    userId,
+    logout,
+    trainerApprovalStatus,
+    isTrainerApprovalLoading,
+    recheckTrainerApproval,
+  } = useWellness();
 
-  const [status, setStatus]         = useState<TrainerApprovalStatus | null>(null);
+  // Local reviewNotes (not carried by context) — fetched when status is rejected.
   const [reviewNotes, setReviewNotes] = useState<string | null>(null);
-  const [loaded, setLoaded]         = useState(false);
-  const [isChecking, setIsChecking] = useState(false);
+  const [isChecking, setIsChecking]   = useState(false);
   const [checkedOnce, setCheckedOnce] = useState(false);
-  const [unlocking, setUnlocking]   = useState(false);
+  const [unlocking, setUnlocking]     = useState(false);
 
   // Tracks whether we ever observed a non-approved state. If so, becoming
   // approved means the trainer was genuinely waiting → play the success state.
   const wasWaitingRef = useRef(false);
 
-  const refresh = useCallback(async () => {
-    if (!userId) return;
-    const { status: s, reviewNotes: notes } = await getTrainerApprovalStatus(userId);
-    setStatus(s);
-    setReviewNotes(notes);
-    setLoaded(true);
-  }, [userId]);
-
-  // Initial load.
-  useEffect(() => { void refresh(); }, [refresh]);
-
-  // Poll every 30s while the trainer waits.
+  // Pull review notes for the rejected display (context only carries status).
   useEffect(() => {
-    const interval = setInterval(() => { void refresh(); }, 30000);
+    if (!userId || trainerApprovalStatus !== 'rejected') return;
+    let cancelled = false;
+    getTrainerApprovalStatus(userId).then(({ reviewNotes: notes }) => {
+      if (!cancelled) setReviewNotes(notes);
+    });
+    return () => { cancelled = true; };
+  }, [userId, trainerApprovalStatus]);
+
+  // Poll every 30s while the trainer waits. Goes through the context so the
+  // route guard sees the same status and won't bounce on auto-unlock.
+  useEffect(() => {
+    const interval = setInterval(() => { void recheckTrainerApproval(); }, 30000);
     return () => clearInterval(interval);
-  }, [refresh]);
+  }, [recheckTrainerApproval]);
 
   // Auto-unlock. A trainer approved *while waiting* sees a brief success state;
   // an already-approved trainer who merely landed here goes straight in.
   useEffect(() => {
-    if (!loaded) return;
-    if (status !== 'approved') {
+    if (isTrainerApprovalLoading) return;
+    if (trainerApprovalStatus !== 'approved') {
       wasWaitingRef.current = true;
       return;
     }
@@ -65,7 +69,7 @@ export default function TrainerPendingScreen() {
     setUnlocking(true);
     const timeout = setTimeout(() => navigate('/trainer/dashboard', { replace: true }), 2000);
     return () => clearTimeout(timeout);
-  }, [status, loaded, navigate]);
+  }, [trainerApprovalStatus, isTrainerApprovalLoading, navigate]);
 
   // ── Assessment team contact ─────────────────────────────────────────────────
   const [contactMessage, setContactMessage] = useState('');
@@ -75,7 +79,7 @@ export default function TrainerPendingScreen() {
   const handleCheckStatus = async () => {
     if (isChecking) return;
     setIsChecking(true);
-    await refresh();
+    await recheckTrainerApproval();
     setIsChecking(false);
     setCheckedOnce(true);
   };
@@ -132,7 +136,7 @@ export default function TrainerPendingScreen() {
     );
   }
 
-  const isRejected = loaded && status === 'rejected';
+  const isRejected = !isTrainerApprovalLoading && trainerApprovalStatus === 'rejected';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F2F8F7]">
@@ -229,7 +233,7 @@ export default function TrainerPendingScreen() {
               </div>
 
               {/* Still-pending note after a manual check */}
-              {checkedOnce && status === 'pending' && (
+              {checkedOnce && trainerApprovalStatus === 'pending' && (
                 <p className="text-center text-[13px] font-medium mt-5" style={{ color: '#6B7280' }}>
                   Still under review. We'll notify you as soon as you're approved.
                 </p>

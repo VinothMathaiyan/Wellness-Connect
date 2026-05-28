@@ -36,7 +36,7 @@ interface CompletionState {
 export default function TrainerSetupCompleteScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { appState, userId } = useWellness();
+  const { appState, userId, recheckTrainerApproval } = useWellness();
   const [isSaving, setIsSaving] = useState(true);
   // Resulting approval status drives where the CTA routes: approved trainers
   // (e.g. editing an existing profile, D5) go to the dashboard, everyone else
@@ -87,6 +87,9 @@ export default function TrainerSetupCompleteScreen() {
         console.error('Trainer approval submission failed:', approvalError);
       }
       setApprovalStatus(status);
+      // Sync context so the route guard sees the new status immediately and
+      // doesn't allow a one-tick bypass before the next 30s poll.
+      await recheckTrainerApproval();
       setIsSaving(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps

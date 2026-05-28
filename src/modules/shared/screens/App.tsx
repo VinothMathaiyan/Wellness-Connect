@@ -55,7 +55,14 @@ import AdminDashboardScreen from '../../admin/screens/AdminDashboardScreen';
 import DevNav from '../../../components/DevNav';
 
 function AppRoutes() {
-  const { isAuthLoading, userId, userRole, isClientCleared } = useWellness();
+  const {
+    isAuthLoading,
+    userId,
+    userRole,
+    isClientCleared,
+    trainerApprovalStatus,
+    isTrainerApprovalLoading,
+  } = useWellness();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -84,8 +91,29 @@ function AppRoutes() {
       navigate('/assessment/dashboard', { replace: true });
       return;
     }
-    if (userRole === 'trainer' && !path.startsWith('/trainer') && !path.startsWith('/onboarding')) {
-      navigate('/trainer/dashboard', { replace: true });
+    if (userRole === 'trainer') {
+      // Wait for the approval lookup before deciding.
+      if (isTrainerApprovalLoading) return;
+
+      // Pending / rejected trainers are gated to the pending screen, but must
+      // still be able to (re)submit via the onboarding flow.
+      if (trainerApprovalStatus === 'pending' || trainerApprovalStatus === 'rejected') {
+        const gateAllowed =
+          path === '/trainer/pending' ||
+          path === '/trainer/onboarding' ||
+          path === '/trainer/setup-complete' ||
+          path.startsWith('/onboarding');
+        if (!gateAllowed) {
+          navigate('/trainer/pending', { replace: true });
+        }
+        return;
+      }
+
+      // Approved, or no approval row yet (mid-onboarding): existing behavior —
+      // keep trainers within their area.
+      if (!path.startsWith('/trainer') && !path.startsWith('/onboarding')) {
+        navigate('/trainer/dashboard', { replace: true });
+      }
       return;
     }
     if (userRole === 'client') {
@@ -111,7 +139,16 @@ function AppRoutes() {
         return;
       }
     }
-  }, [userId, userRole, isClientCleared, isAuthLoading, location.pathname, navigate]);
+  }, [
+    userId,
+    userRole,
+    isClientCleared,
+    isAuthLoading,
+    isTrainerApprovalLoading,
+    trainerApprovalStatus,
+    location.pathname,
+    navigate,
+  ]);
 
   // Hold protected client routes behind a spinner until clearance resolves, so
   // gated content never flashes before the redirect to /client/pending.
@@ -121,7 +158,15 @@ function AppRoutes() {
     location.pathname.startsWith('/client') &&
     location.pathname !== '/client/pending';
 
-  if (isAuthLoading || awaitingClearance) {
+  // Same pattern for trainer approval: avoid flashing the dashboard before the
+  // approval lookup resolves to pending/rejected.
+  const awaitingTrainerApproval =
+    userRole === 'trainer' &&
+    isTrainerApprovalLoading &&
+    location.pathname.startsWith('/trainer') &&
+    location.pathname !== '/trainer/pending';
+
+  if (isAuthLoading || awaitingClearance || awaitingTrainerApproval) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
         <div className="w-8 h-8 border-2 border-[#1D9E75] border-t-transparent rounded-full animate-spin" />
