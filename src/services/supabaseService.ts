@@ -4282,6 +4282,65 @@ export async function getPendingTrainerApprovals(): Promise<{
   };
 }
 
+// Called on FINAL trainer onboarding submission (D2). Creates the approval row
+// and gates the account until the assessment team signs off.
+//   - no row yet            → insert a fresh 'pending' row
+//   - existing 'rejected'   → flip back to 'pending' (resubmission, D4)
+//   - existing 'pending'    → leave as-is (still queued)
+//   - existing 'approved'   → do nothing, stay active (D5)
+// The resulting status is returned so the caller can route correctly.
+export async function submitTrainerForApproval(
+  trainerId: string,
+): Promise<{ status: 'pending' | 'approved'; error?: string }> {
+  const { data: existing, error: fetchError } = await supabase
+    .from('trainer_approvals')
+    .select('id, status')
+    .eq('trainer_id', trainerId)
+    .maybeSingle();
+
+  if (fetchError) {
+    console.error('submitTrainerForApproval (fetch):', fetchError);
+    return { status: 'pending', error: fetchError.message };
+  }
+
+  // D5: editing an already-approved profile does NOT re-trigger approval.
+  if (existing?.status === 'approved') {
+    return { status: 'approved' };
+  }
+
+  if (existing) {
+    // D4: resubmission flips a rejected (or still-pending) row back to pending.
+    const { error } = await supabase
+      .from('trainer_approvals')
+      .update({ status: 'pending', assessor_id: null, reviewed_at: null })
+      .eq('id', existing.id);
+    if (error) {
+      console.error('submitTrainerForApproval (update):', error);
+      return { status: 'pending', error: error.message };
+    }
+  } else {
+    const { error } = await supabase
+      .from('trainer_approvals')
+      .insert({ trainer_id: trainerId, status: 'pending' });
+    if (error) {
+      console.error('submitTrainerForApproval (insert):', error);
+      return { status: 'pending', error: error.message };
+    }
+  }
+
+  // Not approved → deactivate until the assessment team approves.
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .update({ is_active: false })
+    .eq('id', trainerId);
+  if (profileError) {
+    console.error('submitTrainerForApproval (profile):', profileError);
+    return { status: 'pending', error: profileError.message };
+  }
+
+  return { status: 'pending' };
+}
+
 export async function submitTrainerApproval(
   assessorId: string,
   trainerId: string,

@@ -7,6 +7,7 @@ import Button from '../../../components/Button';
 import { useWellness } from '../../../context/WellnessContext';
 import type { AvailabilitySlot } from '../hooks/useTrainerOnboarding';
 import { saveTrainerOnboarding } from '../services/trainerOnboardingService';
+import { submitTrainerForApproval } from '../../../services/supabaseService';
 
 // Feature flags
 const DEV_MODE = true;
@@ -37,6 +38,10 @@ export default function TrainerSetupCompleteScreen() {
   const location = useLocation();
   const { appState, userId } = useWellness();
   const [isSaving, setIsSaving] = useState(true);
+  // Resulting approval status drives where the CTA routes: approved trainers
+  // (e.g. editing an existing profile, D5) go to the dashboard, everyone else
+  // to the pending gate.
+  const [approvalStatus, setApprovalStatus] = useState<'pending' | 'approved'>('pending');
 
   const fullName = (appState?.full_name as string) || 'Trainer';
   const firstName = fullName.split(' ')[0];
@@ -70,11 +75,18 @@ export default function TrainerSetupCompleteScreen() {
       availabilitySlots:      state.availabilitySlots ?? [],
       certificationDocument:  null,
       selfieWithCertificate:  null,
-    }).then(({ error }) => {
+    }).then(async ({ error }) => {
       if (error) {
         console.error('Trainer onboarding save failed:', error);
         // Do not block navigation — trainer proceeds regardless
       }
+      // D2: submit for approval on final onboarding submission. Encapsulates
+      // the upsert + is_active gating (and the D4/D5 resubmission/approved cases).
+      const { status, error: approvalError } = await submitTrainerForApproval(userId);
+      if (approvalError) {
+        console.error('Trainer approval submission failed:', approvalError);
+      }
+      setApprovalStatus(status);
       setIsSaving(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -261,7 +273,13 @@ export default function TrainerSetupCompleteScreen() {
       {/* 5. Bottom CTA bar */}
       <div className="absolute bottom-0 w-full p-6 bg-white z-20 border-t border-gray-100 flex flex-col items-center">
         <Button
-          onClick={() => navigate('/trainer/dashboard')}
+          onClick={() =>
+            navigate(
+              approvalStatus === 'approved'
+                ? '/trainer/dashboard'
+                : '/trainer/pending',
+            )
+          }
           disabled={isSaving}
           isLoading={isSaving}
         >
