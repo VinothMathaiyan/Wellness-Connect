@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   useTrainerOnboarding,
   TOTAL_STEPS,
@@ -19,12 +19,17 @@ export type {
 
 export default function TrainerOnboardingFlow() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // "Edit Profile" (from ProfileMenu) passes this intent so a returning trainer
+  // can re-open their onboarding form instead of being bounced to the dashboard.
+  const isEditMode = location.state?.mode === 'edit';
   const { userId } = useWellness();
   const { step, data, updateData, nextStep, prevStep } = useTrainerOnboarding();
 
   // Guard: redirect completed trainers who navigate directly to /trainer/onboarding.
+  // Skipped in edit mode so Edit Profile can reach the form.
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || isEditMode) return;
     isTrainerOnboardingComplete(userId).then(complete => {
       if (complete) navigate('/trainer/dashboard', { replace: true });
     });

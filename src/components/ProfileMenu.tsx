@@ -90,7 +90,9 @@ export default function ProfileMenu({
   const handleEditProfile = () => {
     if (!editProfilePath) return;
     setOpen(false);
-    navigate(editProfilePath);
+    // Signal "edit" intent so onboarding screens skip their
+    // already-onboarded → dashboard redirect.
+    navigate(editProfilePath, { state: { mode: 'edit' } });
   };
 
   return (
