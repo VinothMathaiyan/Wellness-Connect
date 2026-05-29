@@ -4330,6 +4330,88 @@ export interface TrainerApproval {
   created_at: string;
 }
 
+// Full trainer profile detail the assessor needs to approve/reject responsibly,
+// flattened onto the approval row. Surfaced in the Trainer Approval Queue's
+// expandable detail panel. Kept in sync via TRAINER_APPROVAL_PROFILE_SELECT so
+// the pending and reviewed queries always pull the same columns.
+export interface TrainerApprovalDetail extends TrainerApproval {
+  photo_url: string | null;
+  phone_number: string | null;
+  specialties: string[] | null;
+  certifications: string[] | null;
+  languages: string[] | null;
+  coaching_styles: string[] | null;
+  focus_areas: string[] | null;
+  session_types: string[] | null;
+  session_intensity: string | null;
+  max_clients: number | null;
+  experience_years: number | null;
+  rehab_certified: boolean | null;
+  medical_certified: boolean | null;
+  bio: string | null;
+  city: string | null;
+}
+
+// The profile columns joined onto a trainer_approvals row for the detail panel.
+// avatar_url is the primary photo column; photo_url is read as a fallback.
+export const TRAINER_APPROVAL_PROFILE_SELECT =
+  'full_name, photo_url, avatar_url, phone_number, specialties, certifications, ' +
+  'languages, coaching_styles, focus_areas, session_types, session_intensity, ' +
+  'max_clients, experience_years, rehab_certified, medical_certified, bio, city';
+
+// Raw shape of the joined profile (Supabase may return the embed as an object
+// or a single-element array depending on the relationship inference).
+type TrainerApprovalProfileRow = {
+  full_name: string | null;
+  photo_url: string | null;
+  avatar_url: string | null;
+  phone_number: string | null;
+  specialties: string[] | null;
+  certifications: string[] | null;
+  languages: string[] | null;
+  coaching_styles: string[] | null;
+  focus_areas: string[] | null;
+  session_types: string[] | null;
+  session_intensity: string | null;
+  max_clients: number | null;
+  experience_years: number | null;
+  rehab_certified: boolean | null;
+  medical_certified: boolean | null;
+  bio: string | null;
+  city: string | null;
+};
+
+// Flattens a joined profile embed onto an approval row, normalising the
+// array-vs-object embed shape and falling back avatar_url → photo_url.
+export function flattenTrainerApprovalProfile(
+  row: Omit<TrainerApproval, 'trainer_name'> & {
+    trainer: TrainerApprovalProfileRow | TrainerApprovalProfileRow[] | null;
+  },
+): TrainerApprovalDetail {
+  const t = Array.isArray(row.trainer) ? row.trainer[0] : row.trainer;
+  const { trainer: _drop, ...approval } = row;
+  void _drop;
+  return {
+    ...approval,
+    trainer_name:      t?.full_name ?? 'Unknown',
+    photo_url:         t?.avatar_url ?? t?.photo_url ?? null,
+    phone_number:      t?.phone_number ?? null,
+    specialties:       t?.specialties ?? null,
+    certifications:    t?.certifications ?? null,
+    languages:         t?.languages ?? null,
+    coaching_styles:   t?.coaching_styles ?? null,
+    focus_areas:       t?.focus_areas ?? null,
+    session_types:     t?.session_types ?? null,
+    session_intensity: t?.session_intensity ?? null,
+    max_clients:       t?.max_clients ?? null,
+    experience_years:  t?.experience_years ?? null,
+    rehab_certified:   t?.rehab_certified ?? null,
+    medical_certified: t?.medical_certified ?? null,
+    bio:               t?.bio ?? null,
+    city:              t?.city ?? null,
+  };
+}
+
 export interface Escalation {
   id: string;
   client_id: string;
@@ -4667,14 +4749,14 @@ export async function getTrainerApprovalStatus(trainerId: string): Promise<{
 }
 
 export async function getPendingTrainerApprovals(): Promise<{
-  data: TrainerApproval[];
+  data: TrainerApprovalDetail[];
   error?: string;
 }> {
   const { data, error } = await supabase
     .from('trainer_approvals')
     .select(`
       id, trainer_id, assessor_id, status, review_notes, reviewed_at, created_at,
-      trainer:profiles!trainer_approvals_trainer_id_fkey ( full_name )
+      trainer:profiles!trainer_approvals_trainer_id_fkey ( ${TRAINER_APPROVAL_PROFILE_SELECT} )
     `)
     .eq('status', 'pending')
     .order('created_at', { ascending: true });
@@ -4685,18 +4767,11 @@ export async function getPendingTrainerApprovals(): Promise<{
   }
 
   type ApprovalRow = Omit<TrainerApproval, 'trainer_name'> & {
-    trainer: { full_name: string } | Array<{ full_name: string }> | null;
+    trainer: TrainerApprovalProfileRow | TrainerApprovalProfileRow[] | null;
   };
 
   const rows = (data ?? []) as unknown as ApprovalRow[];
-  return {
-    data: rows.map(row => ({
-      ...row,
-      trainer_name: Array.isArray(row.trainer)
-        ? (row.trainer[0]?.full_name ?? 'Unknown')
-        : (row.trainer?.full_name ?? 'Unknown'),
-    })),
-  };
+  return { data: rows.map(flattenTrainerApprovalProfile) };
 }
 
 // Called on FINAL trainer onboarding submission (D2). Creates the approval row
