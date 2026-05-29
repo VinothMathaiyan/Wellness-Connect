@@ -32,6 +32,58 @@ export default function AccountReadyScreen() {
   const firstName = userData.full_name?.split(' ')[0] || 'User';
   const [clientId] = useState(generateClientId);
 
+  // ── Summary of everything the user entered during signup ──────────────────
+  // Read straight from WellnessContext app state so every selection made on the
+  // Sign Up, Health Profile and Assessment Booking steps is echoed back here.
+  const PLACEHOLDER = 'Not provided';
+
+  const age = (() => {
+    if (!appState.dob) return null;
+    const birth = new Date(appState.dob);
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let a = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+    return a;
+  })();
+
+  const heightDisplay = appState.height_value
+    ? `${appState.height_value} ${appState.height_unit ?? 'cm'}`
+    : null;
+  const weightDisplay = appState.weight_value
+    ? `${appState.weight_value} ${appState.weight_unit ?? 'kg'}`
+    : null;
+
+  const prefs = appState.training_preferences;
+  const trainingStyles = prefs?.training_styles ?? [];
+  const preferredTimes = prefs?.preferred_times ?? [];
+
+  // Single-value rows shown with the same labels as the input screens.
+  const summaryRows: { label: string; value: string }[] = [
+    { label: 'Name', value: userData.full_name || PLACEHOLDER },
+    { label: 'Mobile number', value: appState.mobile || PLACEHOLDER },
+    {
+      label: 'Date of birth',
+      value: appState.dob
+        ? `${appState.dob}${age !== null ? ` (${age} yrs)` : ''}`
+        : PLACEHOLDER,
+    },
+    { label: 'Gender', value: appState.gender || PLACEHOLDER },
+    { label: 'Height', value: heightDisplay || PLACEHOLDER },
+    { label: 'Weight', value: weightDisplay || PLACEHOLDER },
+    { label: 'City', value: appState.city || PLACEHOLDER },
+    { label: 'How you prefer to train', value: prefs?.session_mode || PLACEHOLDER },
+    { label: 'Preferred contact time', value: appState.preferred_time || PLACEHOLDER },
+  ];
+
+  // Multi-value (chip) rows.
+  const chipRows: { label: string; values: string[] }[] = [
+    { label: 'Fitness goals', values: userData.goals_json.filter(Boolean) },
+    { label: 'Training styles', values: trainingStyles },
+    { label: 'When you are available', values: preferredTimes },
+  ];
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(clientId).catch(() => {
       // Fallback for environments where clipboard API is unavailable
@@ -50,9 +102,6 @@ export default function AccountReadyScreen() {
     console.log('Navigating to Dashboard with Client ID:', clientId);
     navigate('/client/dashboard');
   };
-
-  // Defensive: filter out empty strings from goals_json
-  const goals = (userData.goals_json ?? []).filter(Boolean);
 
   return (
     <MobileShell>
@@ -124,34 +173,54 @@ export default function AccountReadyScreen() {
             </div>
           </motion.section>
 
-          {/* Summary Chips */}
-          {(goals.length > 0 || userData.fitness_level) && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 }}
-              className="w-full flex flex-col items-center gap-3"
-            >
-              <p className="label-caps text-[10px] text-text-secondary opacity-60 tracking-widest">
-                Summary of selections
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {goals.map((goal: string) => (
+          {/* Summary of selections — echoes back everything entered in signup */}
+          <motion.section
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="w-full bg-white border border-border-light rounded-xl p-5 text-left shadow-sm space-y-4"
+          >
+            <p className="label-caps text-[10px] text-text-secondary opacity-60 tracking-widest">
+              Summary of selections
+            </p>
+
+            <div className="divide-y divide-border-light">
+              {summaryRows.map(row => (
+                <div key={row.label} className="flex items-start justify-between gap-4 py-2.5">
+                  <span className="text-[12px] text-text-secondary shrink-0">{row.label}</span>
                   <span
-                    key={goal}
-                    className="px-3 py-1.5 bg-green-light text-primary text-[11px] font-semibold rounded-full border border-primary/15"
+                    className={`text-[12px] font-medium text-right ${
+                      row.value === PLACEHOLDER ? 'text-text-secondary opacity-50' : 'text-text-primary'
+                    }`}
                   >
-                    {goal}
+                    {row.value}
                   </span>
-                ))}
-                {userData.fitness_level && (
-                  <span className="px-3 py-1.5 bg-input-bg text-text-secondary text-[11px] font-semibold rounded-full border border-border-light">
-                    {userData.fitness_level}
-                  </span>
-                )}
-              </div>
-            </motion.div>
-          )}
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-3 pt-1">
+              {chipRows.map(row => (
+                <div key={row.label} className="space-y-1.5">
+                  <span className="text-[12px] text-text-secondary">{row.label}</span>
+                  {row.values.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {row.values.map(v => (
+                        <span
+                          key={v}
+                          className="px-3 py-1.5 bg-green-light text-primary text-[11px] font-semibold rounded-full border border-primary/15"
+                        >
+                          {v}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[12px] font-medium text-text-secondary opacity-50">{PLACEHOLDER}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </motion.section>
 
         </main>
 

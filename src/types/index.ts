@@ -83,6 +83,10 @@ export interface HealthProfile {
   conditions?: string[];
   activity_level?: number | null;
   fitness_level?: string | null;
+  // Closed-ended training preferences captured during onboarding
+  // (client_profiles.training_preferences jsonb). Held in app state so the
+  // signup summary can echo back every selection the user made.
+  training_preferences?: TrainingPreferences;
 }
 
 // ─── Assessment Booking (SCR-C03) ─────────────────────────────────────────────

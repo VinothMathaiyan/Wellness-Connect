@@ -293,6 +293,11 @@ export default function HealthProfileScreen() {
       weight_unit: formData.weightUnit,
       city: formData.city || null,
       goals: formData.fitnessGoals,
+      training_preferences: {
+        training_styles: trainingPrefs.training_styles ?? [],
+        session_mode:    trainingPrefs.session_mode || '',
+        preferred_times: trainingPrefs.preferred_times ?? [],
+      },
     });
 
     // Persist the simplified client-owned fields to Supabase. Medical
