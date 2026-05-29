@@ -16,6 +16,7 @@ import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
 import { getTrainerClients, getPendingClientRequests, updateClientLinkStatus } from '../../../services/supabaseService';
 import type { TrainerClient } from '../../../services/supabaseService';
+import { toISODate } from '@/utils/date';
 
 type RiskLevel = 'red' | 'amber' | 'green';
 type SortOption = 'name' | 'readiness' | 'lastActive';
@@ -123,7 +124,7 @@ function formatLastActive(logDate: string | null): string {
   const today = new Date();
   const date  = new Date(logDate);
   // Compare calendar dates only
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = toISODate(today);
   const diff = Math.floor(
     (new Date(todayStr).getTime() - new Date(logDate).getTime()) / (1000 * 60 * 60 * 24)
   );

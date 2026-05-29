@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
-import { getTrainerApprovalStatus, type TrainerApprovalStatus } from '../services/supabaseService';
+import { getTrainerApprovalStatus, saveWeeklyReflection, mondayOfWeek, type TrainerApprovalStatus } from '../services/supabaseService';
 import type {
   WellnessAppState,
   DailyLog,
@@ -310,8 +310,13 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
     setWorkoutProgress({ score: payload.adherenceScore, notes: payload.clientNotes });
   };
 
-  const handleWeeklyReportSave = (reflection: string) => {
-    console.log('Saved reflection:', reflection);
+  const handleWeeklyReportSave = async (reflection: string) => {
+    if (!userId) return;
+    try {
+      await saveWeeklyReflection(userId, mondayOfWeek(), reflection);
+    } catch (err) {
+      console.error('handleWeeklyReportSave:', err);
+    }
   };
 
   const handleMarkAlertRead = (id: string) => {

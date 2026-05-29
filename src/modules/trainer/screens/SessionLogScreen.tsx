@@ -4,13 +4,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
-import { insertSessionLog } from '../../../services/supabaseService';
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const MOCK_CLIENTS: Record<string, string> = {
-  '1': 'Alex Johnson',
-};
+import {
+  getActiveWorkoutPlanId,
+  getUserProfile,
+  logWorkoutSession,
+} from '../../../services/supabaseService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -55,11 +53,16 @@ export default function SessionLogScreen() {
   const navigate = useNavigate();
   const { userId } = useWellness();
 
-  const clientName = MOCK_CLIENTS[clientId ?? ''] ?? 'Client';
   const draftKey = `session-draft-${clientId}`;
 
   const today = toLocalDateString(new Date());
   const sevenDaysAgo = toLocalDateString(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+
+  // ── Live client + plan resolution ──────────────────────────────────────────
+  const [clientName, setClientName] = useState<string>('Client');
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [metaError, setMetaError] = useState<string | null>(null);
+  const [isMetaLoading, setIsMetaLoading] = useState(true);
 
   // ── Form state ──────────────────────────────────────────────────────────────
   const [date, setDate] = useState(today);
@@ -79,6 +82,44 @@ export default function SessionLogScreen() {
 
   // ── Toast state ─────────────────────────────────────────────────────────────
   const [toast, setToast] = useState<string | null>(null);
+
+  // ── Fetch client name + active plan id ──────────────────────────────────────
+  useEffect(() => {
+    if (!clientId) {
+      setIsMetaLoading(false);
+      setMetaError('Missing client.');
+      return;
+    }
+
+    let cancelled = false;
+    setIsMetaLoading(true);
+    setMetaError(null);
+
+    Promise.all([
+      getUserProfile(clientId).then(p => p.full_name).catch(() => null),
+      getActiveWorkoutPlanId(clientId),
+    ])
+      .then(([name, plan]) => {
+        if (cancelled) return;
+        if (name) setClientName(name);
+        setPlanId(plan);
+        if (!plan) {
+          setMetaError('No active program found for this client. Assign a program before logging sessions.');
+        }
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error('SessionLogScreen meta:', err);
+        setMetaError('Unable to load client info. Please retry.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsMetaLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
 
   // Keep a ref to latest form values so the interval closure doesn't go stale
   const formRef = useRef({ notes, date, status, exercises: selectedExercises, effortScore });
@@ -165,26 +206,55 @@ export default function SessionLogScreen() {
       setSubmitError('Unable to save — session expired. Please log in again.');
       return;
     }
+    if (!planId) {
+      setSubmitError('No active program for this client. Assign a program before logging sessions.');
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmitError(null);
 
-    const success = await insertSessionLog(userId, clientId, {
-      session_date: date,
-      status,
-      notes,
-      exercises: selectedExercises,
-      effort_score: effortScore,
-    });
+    // Map the form's status onto the workout_logs.session_status enum.
+    // 'cancelled' in the form means "cancelled by client" → 'cancelled_client'.
+    const SESSION_STATUS_MAP: Record<Exclude<SessionStatus, ''>, 'completed' | 'no_show' | 'cancelled_client' | 'cancelled_trainer'> = {
+      completed: 'completed',
+      no_show: 'no_show',
+      cancelled: 'cancelled_client',
+      cancelled_trainer: 'cancelled_trainer',
+    };
+    const sessionStatus = SESSION_STATUS_MAP[status];
 
-    setIsSubmitting(false);
+    // Only persist exercise_sets when the session was actually completed.
+    const exerciseSets = status === 'completed'
+      ? selectedExercises.map(name => ({
+          exercise_name: name,
+          set_number: 1,
+          reps_completed: null,
+          weight_kg: null,
+          completed: true,
+        }))
+      : [];
 
-    if (success) {
+    // Pin completed_at to noon-local for the picked date so the row aligns
+    // with the trainer's chosen session date rather than the server clock.
+    const completedAtIso = new Date(`${date}T12:00:00`).toISOString();
+
+    try {
+      await logWorkoutSession(userId, clientId, planId, {
+        completed_at: completedAtIso,
+        notes: notes.trim() || null,
+        effortScore,
+        session_status: sessionStatus,
+        exercise_sets: exerciseSets,
+      });
       try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
       showToast('Session note saved successfully');
       setTimeout(() => navigate(`/trainer/client/${clientId}`), 1500);
-    } else {
+    } catch (err) {
+      console.error('SessionLogScreen handleSave:', err);
       setSubmitError('Failed to save session note. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -221,6 +291,14 @@ export default function SessionLogScreen() {
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3">
+
+          {/* Meta error banner — surfaced before the user touches the form */}
+          {!isMetaLoading && metaError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
+              <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700 font-medium">{metaError}</p>
+            </div>
+          )}
 
           {/* Draft restored banner */}
           {restoredAt && (
@@ -403,7 +481,7 @@ export default function SessionLogScreen() {
             )}
             <button
               onClick={handleSave}
-              disabled={!status || isSubmitting}
+              disabled={!status || isSubmitting || isMetaLoading || !planId}
               className="w-full bg-teal-600 text-white text-sm font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 transition-opacity"
             >
               {isSubmitting ? (

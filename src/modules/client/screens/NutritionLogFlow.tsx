@@ -4,15 +4,16 @@ import {
   ChevronLeft, Plus, Camera, Trash2, CheckCircle2, Upload, RefreshCw, ImageIcon, AlertTriangle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { FoodItem, MealLog, NutritionMealEntry } from '../../../types';
+import type { FoodItem, NutritionMealEntry } from '../../../types';
 import MobileShell from '../../../components/MobileShell';
 import { useWellness } from '../../../context/WellnessContext';
 import { IS_DEV_OTP } from '../../../utils/otpUtils';
 import {
-  insertMealLog,
+  logMeal,
   analyseMealImage,
   getMockMealAnalysis,
   type MealAnalysisResult,
+  type MealLogInput,
 } from '../../../services/supabaseService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -191,7 +192,7 @@ export default function NutritionLogFlow() {
     setError(null);
     setIsSaving(true);
 
-    const payload: MealLog = {
+    const payload: MealLogInput = {
       meal_type: mealKind,
       description: items.map(i => i.name).filter(Boolean).join(', '),
       total_calories: totals.cal,
@@ -199,7 +200,7 @@ export default function NutritionLogFlow() {
       logged_at: new Date().toISOString(),
       meal_name: mealName.trim() || undefined,
       notes: notes.trim() || undefined,
-      foods: items.map(i => ({
+      foods_json: items.map(i => ({
         name: i.name,
         portion: i.portion ?? '',
         calories: i.calories,
@@ -210,7 +211,7 @@ export default function NutritionLogFlow() {
     };
 
     if (userId) {
-      const ok = await insertMealLog(userId, payload);
+      const ok = await logMeal(userId, payload);
       if (!ok) {
         setError('Failed to save meal. Please try again.');
         setIsSaving(false);

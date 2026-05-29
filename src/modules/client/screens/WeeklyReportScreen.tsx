@@ -3,9 +3,10 @@ import { motion } from 'motion/react';
 import { ChevronLeft, Share2 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
-import { getWeeklyLogs } from '../../../services/supabaseService';
+import { getWeeklyLogs, getWeeklyReflection } from '../../../services/supabaseService';
 import type { DailyLog } from '../../../types';
 import { formatDate } from '@/utils/dateUtils';
+import { mondayOfWeek, dayIndexFromMonday } from '@/utils/date';
 
 
 
@@ -113,6 +114,7 @@ export default function WeeklyReportScreen() {
   const [weeklyLogs, setWeeklyLogs] = useState<DailyLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isReflectionLoading, setIsReflectionLoading] = useState(true);
 
   // ── Fetch real weekly logs using userId from context ──────────────────────
   useEffect(() => {
@@ -134,6 +136,25 @@ export default function WeeklyReportScreen() {
     return () => { cancelled = true; };
   }, [userId]);
 
+  // ── Fetch saved reflection for this week ──────────────────────────────────
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    setIsReflectionLoading(true);
+    const weekStart = mondayOfWeek();
+    getWeeklyReflection(userId, weekStart)
+      .then(row => {
+        if (!cancelled && row?.note) setReflection(row.note);
+      })
+      .catch(err => {
+        console.error('WeeklyReportScreen getWeeklyReflection:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setIsReflectionLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [userId]);
+
   // ── Derive real averages from fetched logs ────────────────────────────────
   const hasData = weeklyLogs.length > 0;
 
@@ -148,7 +169,7 @@ export default function WeeklyReportScreen() {
   // ── Build Mon-indexed sparkline data from real logs ───────────────────────
   const buildSparkline = (vals: number[]) =>
     weeklyLogs.map((log, i) => ({
-      day_offset: (new Date(log.log_date).getDay() + 6) % 7,
+      day_offset: dayIndexFromMonday(log.log_date),
       value: vals[i],
     })).sort((a, b) => a.day_offset - b.day_offset);
 
@@ -164,7 +185,7 @@ export default function WeeklyReportScreen() {
   // ── Build Mon-indexed daily_readiness heatmap (7 slots) ───────────────────
   const dailyReadiness: { score: number | null }[] = Array(7).fill(null).map(() => ({ score: null }));
   weeklyLogs.forEach(log => {
-    const dayIdx = (new Date(log.log_date).getDay() + 6) % 7; // Mon=0 … Sun=6
+    const dayIdx = dayIndexFromMonday(log.log_date); // Mon=0 … Sun=6
     dailyReadiness[dayIdx] = { score: log.readiness_score ?? null };
   });
 
@@ -172,7 +193,7 @@ export default function WeeklyReportScreen() {
   const now = new Date();
   const weekNum = isoWeekNumber(now);
   const monday = new Date(now);
-  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  monday.setDate(now.getDate() - dayIndexFromMonday(now));
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   const fmtShort = (d: Date) => formatDate(d);
@@ -418,6 +439,11 @@ export default function WeeklyReportScreen() {
                             Optional — add a personal note about your week. Only you can see this.
                         </p>
                         <div className="relative">
+                            {isReflectionLoading ? (
+                                <div className="w-full min-h-[100px] bg-[#F9FAFB] border-[0.5px] border-[#D1D5DB] rounded-[10px] p-3 flex items-center justify-center">
+                                    <div className="w-5 h-5 border-2 border-[#E5E7EB] border-t-[#1D9E75] rounded-full animate-spin" />
+                                </div>
+                            ) : (
                             <textarea
                                 className="w-full min-h-[100px] bg-[#F9FAFB] border-[0.5px] border-[#D1D5DB] rounded-[10px] p-3 text-[13px] placeholder:italic placeholder:text-[#9CA3AF] outline-none focus:min-h-[160px] focus:border-[#1D9E75] transition-all duration-300"
                                 placeholder="Any wins, struggles, things you noticed, or goals for next week…"
@@ -425,6 +451,7 @@ export default function WeeklyReportScreen() {
                                 value={reflection}
                                 onChange={(e) => setReflection(e.target.value)}
                             />
+                            )}
                             <span className="absolute bottom-2 right-3 text-[10px] text-[#9CA3AF] font-medium">
                                 {reflection.length} / 500
                             </span>

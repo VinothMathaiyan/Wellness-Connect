@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getClientProgress } from '../services/supabaseService';
 import type { ClientProgressRow } from '../services/supabaseService';
+import { todayISO, toISODate } from '@/utils/date';
 
 export interface ProgressData {
     userData: {
@@ -25,7 +26,7 @@ export interface ProgressData {
         readinessHistory: { week: string; score: number }[];
         trainerName?: string;
     };
-    weightData: { date: string; weight: number }[];
+
     isLoading: boolean;
     fetchError: string | null;
 }
@@ -43,9 +44,9 @@ function dayLabel(dateStr: string): string {
     return new Date(dateStr).toLocaleDateString('en', { weekday: 'short' });
 }
 
-/** Today as YYYY-MM-DD in local time */
+/** Today as YYYY-MM-DD */
 function todayStr(): string {
-    return new Date().toISOString().split('T')[0];
+    return todayISO();
 }
 
 /**
@@ -61,7 +62,7 @@ function computeStreak(rows: ClientProgressRow[]): number {
     const cursor = new Date(today);
 
     while (true) {
-        const key = cursor.toISOString().split('T')[0];
+        const key = toISODate(cursor);
         if (logDates.has(key)) {
             streak++;
             cursor.setDate(cursor.getDate() - 1);
@@ -114,17 +115,6 @@ function computeWeeklyDelta(
 }
 
 // ─── Static fallbacks (shown while loading or when no data exists) ─────────────
-
-const MOCK_WEIGHT_DATA = [
-    { date: 'Mar 10', weight: 76.0 },
-    { date: 'Mar 17', weight: 75.5 },
-    { date: 'Mar 24', weight: 75.2 },
-    { date: 'Mar 31', weight: 74.8 },
-    { date: 'Apr 07', weight: 74.3 },
-    { date: 'Apr 14', weight: 73.8 },
-    { date: 'Apr 21', weight: 73.5 },
-    { date: 'Today',  weight: 73.2 },
-];
 
 const EMPTY_USER_DATA: ProgressData['userData'] = {
     full_name: '',
@@ -222,7 +212,6 @@ export function useProgressData(userId: string | null): ProgressData {
 
     return {
         userData,
-        weightData: MOCK_WEIGHT_DATA, // no weight tracking table yet
         isLoading,
         fetchError,
     };

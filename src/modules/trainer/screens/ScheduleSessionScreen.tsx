@@ -19,6 +19,7 @@ import {
 } from '../../../services/supabaseService';
 import { supabase } from '../../../lib/supabaseClient';
 import { formatDate } from '@/utils/dateUtils';
+import { todayISO } from '@/utils/date';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -132,7 +133,7 @@ export default function ScheduleSessionScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
 
   const handleSchedule = async () => {
     if (!selectedClientId || !selectedDate || isSubmitting) return;

@@ -13,6 +13,8 @@ import {
   updateClientLinkStatus,
   getPendingClientRequests,
   getActiveClientCount,
+  getClientAssessmentNotes,
+  type ClientAssessmentNotes,
 } from '../../../services/supabaseService';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -140,16 +142,48 @@ function ClientProfilePreview({ client }: { client: PendingClient }) {
   );
 }
 
-function AssessmentSummary({ notes }: { notes: string }) {
+function AssessmentSummary({ notes }: { notes: ClientAssessmentNotes | null; isLoading: boolean }) {
+  if (!notes) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm p-4 mb-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          Assessment Team Notes
+        </p>
+        <p className="text-sm text-gray-400 italic">No assessment on file</p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 mb-3">
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
         Assessment Team Notes
       </p>
-      {notes ? (
-        <p className="text-sm text-gray-500 italic leading-relaxed">{notes}</p>
+
+      {/* Clearance + Fitness badges */}
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {notes.clearance_status && (
+          <span
+            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+            style={{
+              backgroundColor: notes.clearance_status === 'cleared' ? '#d1fae5' : '#fef3c7',
+              color: notes.clearance_status === 'cleared' ? '#065f46' : '#854d0e',
+            }}
+          >
+            {notes.clearance_status === 'cleared' ? '✓ Cleared' : notes.clearance_status}
+          </span>
+        )}
+        {notes.fitness_level && (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+            {notes.fitness_level}
+          </span>
+        )}
+      </div>
+
+      {notes.health_notes ? (
+        <p className="text-sm text-gray-500 italic leading-relaxed">{notes.health_notes}</p>
       ) : (
-        <p className="text-sm text-gray-400 italic">No assessment notes available</p>
+        <p className="text-sm text-gray-400 italic">No additional notes from the assessment team</p>
       )}
     </div>
   );
@@ -264,6 +298,9 @@ export default function AcceptDeclineScreen() {
   const [realClientId, setRealClientId] = useState<string | null>(null);
   // Real active client count fetched from DB
   const [activeClientCount, setActiveClientCount] = useState(0);
+  // Assessment notes fetched from DB
+  const [assessmentNotes, setAssessmentNotes] = useState<ClientAssessmentNotes | null>(null);
+  const [isAssessmentLoading, setIsAssessmentLoading] = useState(true);
 
   useEffect(() => {
     if (!userId) return;
@@ -288,6 +325,17 @@ export default function AcceptDeclineScreen() {
       })
       .catch(err => console.error('Pending load:', err))
       .finally(() => setIsLoadingClient(false));
+
+    // Fetch assessment notes for this client
+    const clientIdForNotes = routeClientId;
+    if (clientIdForNotes) {
+      getClientAssessmentNotes(clientIdForNotes)
+        .then(notes => setAssessmentNotes(notes))
+        .catch(err => console.error('Assessment notes load:', err))
+        .finally(() => setIsAssessmentLoading(false));
+    } else {
+      setIsAssessmentLoading(false);
+    }
   }, [userId, routeClientId]);
 
   // Use the resolved real client ID for DB operations, falling back to route param
@@ -353,7 +401,7 @@ export default function AcceptDeclineScreen() {
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-8">
           <ClientProfilePreview client={display} />
-          <AssessmentSummary notes={display.assessmentNotes} />
+          <AssessmentSummary notes={assessmentNotes} isLoading={isAssessmentLoading} />
           <ClientLoadIndicator count={activeClientCount} />
 
           {/* Action Zone */}

@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { normalisePhone } from '../utils/otpUtils';
+import { todayISO, toISODate, mondayOfWeek, daysAgoISO } from '../utils/date';
 import type {
   ClientNotification,
   ClientSession,
@@ -43,15 +44,29 @@ export async function getUserProfile(userId: string): Promise<User> {
 
 // ─── Daily Metrics ────────────────────────────────────────────────────────────
 
+// mondayOfWeek now lives in src/utils/date.ts. Re-exported so existing
+// importers (WellnessContext, WeeklyReportScreen) keep resolving it here.
+export { mondayOfWeek };
+
+/**
+ * Fetch the client's daily_metrics rows for the CURRENT calendar week
+ * (Monday → Sunday). Previously this used a rolling 7-day window, which
+ * caused last week's late-week rows (Thu-Sun) to leak into this week's
+ * heatmap slots on WeeklyReportScreen. Pinning to Mon-Sun keeps the
+ * report label and the rendered data aligned.
+ */
 export async function getWeeklyLogs(userId: string): Promise<DailyLog[]> {
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const startStr = mondayOfWeek();
+  const sunday = new Date(startStr);
+  sunday.setDate(sunday.getDate() + 6);
+  const endStr = toISODate(sunday);
 
   const { data, error } = await supabase
     .from('daily_metrics')
     .select('log_date, sleep_hours, sleep_quality_score, mood_score, energy_score, water_glasses, workout_done, readiness_score, pain_score, mobility_score')
     .eq('user_id', userId)
-    .gte('log_date', sevenDaysAgo.toISOString().split('T')[0])
+    .gte('log_date', startStr)
+    .lte('log_date', endStr)
     .order('log_date', { ascending: true });
 
   if (error) throw error;
@@ -84,7 +99,7 @@ export async function getClientProgress(
       'log_date, readiness_score, sleep_hours, sleep_quality_score, energy_score, mood_score, pain_score, workout_done',
     )
     .eq('user_id', userId)
-    .gte('log_date', since.toISOString().split('T')[0])
+    .gte('log_date', toISODate(since))
     .order('log_date', { ascending: true });
 
   if (error) {
@@ -284,7 +299,7 @@ export async function getTrainerClients(trainerId: string): Promise<TrainerClien
   );
 
   // Today's date string (YYYY-MM-DD) for pending check-in calculation
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
 
   // For each cleared client, fetch their latest daily_metrics row
   const results: TrainerClient[] = await Promise.all(
@@ -371,7 +386,7 @@ export async function getPendingCheckinsCount(trainerId: string): Promise<number
     .from('daily_metrics')
     .select('user_id')
     .in('user_id', clientIds)
-    .gte('log_date', sevenDaysAgo.toISOString().split('T')[0]);
+    .gte('log_date', toISODate(sevenDaysAgo));
 
   if (metricsError || !metrics) return 0;
 
@@ -534,22 +549,63 @@ export const updateClientLinkStatus = async (
   return true
 }
 
+// ─── Clearance gating (trainer surfaces show approved clients only) ───────────
+
+const APPROVED_CLEARANCE = new Set(['cleared', 'conditional']);
+
+/** Assessment fields embedded under a client for clearance gating. */
+interface EmbeddedAssessment {
+  clearance_status: string | null;
+  created_at: string;
+}
+
+/** Client embed carrying its assessments (ordered created_at desc in queries). */
+interface ClearanceClient {
+  assessments?: EmbeddedAssessment[] | null;
+}
+
 /**
- * Lightweight count of active clients for a trainer.
- * Used by AcceptDeclineScreen to show real client load without
- * fetching full client profiles.
+ * True when the client's LATEST assessment has an approved clearance status.
+ * Queries order embedded assessments created_at desc, so [0] is the newest.
+ * Clients with no assessment, or whose latest is pending/rejected, return false.
+ *
+ * NOTE: there is no FK between trainer_client_links and assessments, so the
+ * single-query filter routes through profiles (which FKs to both) and the
+ * "latest wins" rule is applied here in-memory on the already-returned set —
+ * no second round-trip.
+ */
+function clientLatestAssessmentApproved(
+  client: ClearanceClient | ClearanceClient[] | null | undefined,
+): boolean {
+  const resolved = firstRelation(client);
+  const latest = (resolved?.assessments ?? [])[0];
+  return !!latest && APPROVED_CLEARANCE.has(latest.clearance_status ?? '');
+}
+
+/**
+ * Count of active clients for a trainer, gated to those whose latest assessment
+ * is cleared/conditional. Single query: the inner join through profiles drops
+ * links without a client, and the clearance check is applied in-memory.
  */
 export const getActiveClientCount = async (trainerId: string): Promise<number> => {
-  const { count, error } = await supabase
+  const { data, error } = await supabase
     .from('trainer_client_links')
-    .select('client_id', { count: 'exact', head: true })
+    .select(`
+      client_id,
+      client:profiles!trainer_client_links_client_id_fkey!inner(
+        assessments:assessments!assessments_client_id_fkey(clearance_status, created_at)
+      )
+    `)
     .eq('trainer_id', trainerId)
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .order('created_at', { referencedTable: 'client.assessments', ascending: false });
   if (error) {
     console.error('getActiveClientCount:', error);
     return 0;
   }
-  return count ?? 0;
+  return (data ?? []).filter(row =>
+    clientLatestAssessmentApproved((row as { client: ClearanceClient | ClearanceClient[] | null }).client),
+  ).length;
 };
 
 export const getPendingClientRequests = async (trainerId: string) => {
@@ -557,18 +613,23 @@ export const getPendingClientRequests = async (trainerId: string) => {
     .from('trainer_client_links')
     .select(`
       client_id, status, type, created_at,
-      client:profiles!trainer_client_links_client_id_fkey(
-        id, full_name, city, specialties, photo_url, phone_number
+      client:profiles!trainer_client_links_client_id_fkey!inner(
+        id, full_name, city, specialties, photo_url, phone_number,
+        assessments:assessments!assessments_client_id_fkey(clearance_status, created_at)
       )
     `)
     .eq('trainer_id', trainerId)
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
+    .order('created_at', { referencedTable: 'client.assessments', ascending: false })
   if (error) {
     console.error('getPendingClientRequests:', error)
     return []
   }
-  return data ?? []
+  // Keep only requests whose client's latest assessment is approved.
+  return (data ?? []).filter(row =>
+    clientLatestAssessmentApproved((row as { client: ClearanceClient | ClearanceClient[] | null }).client),
+  )
 }
 
 /**
@@ -624,53 +685,173 @@ export interface TrainerRiskAlert {
   client: { id: string; full_name: string } | null;
 }
 
+const SEVERITY_RANK: Record<'low' | 'medium' | 'high', number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
 export const getTrainerAllRiskAlerts = async (trainerId: string): Promise<TrainerRiskAlert[]> => {
+  // Resolve the trainer's active linked clients so we can also surface alerts
+  // that aren't directly assigned a trainer_id (e.g. system-generated alerts).
+  const { data: linkRows, error: linkError } = await supabase
+    .from('trainer_client_links')
+    .select('client_id')
+    .eq('trainer_id', trainerId)
+    .eq('status', 'active');
+
+  if (linkError) {
+    console.error('getTrainerAllRiskAlerts (links):', linkError);
+    // Fall through to trainer-only scope so the screen still renders something.
+  }
+
+  const linkedClientIds = ((linkRows ?? []) as Array<{ client_id: string }>)
+    .map(r => r.client_id)
+    .filter((id): id is string => !!id);
+
+  // OR-scope: alerts owned by this trainer, OR alerts for clients linked to this trainer.
+  const orFilter = linkedClientIds.length > 0
+    ? `trainer_id.eq.${trainerId},client_id.in.(${linkedClientIds.join(',')})`
+    : `trainer_id.eq.${trainerId}`;
+
   const { data, error } = await supabase
     .from('risk_alerts')
     .select(`
       id, client_id, trainer_id, alert_type, message, severity, is_read, created_at, trainer_notes,
       client:profiles!risk_alerts_client_id_fkey(id, full_name)
     `)
-    .eq('trainer_id', trainerId)
+    .or(orFilter)
     .order('created_at', { ascending: false });
+
   if (error) {
     console.error('getTrainerAllRiskAlerts:', error);
     return [];
   }
-  return (data ?? []) as unknown as TrainerRiskAlert[];
+
+  const rows = (data ?? []) as unknown as TrainerRiskAlert[];
+
+  // Sort by severity (high → low) then created_at desc — Postgres can't sort the
+  // text severity column in that order natively, so we do it in JS.
+  return rows.sort((a, b) => {
+    const rank = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
+    if (rank !== 0) return rank;
+    return b.created_at.localeCompare(a.created_at);
+  });
 };
 
 // ─── Session Log ──────────────────────────────────────────────────────────────
 
-export interface SessionLogData {
-  session_date: string;
-  status: string;
-  notes: string;
-  exercises: string[];
-  effort_score: number | null;
+export interface WorkoutLogRow {
+  id: string;
+  plan_id: string;
+  client_id: string;
+  completed_at: string;
+  adherence_score: number | null;
+  client_notes: string | null;
+  created_at: string | null;
 }
 
-export const insertSessionLog = async (
-  trainerId: string,
+export interface ExerciseSetInput {
+  exercise_name: string;
+  set_number: number;
+  reps_completed: number | null;
+  weight_kg: number | null;
+  completed: boolean;
+}
+
+export type WorkoutSessionStatus =
+  | 'completed'
+  | 'no_show'
+  | 'cancelled_client'
+  | 'cancelled_trainer';
+
+export interface WorkoutSessionInput {
+  /** ISO timestamp; defaults to now() when omitted. */
+  completed_at?: string;
+  /** Mapped to workout_logs.client_notes (canonical schema column). */
+  notes?: string | null;
+  /**
+   * 1–5 trainer effort score from the SessionLog form. Scaled to 0–100 inside
+   * logWorkoutSession before insert so callers don't have to remember the rule.
+   * Takes precedence over adherence_score when both are provided.
+   */
+  effortScore?: number | null;
+  /**
+   * Escape hatch for callers that already hold a true 0–100 adherence value.
+   * workout_logs.adherence_score has a CHECK (0..100) — passing a 1–5 effort
+   * value here will silently corrupt data; use effortScore instead.
+   */
+  adherence_score?: number | null;
+  /** Optional per-set breakdown. Inserted into exercise_sets when provided. */
+  exercise_sets?: ExerciseSetInput[];
+  /**
+   * Session outcome. Defaults to 'completed' at the DB level when omitted.
+   * Mapped to workout_logs.session_status (CHECK constraint matches this union).
+   */
+  session_status?: WorkoutSessionStatus;
+}
+
+/**
+ * Persist a completed workout session against a workout_plan, plus optional
+ * per-set rows in exercise_sets. RLS on workout_logs already restricts inserts
+ * to trainers linked to the client via trainer_client_links (status='active'),
+ * so trainerId is accepted for signature clarity but not written to the row
+ * (the table has no trainer_id column).
+ */
+export const logWorkoutSession = async (
+  _trainerId: string,
   clientId: string,
-  sessionData: SessionLogData,
-): Promise<boolean> => {
-  const { error } = await supabase
+  planId: string,
+  sessionData: WorkoutSessionInput,
+): Promise<WorkoutLogRow> => {
+  void _trainerId;
+
+  // Centralize the 1–5 → 0–100 scaling so screens stay dumb. effortScore wins
+  // over adherence_score when both are present.
+  const adherenceScore: number | null =
+    sessionData.effortScore != null
+      ? sessionData.effortScore * 20
+      : sessionData.adherence_score ?? null;
+
+  const { data: log, error: logError } = await supabase
     .from('workout_logs')
     .insert({
-      trainer_id: trainerId,
+      plan_id: planId,
       client_id: clientId,
-      session_date: sessionData.session_date,
-      status: sessionData.status,
-      notes: sessionData.notes,
-      exercises: sessionData.exercises,
-      effort_score: sessionData.effort_score,
-    });
-  if (error) {
-    console.error('insertSessionLog:', error);
-    return false;
+      completed_at: sessionData.completed_at ?? new Date().toISOString(),
+      client_notes: sessionData.notes ?? null,
+      adherence_score: adherenceScore,
+      session_status: sessionData.session_status ?? 'completed',
+    })
+    .select('id, plan_id, client_id, completed_at, adherence_score, client_notes, created_at')
+    .single();
+
+  if (logError || !log) {
+    console.error('logWorkoutSession (insert log):', logError);
+    throw logError ?? new Error('Failed to insert workout_log');
   }
-  return true;
+
+  if (sessionData.exercise_sets && sessionData.exercise_sets.length > 0) {
+    const setRows = sessionData.exercise_sets.map(set => ({
+      log_id: log.id,
+      exercise_name: set.exercise_name,
+      set_number: set.set_number,
+      reps_completed: set.reps_completed,
+      weight_kg: set.weight_kg,
+      completed: set.completed,
+    }));
+
+    const { error: setsError } = await supabase
+      .from('exercise_sets')
+      .insert(setRows);
+
+    if (setsError) {
+      console.error('logWorkoutSession (insert exercise_sets):', setsError);
+      throw setsError;
+    }
+  }
+
+  return log as WorkoutLogRow;
 };
 
 // ─── Schedule Session ─────────────────────────────────────────────────────────
@@ -1405,7 +1586,7 @@ export const getTrainerRiskAlerts = async (trainerId: string) => {
 }
 
 export const getTrainerTodaySessions = async (trainerId: string) => {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayISO()
   const { data, error } = await supabase
     .from('workout_plans')
     .select(`
@@ -1430,38 +1611,63 @@ export const getTrainerTodaySessions = async (trainerId: string) => {
 
 
 /**
- * Upsert a daily check-in log for the client.
- * Uses user_id + log_date as the conflict key.
+ * Inline params shape for submitDailyCheckin. All fields optional — the
+ * service defaults log_date to today and lets the DB CHECK constraints
+ * enforce ranges. user_id and log_date are the only effectively required
+ * keys (log_date is defaulted on the service side).
  */
-export const upsertDailyMetrics = async (
+export interface DailyCheckinMetrics {
+  log_date?: string;             // YYYY-MM-DD — defaults to today when omitted
+  sleep_hours?: number;
+  mood_score?: number;           // CHECK 1..5
+  energy_score?: number;         // CHECK 1..5
+  water_glasses?: number;        // CHECK 0..8
+  workout_done?: boolean;
+  readiness_score?: number;      // CHECK 0..100
+  pain_score?: number | null;
+  mobility_score?: number;
+  sleep_quality_score?: number;  // CHECK 1..5
+}
+
+/**
+ * Upsert a daily check-in log for the client.
+ * Uses user_id + log_date as the conflict key (unique constraint
+ * daily_metrics_user_id_log_date_key is already in place).
+ */
+export const submitDailyCheckin = async (
   userId: string,
-  log: DailyLog,
+  metrics: DailyCheckinMetrics,
 ): Promise<boolean> => {
   // Normalise optional fields so unfilled values do not violate the
   // daily_metrics CHECK constraints. mood_score / energy_score must be 1–5
   // (or NULL) — a 0 from an unanswered question would be rejected — and
-  // water_glasses must be 0–8. Only user_id, log_date and readiness_score
-  // are effectively required; everything else defaults to NULL when blank.
-  const moodScore = log.mood_score >= 1 ? log.mood_score : null;
-  const energyScore = log.energy_score >= 1 ? log.energy_score : null;
-  const sleepQualityScore = log.sleep_quality_score >= 1 ? log.sleep_quality_score : null;
-  const waterGlasses = Math.min(Math.max(log.water_glasses ?? 0, 0), 8);
+  // water_glasses must be 0–8.
+  const moodScore =
+    metrics.mood_score != null && metrics.mood_score >= 1 ? metrics.mood_score : null;
+  const energyScore =
+    metrics.energy_score != null && metrics.energy_score >= 1 ? metrics.energy_score : null;
+  const sleepQualityScore =
+    metrics.sleep_quality_score != null && metrics.sleep_quality_score >= 1
+      ? metrics.sleep_quality_score
+      : null;
+  const waterGlasses = Math.min(Math.max(metrics.water_glasses ?? 0, 0), 8);
+  const logDate = metrics.log_date ?? todayISO();
 
   const { error } = await supabase
     .from('daily_metrics')
     .upsert(
       {
         user_id: userId,
-        log_date: log.log_date,
-        sleep_hours: log.sleep_hours ?? null,
+        log_date: logDate,
+        sleep_hours: metrics.sleep_hours ?? null,
         sleep_quality_score: sleepQualityScore,
         mood_score: moodScore,
         energy_score: energyScore,
         water_glasses: waterGlasses,
-        workout_done: log.workout_done,
-        pain_score: log.pain_score ?? null,
-        mobility_score: log.mobility_score ?? null,
-        readiness_score: log.readiness_score ?? null,
+        workout_done: metrics.workout_done ?? false,
+        pain_score: metrics.pain_score ?? null,
+        mobility_score: metrics.mobility_score ?? null,
+        readiness_score: metrics.readiness_score ?? null,
       },
       { onConflict: 'user_id,log_date' },
     );
@@ -1469,7 +1675,7 @@ export const upsertDailyMetrics = async (
     // Surface the real Supabase error (message/details/hint/code) rather than
     // a bare object, so check-in save failures are diagnosable.
     console.error(
-      'upsertDailyMetrics:',
+      'submitDailyCheckin:',
       error.message,
       error.details,
       error.hint,
@@ -1483,28 +1689,55 @@ export const upsertDailyMetrics = async (
 // ─── Client Meal Log ──────────────────────────────────────────────────────────
 
 /**
- * Insert a single meal log entry for the client.
+ * Inline params shape for logMeal. Only meal_type is required; everything
+ * else falls back to a sensible default (logged_at defaults to now(), and
+ * log_date defaults to the calendar date of logged_at).
+ */
+export interface MealLogInput {
+  meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  meal_name?: string;
+  description?: string;
+  total_calories?: number;
+  macros_json?: Record<string, number>;
+  foods_json?: unknown;
+  notes?: string;
+  logged_at?: string;            // defaults to now()
+  log_date?: string;             // YYYY-MM-DD — defaults to the date of logged_at
+}
+
+/**
+ * Upsert a single meal log entry for the client, keyed on
+ * (user_id, log_date, meal_type) via the meal_logs_user_log_date_meal_type_uidx
+ * unique index. Re-logging the same meal slot on the same day overwrites the
+ * prior row rather than creating duplicates (e.g. retaking a meal photo).
  * Persists the AI meal_name and per-food breakdown (foods_json) when provided.
  */
-export const insertMealLog = async (
+export const logMeal = async (
   userId: string,
-  payload: MealLog,
+  meal: MealLogInput,
 ): Promise<boolean> => {
+  const loggedAt = meal.logged_at ?? new Date().toISOString();
+  const logDate = meal.log_date ?? toISODate(loggedAt);
+
   const { error } = await supabase
     .from('meal_logs')
-    .insert({
-      user_id: userId,
-      meal_type: payload.meal_type,
-      description: payload.description,
-      total_calories: payload.total_calories,
-      macros_json: payload.macros_json,
-      logged_at: payload.logged_at,
-      meal_name: payload.meal_name ?? null,
-      foods_json: payload.foods ?? null,
-      notes: payload.notes ?? null,
-    });
+    .upsert(
+      {
+        user_id: userId,
+        log_date: logDate,
+        meal_type: meal.meal_type,
+        description: meal.description ?? null,
+        total_calories: meal.total_calories ?? null,
+        macros_json: meal.macros_json ?? null,
+        logged_at: loggedAt,
+        meal_name: meal.meal_name ?? null,
+        foods_json: meal.foods_json ?? null,
+        notes: meal.notes ?? null,
+      },
+      { onConflict: 'user_id,log_date,meal_type' },
+    );
   if (error) {
-    console.error('insertMealLog:', error);
+    console.error('logMeal:', error.message, error.details, error.hint, error.code);
     return false;
   }
   return true;
@@ -1737,7 +1970,7 @@ export const getClientReadiness = async (userId: string): Promise<number | null>
  * Returns null if nothing is scheduled today.
  */
 export const getClientTodaySession = async (userId: string): Promise<TrainingSession | null> => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
 
   const { data, error } = await supabase
     .from('workout_plans')
@@ -1796,7 +2029,7 @@ export const getClientTodaySession = async (userId: string): Promise<TrainingSes
  */
 export const getTodaySession = async (clientId: string): Promise<ClientSession | null> => {
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  const today = toISODate(now);
 
   const { data, error } = await supabase
     .from('sessions')
@@ -3461,7 +3694,7 @@ export const getClientTodayMealCount = async (
   count: number;
   nutrition: { calories: number; protein_g: number; carbs_g: number; fat_g: number } | null;
 }> => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
   const { data, error } = await supabase
     .from('meal_logs')
     .select('total_calories, macros_json')
@@ -3504,7 +3737,7 @@ export const getClientTodayCheckinStatus = async (
   done: number;
   total: number;
 }> => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
   const { data, error } = await supabase
     .from('daily_metrics')
     .select('sleep_hours, sleep_quality_score, mood_score, energy_score, water_glasses, workout_done, pain_score')
@@ -3686,67 +3919,206 @@ export async function markSessionComplete(
   }
 }
 
-// ─── Client Current Program (Trainer View) ────────────────────────────────────
 
-export interface ClientCurrentProgram {
-  id: string;
-  name: string | null;
-  status: string;
-  created_at: string;
-  duration_weeks: number | null;
-  sessions_per_week: number | null;
+// ─── Client Progress Overview (T15 — Trainer ClientProgressView) ──────────────
+
+export interface ClientProgressOverview {
+  clientName: string;
+  summary: {
+    avgReadiness7d: number | null;   // avg readiness_score over last 7 IST days
+    adherencePct: number | null;     // completed / total workout_logs in last 30d; null if no logs
+    totalCheckins30d: number;        // daily_metrics rows in last 30 IST days
+    currentStreak: number;           // consecutive IST days with a row, ending today
+  };
+  readinessTrend14d: Array<{
+    log_date: string;                // YYYY-MM-DD
+    readiness_score: number | null;  // null = no check-in that day
+  }>;                                // 14 entries, oldest first
+  metricAverages30d: {
+    sleepHours: number | null;
+    energyScore: number | null;      // 1..5 scale (display layer doubles to /10)
+    moodScore: number | null;        // 1..5 scale (display layer doubles to /10)
+    painScore: number | null;        // raw average
+  };
+  recentCheckins: Array<{
+    log_date: string;
+    readiness_score: number | null;
+    workout_done: boolean | null;
+  }>;                                // last 10 rows, newest first
+  currentProgram: {
+    planId: string;
+    templateName: string | null;
+    durationWeeks: number | null;
+    sessionsPerWeek: number | null;
+    status: string;                  // active | pending_review
+    weekOfPlan: number | null;       // 1..N from scheduled_at; null if not computable
+  } | null;
+}
+
+/** Mean of the non-null numeric values, rounded to 1 decimal place; null if none. */
+function average1dp(values: (number | null | undefined)[]): number | null {
+  const valid = values.filter((v): v is number => typeof v === 'number');
+  if (valid.length === 0) return null;
+  return Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 10) / 10;
 }
 
 /**
- * Fetch the most recent non-terminal workout plan for a client.
- * Used by ClientProgressView (trainer's view of a specific client).
- * Accepts any clientId — not restricted to the logged-in user.
+ * Consolidated progress overview for the trainer's view of one client (T15).
+ *
+ * Runs four parallel queries (profile, 30-day daily_metrics, 30-day workout_logs,
+ * current plan + template) and derives every section in memory — no N+1.
+ *
+ * Throws if the clientId has no profiles row (matches getUserProfile convention).
+ * On a valid client with no logged data, returns an object with null/empty
+ * sections so each UI block can render its own empty state independently.
  */
-export async function getClientCurrentProgram(
+export async function getClientProgressOverview(
   clientId: string,
-): Promise<ClientCurrentProgram | null> {
-  const { data, error } = await supabase
-    .from('workout_plans')
-    .select(`
-      id,
-      status,
-      created_at,
-      workout_templates ( name, duration_weeks, sessions_per_week )
-    `)
-    .eq('client_id', clientId)
-    .in('status', ['active', 'approved', 'pending_review', 'changes_requested'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+): Promise<ClientProgressOverview> {
+  const today   = todayISO();
+  const start30 = daysAgoISO(29); // 30-day inclusive window (today + previous 29)
+  const start14 = daysAgoISO(13);
+  const start7  = daysAgoISO(6);
 
-  if (error) {
-    console.error('getClientCurrentProgram:', error);
-    return null;
+  const [profileRes, metricsRes, logsRes, planRes] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', clientId)
+      .maybeSingle(),
+    supabase
+      .from('daily_metrics')
+      .select('log_date, readiness_score, sleep_hours, energy_score, mood_score, pain_score, workout_done')
+      .eq('user_id', clientId)
+      .gte('log_date', start30)
+      .order('log_date', { ascending: true }),
+    supabase
+      .from('workout_logs')
+      .select('session_status')
+      .eq('client_id', clientId)
+      .gte('created_at', `${start30}T00:00:00`),
+    supabase
+      .from('workout_plans')
+      .select('id, status, scheduled_at, workout_templates ( name, duration_weeks, sessions_per_week )')
+      .eq('client_id', clientId)
+      .in('status', ['active', 'pending_review'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (profileRes.error) { console.error('getClientProgressOverview (profile):', profileRes.error); throw profileRes.error; }
+  if (!profileRes.data)  throw new Error('Client profile not found');
+  if (metricsRes.error) { console.error('getClientProgressOverview (metrics):', metricsRes.error); throw metricsRes.error; }
+  if (logsRes.error)    { console.error('getClientProgressOverview (logs):',    logsRes.error);    throw logsRes.error; }
+  if (planRes.error)    { console.error('getClientProgressOverview (plan):',     planRes.error);    throw planRes.error; }
+
+  const clientName = (profileRes.data as { full_name: string | null }).full_name ?? 'Client';
+
+  interface MetricsRowDB {
+    log_date: string;
+    readiness_score: number | null;
+    sleep_hours: number | null;
+    energy_score: number | null;
+    mood_score: number | null;
+    pain_score: number | null;
+    workout_done: boolean | null;
   }
-  if (!data) return null;
+  const rows = (metricsRes.data ?? []) as MetricsRowDB[]; // ascending by log_date
 
-  type PlanRow = {
-    id: string;
-    status: string;
-    created_at: string;
-    workout_templates:
-      | { name: string; duration_weeks: number; sessions_per_week: number }
-      | Array<{ name: string; duration_weeks: number; sessions_per_week: number }>
-      | null;
+  // ── Summary ──────────────────────────────────────────────────────────────
+  const avgReadiness7dRaw = average1dp(rows.filter(r => r.log_date >= start7).map(r => r.readiness_score));
+  const avgReadiness7d = avgReadiness7dRaw === null ? null : Math.round(avgReadiness7dRaw);
+
+  const logRows = (logsRes.data ?? []) as { session_status: string | null }[];
+  const adherencePct = logRows.length === 0
+    ? null
+    : Math.round((logRows.filter(l => l.session_status === 'completed').length * 100) / logRows.length);
+
+  const totalCheckins30d = rows.length;
+
+  const dateSet = new Set(rows.map(r => r.log_date));
+  let currentStreak = 0;
+  for (let i = 0; ; i++) {
+    if (dateSet.has(daysAgoISO(i))) currentStreak++;
+    else break;
+  }
+
+  // ── Readiness trend (14 days, oldest first, gaps filled with null) ─────────
+  const readinessByDate = new Map<string, number | null>();
+  rows
+    .filter(r => r.log_date >= start14)
+    .forEach(r => readinessByDate.set(r.log_date, r.readiness_score));
+  const readinessTrend14d: ClientProgressOverview['readinessTrend14d'] = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = daysAgoISO(i);
+    readinessTrend14d.push({
+      log_date: d,
+      readiness_score: readinessByDate.has(d) ? (readinessByDate.get(d) ?? null) : null,
+    });
+  }
+
+  // ── Metric averages (30 days) ──────────────────────────────────────────────
+  const metricAverages30d = {
+    sleepHours:  average1dp(rows.map(r => r.sleep_hours)),
+    energyScore: average1dp(rows.map(r => r.energy_score)),
+    moodScore:   average1dp(rows.map(r => r.mood_score)),
+    painScore:   average1dp(rows.map(r => r.pain_score)),
   };
 
-  const plan = data as unknown as PlanRow;
-  const template = Array.isArray(plan.workout_templates)
-    ? (plan.workout_templates[0] ?? null)
-    : (plan.workout_templates ?? null);
+  // ── Recent check-ins (last 10, newest first) ───────────────────────────────
+  const recentCheckins = [...rows]
+    .sort((a, b) => b.log_date.localeCompare(a.log_date))
+    .slice(0, 10)
+    .map(r => ({ log_date: r.log_date, readiness_score: r.readiness_score, workout_done: r.workout_done }));
+
+  // ── Current program ─────────────────────────────────────────────────────────
+  let currentProgram: ClientProgressOverview['currentProgram'] = null;
+  if (planRes.data) {
+    interface PlanRowDB {
+      id: string;
+      status: string;
+      scheduled_at: string | null;
+      workout_templates:
+        | { name: string; duration_weeks: number; sessions_per_week: number }
+        | Array<{ name: string; duration_weeks: number; sessions_per_week: number }>
+        | null;
+    }
+    const plan = planRes.data as unknown as PlanRowDB;
+    const template = Array.isArray(plan.workout_templates)
+      ? (plan.workout_templates[0] ?? null)
+      : (plan.workout_templates ?? null);
+    const durationWeeks = template?.duration_weeks ?? null;
+
+    let weekOfPlan: number | null = null;
+    if (plan.scheduled_at) {
+      // Day diff between two calendar dates (UTC midnight) — stable, tz-agnostic.
+      const diffDays = Math.floor(
+        (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${toISODate(plan.scheduled_at)}T00:00:00Z`)) / 86400000,
+      );
+      let week = Math.floor(diffDays / 7) + 1;
+      if (week < 1) week = 1;
+      if (durationWeeks !== null && week > durationWeeks) week = durationWeeks;
+      weekOfPlan = week;
+    }
+
+    currentProgram = {
+      planId: plan.id,
+      templateName: template?.name ?? null,
+      durationWeeks,
+      sessionsPerWeek: template?.sessions_per_week ?? null,
+      status: plan.status,
+      weekOfPlan,
+    };
+  }
 
   return {
-    id: plan.id,
-    name: template?.name ?? null,
-    status: plan.status,
-    created_at: plan.created_at,
-    duration_weeks: template?.duration_weeks ?? null,
-    sessions_per_week: template?.sessions_per_week ?? null,
+    clientName,
+    summary: { avgReadiness7d, adherencePct, totalCheckins30d, currentStreak },
+    readinessTrend14d,
+    metricAverages30d,
+    recentCheckins,
+    currentProgram,
   };
 }
 
@@ -3770,13 +4142,9 @@ export async function getWeeklyCheckinSummary(
   trainerId: string,
 ): Promise<{ data: WeeklyCheckinRow[]; error?: string }> {
   try {
-    // Monday of current week (ISO date string)
-    const now = new Date();
-    const daysFromMonday = (now.getDay() + 6) % 7; // Mon=0 … Sun=6
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - daysFromMonday);
-    monday.setHours(0, 0, 0, 0);
-    const mondayStr = monday.toISOString().split('T')[0];
+    // Monday of current week (ISO date string) — shared helper keeps this
+    // aligned with getWeeklyLogs so trainer and client week boundaries match.
+    const mondayStr = mondayOfWeek();
 
     // Step 1 — active client IDs + names for this trainer
     const { data: links, error: linksError } = await supabase
@@ -4089,7 +4457,7 @@ export async function submitAssessment(
         recommended_trainer_id: data.recommended_trainer_id ?? null,
         clearance_status: data.clearance_status,
         status: 'completed',
-        assessment_date: new Date().toISOString().split('T')[0],
+        assessment_date: todayISO(),
       },
       { onConflict: 'client_id,assessor_id' },
     );
@@ -4173,7 +4541,7 @@ export async function completeAssessment(
     trainer_recommendation: data.trainer_recommendation,
     clearance_status:       data.clearance_status,
     status:                 'completed' as const,
-    assessment_date:        new Date().toISOString().split('T')[0],
+    assessment_date:        todayISO(),
   };
 
   // Update the existing assessment row for this client.
@@ -4484,15 +4852,49 @@ export async function createEscalation(
   return { success: true, escalationId: data?.id };
 }
 
-/** Returns the id of the first assessor profile, or null if none exists. */
+/** Returns the id of the first active assessor profile, or null if none exists. */
 export async function getAssessorId(): Promise<string | null> {
   const { data } = await supabase
     .from('profiles')
     .select('id')
     .eq('role', 'assessor')
+    .eq('is_active', true)
     .limit(1)
     .maybeSingle();
+  if (!data?.id) {
+    console.warn('getAssessorId: no active assessor found — notification will be skipped.');
+  }
   return data?.id ?? null;
+}
+
+// ─── Client Assessment Notes (AcceptDeclineScreen) ────────────────────────────
+
+export interface ClientAssessmentNotes {
+  health_notes: string | null;
+  clearance_status: string | null;
+  fitness_level: string | null;
+}
+
+/**
+ * Fetch the latest assessment notes for a client.
+ * Returns null when no assessment row exists yet.
+ */
+export async function getClientAssessmentNotes(
+  clientId: string,
+): Promise<ClientAssessmentNotes | null> {
+  const { data, error } = await supabase
+    .from('assessments')
+    .select('health_notes, clearance_status, fitness_level')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('getClientAssessmentNotes:', error);
+    return null;
+  }
+  return (data as ClientAssessmentNotes) ?? null;
 }
 
 export async function resolveEscalation(
@@ -5038,4 +5440,61 @@ export async function toggleAssessorActive(
       .eq('id', pre.linked_user_id);
   }
   return true;
+}
+
+// ─── Weekly Reflections ───────────────────────────────────────────────────────
+
+export interface WeeklyReflectionRow {
+  id: string;
+  user_id: string;
+  week_start: string;
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Upsert a weekly reflection for the given user and week.
+ * @param weekStart YYYY-MM-DD Monday of the target week.
+ */
+export async function saveWeeklyReflection(
+  userId: string,
+  weekStart: string,
+  note: string,
+): Promise<WeeklyReflectionRow> {
+  const { data, error } = await supabase
+    .from('weekly_reflections')
+    .upsert(
+      {
+        user_id: userId,
+        week_start: weekStart,
+        note,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,week_start' },
+    )
+    .select('id, user_id, week_start, note, created_at, updated_at')
+    .single();
+
+  if (error) throw error;
+  return data as WeeklyReflectionRow;
+}
+
+/**
+ * Fetch a previously saved weekly reflection, or null if none exists.
+ * @param weekStart YYYY-MM-DD Monday of the target week.
+ */
+export async function getWeeklyReflection(
+  userId: string,
+  weekStart: string,
+): Promise<WeeklyReflectionRow | null> {
+  const { data, error } = await supabase
+    .from('weekly_reflections')
+    .select('id, user_id, week_start, note, created_at, updated_at')
+    .eq('user_id', userId)
+    .eq('week_start', weekStart)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as WeeklyReflectionRow) ?? null;
 }

@@ -9,8 +9,9 @@ import type { DailyLog } from '../../../types';
 
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { upsertDailyMetrics } from '../../../services/supabaseService';
+import { submitDailyCheckin } from '../../../services/supabaseService';
 import { formatDateLong } from '@/utils/dateUtils';
+import { todayISO } from '@/utils/date';
 
 interface Props {
   existingLog?: DailyLog | null;
@@ -83,7 +84,7 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
   const navigate = useNavigate();
   const { userId, handleDailyCheckInComplete } = useWellness();
   const [currentStep, setCurrentStep] = useState(1);
-  const [logDate, setLogDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [logDate, setLogDate] = useState(() => todayISO());
   const [log, setLog] = useState<DailyCheckInDraft>({
     water_litres: existingLog?.water_glasses ? existingLog.water_glasses * 0.25 : 0,
     sleep_hours: existingLog?.sleep_hours ?? 8,
@@ -132,7 +133,7 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
     };
 
     if (userId) {
-      const ok = await upsertDailyMetrics(userId, dailyLog);
+      const ok = await submitDailyCheckin(userId, dailyLog);
       if (!ok) {
         setSubmitError('Failed to save check-in. Please try again.');
         setIsSubmitting(false);
@@ -194,7 +195,7 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
               type="date"
               className="w-0 h-0 opacity-0 absolute pointer-events-none"
               value={logDate}
-              max={new Date().toISOString().split('T')[0]}
+              max={todayISO()}
               onChange={(e) => { if (e.target.value) setLogDate(e.target.value); }}
             />
           </div>
