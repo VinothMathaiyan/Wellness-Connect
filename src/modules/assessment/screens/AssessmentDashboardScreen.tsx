@@ -21,6 +21,21 @@ function getGreeting(): string {
   return 'Good night';
 }
 
+// Returns true only on localhost or Vercel dev-branch previews — gates the
+// temporary backfill button. Always false in production, so the button never
+// renders there. Known PRODUCTION hostnames this must return false for:
+//   wellness-connect-sigma.vercel.app  and any  *git-main-*  preview URL.
+const isDevEnvironment = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.includes('-dev-') ||              // matches git-dev-* preview URLs
+    host.includes('wellness-connect-git-dev')
+  );
+};
+
 export default function AssessmentDashboardScreen() {
   const navigate = useNavigate();
   const { userId, appState } = useWellness();
@@ -301,8 +316,11 @@ export default function AssessmentDashboardScreen() {
             </div>
           </div>
 
-          {/* [DEV/PREVIEW ONLY] Temporary admin button — visible on dev branch and localhost. Hidden in production builds. */}
-          {(import.meta.env.DEV || import.meta.env.VITE_GIT_BRANCH === 'dev') && (
+          {/* [DEV/PREVIEW ONLY] Temporary admin button — visible on localhost and
+              Vercel dev branch previews. Hidden in production (wellness-connect-
+              sigma.vercel.app or any *git-main-* URL). Remove before final production
+              launch. */}
+          {isDevEnvironment() && (
             <div className="pt-2 pb-1 flex justify-center">
               <button
                 onClick={handleBackfill}
