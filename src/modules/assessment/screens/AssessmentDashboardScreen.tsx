@@ -7,8 +7,9 @@ import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { 
   getAssessorDashboardStats, 
-  getNewClientQueue, 
-  type Assessment 
+  getNewClientQueue,
+  backfillTrainerRecommendations,
+  type Assessment
 } from '../../../services/supabaseService';
 
 function getGreeting(): string {
@@ -32,6 +33,25 @@ export default function AssessmentDashboardScreen() {
   const [recentActivity, setRecentActivity] = useState<Assessment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // [DEV ONLY] Backfill button state — see PART 1 Change 5. Remove before production.
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handleBackfill = async () => {
+    if (backfillRunning) return;
+    setBackfillRunning(true);
+    setToast(null);
+    try {
+      const { succeeded } = await backfillTrainerRecommendations();
+      setToast({ type: 'success', message: `Backfilled ${succeeded} clients` });
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : 'Backfill failed.' });
+    } finally {
+      setBackfillRunning(false);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -287,12 +307,39 @@ export default function AssessmentDashboardScreen() {
             </div>
           </div>
 
+          {/* [DEV ONLY] Temporary admin button — see PART 1 Change 5. Remove before production. */}
+          {import.meta.env.DEV && (
+            <div className="pt-2 pb-1 flex justify-center">
+              <button
+                onClick={handleBackfill}
+                disabled={backfillRunning}
+                className="text-[11px] font-medium text-gray-400 underline underline-offset-2 disabled:opacity-50"
+              >
+                {backfillRunning ? 'Running…' : '[Dev] Backfill Recommendations'}
+              </button>
+            </div>
+          )}
+
         </div>
       </div>
 
-      <AssessmentBottomNav 
-        escalationCount={stats.openEscalationCount} 
-        alertCount={0} 
+      {/* Backfill result toast */}
+      {toast && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 bottom-24 z-[200] px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium max-w-[90%] text-center break-words"
+          style={
+            toast.type === 'success'
+              ? { backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }
+              : { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }
+          }
+        >
+          {toast.message}
+        </div>
+      )}
+
+      <AssessmentBottomNav
+        escalationCount={stats.openEscalationCount}
+        alertCount={0}
       />
     </MobileShell>
   );
