@@ -43,6 +43,38 @@ export async function getUserProfile(userId: string): Promise<User> {
   return data as User;
 }
 
+/** Minimal profile shape used by the post-OTP routing decision. */
+export interface AuthProfile {
+  role: 'client' | 'trainer' | 'assessor' | null;
+  full_name: string | null;
+  city: string | null;
+  specialties: string[] | null;
+}
+
+/**
+ * Look up the profile that belongs to an authenticated user by auth.uid.
+ * Returns null when no profile row exists yet (i.e. a brand-new user who
+ * still needs role selection / onboarding).
+ *
+ * auth.uid is the single source of truth for identity — never phone_number.
+ * Callers use the null/non-null result to branch new-user vs returning-user
+ * AFTER OTP success, which keeps profile creation idempotent (no duplicate
+ * rows are ever created for an existing auth user).
+ */
+export async function getProfileForAuth(userId: string): Promise<AuthProfile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role, full_name, city, specialties')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('getProfileForAuth:', error);
+    return null;
+  }
+  return (data as AuthProfile) ?? null;
+}
+
 // ─── Daily Metrics ────────────────────────────────────────────────────────────
 
 // mondayOfWeek now lives in src/utils/date.ts. Re-exported so existing

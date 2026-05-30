@@ -11,7 +11,7 @@ import MobileShell from '../../../components/MobileShell';
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
-import { isTrainerOnboardingComplete, getPreRegisteredRole, linkAuthUserToProfile } from '../../../services/supabaseService';
+import { isTrainerOnboardingComplete, getPreRegisteredRole, linkAuthUserToProfile, getProfileForAuth } from '../../../services/supabaseService';
 import { IS_DEV_OTP, normalisePhone, validatePhone, validateOtp } from '@/utils/otpUtils';
 
 export default function SignUpScreen() {
@@ -218,11 +218,9 @@ export default function SignUpScreen() {
       return;
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, full_name, city, specialties')
-      .eq('id', userId)
-      .maybeSingle();
+    // auth.uid is the identity. A non-null profile means a returning user;
+    // null means a brand-new user who still needs role selection / onboarding.
+    const profile = await getProfileForAuth(userId);
 
     // Decide destination before triggering the success animation
     let destination = '/role-selection';

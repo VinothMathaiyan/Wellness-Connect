@@ -59,7 +59,9 @@ export default function RoleSelectionScreen() {
           id: userId,
           role,
           full_name: appState.full_name ?? '',
-          phone_number: appState.mobile ?? '',
+          // Write NULL (not '') when absent — '' would collide under the
+          // profiles_phone_number_key UNIQUE constraint; NULLs are allowed.
+          phone_number: appState.mobile || null,
         }, { onConflict: 'id' });
 
       if (error) throw error;
