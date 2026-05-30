@@ -165,8 +165,8 @@ export default function TrainerPendingScreen() {
           {/* Rejected state */}
           {isRejected ? (
             <>
-              <h2 className="text-2xl font-bold text-gray-900 text-center leading-tight">
-                Your application needs changes
+              <h2 className="text-2xl font-bold text-gray-900 text-center leading-tight break-words">
+                Your previous submission was rejected
               </h2>
               <p className="text-sm text-gray-500 text-center mt-3 leading-relaxed">
                 Our assessment team reviewed your profile and asked for some
@@ -175,16 +175,16 @@ export default function TrainerPendingScreen() {
 
               {/* Reviewer notes — shown prominently */}
               <div
-                className="rounded-2xl p-4 mt-6"
+                className="rounded-2xl p-4 mt-6 max-w-full"
                 style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}
               >
                 <div className="flex items-start gap-2.5">
                   <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: '#D97706' }} />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-bold mb-1" style={{ color: '#B45309' }}>
                       Reviewer notes
                     </p>
-                    <p className="text-[13px] leading-snug" style={{ color: '#92400E' }}>
+                    <p className="text-[13px] leading-snug break-words" style={{ color: '#92400E' }}>
                       {reviewNotes?.trim()
                         ? reviewNotes
                         : 'No specific notes were provided. Please review your profile details and resubmit.'}

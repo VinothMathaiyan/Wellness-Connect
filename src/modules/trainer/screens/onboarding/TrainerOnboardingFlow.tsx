@@ -89,7 +89,7 @@ export default function TrainerOnboardingFlow() {
           style={{ backgroundColor: '#FFFBEB', borderBottom: '1px solid #FDE68A' }}
         >
           <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: '#D97706' }} />
-          <p className="text-[13px] leading-snug" style={{ color: '#92400E' }}>
+          <p className="text-[13px] leading-snug break-words min-w-0" style={{ color: '#92400E' }}>
             <span className="font-bold">Your previous submission was rejected.</span>{' '}
             {reviewNotes?.trim()
               ? <>Reviewer notes: <span className="italic">{reviewNotes}</span>. </>
