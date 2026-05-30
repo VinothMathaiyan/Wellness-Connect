@@ -27,6 +27,7 @@ import TrainerGoalApprovalScreen from './TrainerGoalApprovalScreen';
 import { TrainerCard } from '../components/TrainerCard';
 import TrainerRecommendationCard from '../components/TrainerRecommendationCard';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 
 const CATEGORIES = ['All', 'Yoga', 'HIIT', 'Strength', 'Nutrition', 'Ayurveda', 'Wellness'];
 
@@ -203,15 +204,14 @@ export default function TrainersScreen() {
 
   return (
     <div className="max-w-md mx-auto w-full min-h-screen bg-gray-50 flex flex-col relative shadow-xl overflow-hidden">
-      {/* Header */}
-      <header className="pt-6 px-4 pb-2 bg-white flex flex-col z-20 shrink-0">
-        <div className="flex items-center justify-between mb-4 px-2">
-          <h1 className="text-[20px] font-bold text-gray-900">Trainers &amp; Experts</h1>
-          <ProfileMenu />
-        </div>
-
+      <ScreenHeader
+        variant="sub"
+        title="Trainers & Experts"
+        onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
+      >
         {/* Tabs — 3 tabs */}
-        <div className="flex bg-gray-100/50 p-1 rounded-xl w-full">
+        <div className="mt-4 flex bg-gray-100/50 p-1 rounded-xl w-full">
           <button
             onClick={() => setActiveTab('my')}
             className={`flex-1 py-2 text-[13px] font-bold rounded-lg transition-all relative ${activeTab === 'my' ? 'text-[#1D9E75] bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
@@ -239,7 +239,7 @@ export default function TrainersScreen() {
             )}
           </button>
         </div>
-      </header>
+      </ScreenHeader>
 
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto scrollbar-hide pb-24 relative">
