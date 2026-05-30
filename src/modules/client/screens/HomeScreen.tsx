@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, type ComponentType } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Home, Users, BarChart3, MessageSquare, Bell, BarChart2, Phone, MapPin, Video } from 'lucide-react';
-import type { ClientSession, WeeklyReportStatus } from '../../../types';
+import type { ClientSession } from '../../../types';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
 import { formatDateLong } from '@/utils/dateUtils';
@@ -184,14 +184,20 @@ const TrainingCard = ({ session, onClick }: { session?: ClientSession; onClick: 
 };
 
 /* ── WeeklyReportCard ────────────────────────────────────── */
-const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingComplete }: {
-  status: WeeklyReportStatus; weekNumber: number; teaser?: { sleep: string; mood: string; energy: string }; onClick: () => void; isTrackingComplete?: boolean;
+// Enable rule: the Weekly Report unlocks once the client has logged at least
+// WEEKLY_REPORT_MIN_DAYS distinct days this week — it's a check-in, not a final
+// exam, so it shouldn't wait for all 7 days or for today's check-in to be 100%.
+const WeeklyReportCard = ({ weekLabel, loggedDays, teaser, onClick }: {
+  weekLabel: string; loggedDays: number; teaser?: { sleep: string; mood: string; energy: string }; onClick: () => void;
 }) => {
-  if (!isTrackingComplete || status === 'no_data') return (
+  const remaining = Math.max(0, WEEKLY_REPORT_MIN_DAYS - loggedDays);
+  const unlocked = remaining === 0;
+
+  if (!unlocked) return (
     <div className="bg-white rounded-[12px] p-[14px] border border-[#E5E7EB] flex items-center gap-[14px] mb-[10px] opacity-65">
       <div className="w-[48px] h-[48px] shrink-0 bg-[#EEF2FF] rounded-[10px] flex items-center justify-center"><BarChart2 size={24} className="text-[#4F46E5]" /></div>
-      <div className="flex-1"><h4 className="text-[13px] font-semibold text-[#111827]">Weekly Report</h4><p className="text-[12px] text-[#9CA3AF]">{!isTrackingComplete ? "Complete daily tracking to unlock" : "Keep logging daily to unlock your first summary"}</p></div>
-      <div className="px-3 py-0.5 bg-gray-100 rounded-full text-[11px] font-bold text-[#9CA3AF]">Week {weekNumber}</div>
+      <div className="flex-1"><h4 className="text-[13px] font-semibold text-[#111827]">Weekly Report</h4><p className="text-[12px] text-[#9CA3AF]">{remaining} more daily log{remaining === 1 ? '' : 's'} to unlock</p></div>
+      <div className="px-3 py-0.5 bg-gray-100 rounded-full text-[11px] font-bold text-[#9CA3AF]">{weekLabel}</div>
     </div>
   );
   return (
@@ -199,7 +205,7 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingCompl
       <div className="w-[48px] h-[48px] shrink-0 bg-[#EEF2FF] rounded-[10px] flex items-center justify-center"><BarChart2 size={24} className="text-[#4F46E5]" /></div>
       <div className="flex-1">
         <h4 className="text-[13px] font-semibold text-[#111827]">Weekly Report</h4>
-        <p className="text-[12px] text-[#6B7280] mb-1">Week {weekNumber} summary ready</p>
+        <p className="text-[12px] text-[#6B7280] mb-1">This week's summary ready</p>
         {teaser && (
           <div className="flex flex-wrap gap-1">
             <span className="px-2 py-0.5 bg-[#F3F4F6] text-[10px] rounded-full">😴 Sleep {teaser.sleep}</span>
@@ -216,9 +222,10 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingCompl
 /* ── HomeScreen (Main Export) ────────────────────────────── */
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWorkoutPlan, getClientTodayMealCount, getClientTodayCheckinStatus, getClientCurrentWeek, getClientPlanInfo } from '../../../services/supabaseService';
+import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWorkoutPlan, getClientTodayMealCount, getClientTodayCheckinStatus, getClientCurrentWeek, getClientPlanInfo, getWeeklyLogs } from '../../../services/supabaseService';
 import { supabase } from '../../../lib/supabaseClient';
 import { getUserProfile } from '../../../services/supabaseService';
+import { type ProgramWeek, WEEKLY_REPORT_MIN_DAYS } from '../../../utils/program';
 export default function HomeScreen() {
   const navigate = useNavigate();
   const { appState, userId, workoutProgress } = useWellness();
@@ -238,8 +245,11 @@ export default function HomeScreen() {
   const [checkinStatus, setCheckinStatus] = useState<{ hasCheckin: boolean; done: number; total: number }>({ hasCheckin: false, done: 0, total: 7 });
 
   // ── Live current week from active plan ────────────────────────────────────
-  const [currentWeekLive, setCurrentWeekLive] = useState<number | null>(null);
+  const [currentWeekLive, setCurrentWeekLive] = useState<ProgramWeek | null>(null);
   const [totalWeeksLive, setTotalWeeksLive] = useState<number | null>(null);
+  const [scheduledAtLive, setScheduledAtLive] = useState<string | null>(null);
+  // Distinct days logged in the current week — drives the Weekly Report unlock.
+  const [weekLoggedDays, setWeekLoggedDays] = useState(0);
 
   // ── Live user profile name ────────────────────────────────────────────────
   const [profileName, setProfileName] = useState<string>('');
@@ -266,7 +276,8 @@ export default function HomeScreen() {
       getClientTodayCheckinStatus(userId),
       getClientPlanInfo(userId),
       getUserProfile(userId),
-    ]).then(([readiness, session, unreadCount, activePlan, mealData, checkin, planInfo, profile]) => {
+      getWeeklyLogs(userId).catch(() => []),
+    ]).then(([readiness, session, unreadCount, activePlan, mealData, checkin, planInfo, profile, weeklyLogs]) => {
       if (cancelled) return;
       setReadinessScore(readiness);
       setTodaySession(session);
@@ -276,9 +287,12 @@ export default function HomeScreen() {
       setDailyNutritionLive(mealData.nutrition);
       setCheckinStatus(checkin);
       if (planInfo) {
-        setCurrentWeekLive(planInfo.currentWeek);
+        setCurrentWeekLive(planInfo.week);
         setTotalWeeksLive(planInfo.totalWeeks);
+        setScheduledAtLive(planInfo.scheduledAt);
       }
+      // Each row is a distinct log_date in the current Mon-Sun week.
+      setWeekLoggedDays(weeklyLogs.length);
       if (profile?.full_name) setProfileName(profile.full_name);
     }).catch(err => {
       if (cancelled) return;
@@ -332,9 +346,30 @@ export default function HomeScreen() {
   const habitsDone = checkinStatus.done;
   const habitsTotal = checkinStatus.total;
   const mealsLogged = mealsLoggedLive;
-  const isTrackingComplete = checkinStatus.hasCheckin && habitsDone >= habitsTotal;
-  const currentWeek = currentWeekLive ?? 1;
+  const programWeek = currentWeekLive; // number | 'not_started' | 'starts_future' | null
   const totalWeeks = totalWeeksLive ?? 12;
+
+  const fmtShortDate = (iso: string | null): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  };
+
+  // Hero plan-progress chip labels.
+  const weekBig =
+    typeof programWeek === 'number' ? `Week ${programWeek}`
+    : programWeek === 'starts_future' ? 'Starts'
+    : 'Not started';
+  const weekSmall =
+    typeof programWeek === 'number' ? `of ${totalWeeks}-week plan`
+    : programWeek === 'starts_future' ? (fmtShortDate(scheduledAtLive) || 'soon')
+    : 'Awaiting schedule';
+
+  // Compact label for the Weekly Report badge.
+  const weekBadge =
+    typeof programWeek === 'number' ? `Week ${programWeek}`
+    : programWeek === 'starts_future' ? 'Starts soon'
+    : 'Not started';
 
   // Track adherence for last session
   const lastSessionAdherence = workoutProgress?.score ?? 0;
@@ -413,9 +448,9 @@ export default function HomeScreen() {
                 {hasPlan ? (
                   <>
                     <div className="w-[1px] h-[40px] bg-white opacity-40" />
-                    <div className="flex-1 flex flex-col items-center">
-                      <span className="text-[22px] font-bold text-white tracking-tight">Week {currentWeek}</span>
-                      <span className="text-[11px] text-white/70 font-medium">of {totalWeeks}-week plan</span>
+                    <div className="flex-1 flex flex-col items-center text-center px-1">
+                      <span className="text-[22px] font-bold text-white tracking-tight leading-tight">{weekBig}</span>
+                      <span className="text-[11px] text-white/70 font-medium leading-tight">{weekSmall}</span>
                     </div>
                   </>
                 ) : (
@@ -528,10 +563,8 @@ export default function HomeScreen() {
 
             {/* Weekly Report Card */}
             <WeeklyReportCard
-              status={checkinStatus.hasCheckin ? 'ready' : 'no_data'}
-              weekNumber={currentWeek}
-              teaser={checkinStatus.hasCheckin ? undefined : undefined}
-              isTrackingComplete={isTrackingComplete}
+              weekLabel={weekBadge}
+              loggedDays={weekLoggedDays}
               onClick={() => { console.log('Action Triggered: View Report'); navigate('/client/report/current'); }}
             />
           </section>

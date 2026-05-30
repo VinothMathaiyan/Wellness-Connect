@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
 import { normalisePhone } from '../utils/otpUtils';
 import { todayISO, toISODate, mondayOfWeek, daysAgoISO } from '../utils/date';
+import { getProgramWeek, type ProgramWeek } from '../utils/program';
 import type {
   ClientNotification,
   ClientSession,
@@ -3916,11 +3917,11 @@ export const getClientCurrentWeek = async (
 
 export const getClientPlanInfo = async (
   clientId: string,
-): Promise<{ currentWeek: number; totalWeeks: number } | null> => {
+): Promise<{ week: ProgramWeek; totalWeeks: number; scheduledAt: string | null } | null> => {
   const { data, error } = await supabase
     .from('workout_plans')
     .select(`
-      created_at,
+      scheduled_at,
       workout_templates ( duration_weeks )
     `)
     .eq('client_id', clientId)
@@ -3939,15 +3940,11 @@ export const getClientPlanInfo = async (
     ? data.workout_templates[0]
     : data.workout_templates;
   const totalWeeks = template?.duration_weeks ?? 12;
+  const scheduledAt = (data.scheduled_at as string | null) ?? null;
 
-  const startDate = new Date(data.created_at);
-  const now = new Date();
-  const diffMs = now.getTime() - startDate.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  let currentWeek = Math.max(1, Math.floor(diffDays / 7) + 1);
-  if (currentWeek > totalWeeks) currentWeek = totalWeeks;
-
-  return { currentWeek, totalWeeks };
+  // Week is derived from the plan's scheduled start — never created_at, which
+  // is set when the trainer builds the plan, not when the program begins.
+  return { week: getProgramWeek(scheduledAt, totalWeeks), totalWeeks, scheduledAt };
 };
 
 /**
