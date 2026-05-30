@@ -298,6 +298,14 @@ export default function TrainersScreen() {
                 /* ── Recommendation UI — no trainer assigned yet ── */
                 <div className="space-y-6">
 
+                  {/* No linked trainer — friendly orientation card */}
+                  <div className="bg-white rounded-2xl p-5 shadow-sm" style={{ border: '1px solid #F3F4F6' }}>
+                    <p className="text-[15px] font-bold text-gray-900 mb-1">You haven't connected with a trainer yet</p>
+                    <p className="text-[13px] text-gray-500 leading-relaxed">
+                      Browse recommendations below or explore all trainers in the Discover tab.
+                    </p>
+                  </div>
+
                   {/* Loading skeleton for recommendations */}
                   {recsLoading && (
                     <div className="space-y-3">
