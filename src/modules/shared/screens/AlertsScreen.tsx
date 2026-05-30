@@ -195,6 +195,7 @@ function ProgramNotificationItem({
 }) {
   const display = getClientNotificationDisplay(notification);
   const Icon = display.Icon;
+  const isUnread = !notification.is_read;
   const [hovered, setHovered] = React.useState(false);
 
   return (
@@ -204,12 +205,13 @@ function ProgramNotificationItem({
       onMouseLeave={() => setHovered(false)}
       className="w-full rounded-[12px] p-[14px] border-[1.5px] flex items-center gap-[14px] mb-[10px] cursor-pointer active:scale-[0.98] transition-all text-left"
       style={{
-        backgroundColor: hovered ? '#F9FAFB' : '#ffffff',
+        backgroundColor: hovered ? '#F9FAFB' : isUnread ? '#ffffff' : '#F9FAFB',
         cursor: 'pointer',
-        borderColor: '#E5E7EB',
-        borderLeft: notification.is_read
-          ? '3px solid transparent'
-          : `3px solid ${display.unreadBorder}`,
+        borderColor: isUnread ? '#E5E7EB' : '#F3F4F6',
+        opacity: isUnread ? 1 : 0.82,
+        borderLeft: isUnread
+          ? `3px solid ${display.unreadBorder}`
+          : '3px solid transparent',
       }}
     >
       <div
@@ -222,21 +224,21 @@ function ProgramNotificationItem({
       <div className="flex-1 min-w-0">
         <h4
           className="text-[13px] leading-[1.4] mb-0.5"
-          style={{ fontWeight: notification.is_read ? 600 : 700, color: '#111827' }}
+          style={{ fontWeight: isUnread ? 700 : 600, color: isUnread ? '#111827' : '#374151' }}
         >
           {display.title}
         </h4>
         {notification.message && (
-          <p className="text-[12px] leading-snug line-clamp-2" style={{ color: '#4B5563' }}>
+          <p className="text-[12px] leading-snug line-clamp-2" style={{ color: isUnread ? '#4B5563' : '#6B7280' }}>
             {notification.message}
           </p>
         )}
-        <span className="text-[12px] mt-1 block" style={{ color: '#6B7280' }}>
+        <span className="text-[12px] mt-1 block" style={{ color: isUnread ? '#6B7280' : '#9CA3AF' }}>
           {relativeTime(notification.created_at)}
         </span>
       </div>
 
-      {!notification.is_read && (
+      {isUnread && (
         <span
           className="w-[8px] h-[8px] rounded-full shrink-0"
           style={{ backgroundColor: display.unreadBorder }}
@@ -398,18 +400,6 @@ export default function AlertsScreen() {
     [clientNotifications, notifications],
   );
 
-  // De-duplicate program updates: keep only the most recent notification per type
-  // (e.g. a single "Program assigned" instead of one for every re-assignment).
-  const dedupedClientNotifications = useMemo(() => {
-    const sorted = [...clientNotifications].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
-    return sorted.reduce((acc, n) => {
-      if (!acc.find(x => x.type === n.type)) acc.push(n);
-      return acc;
-    }, [] as typeof clientNotifications);
-  }, [clientNotifications]);
-
     return (
         <div className="max-w-md mx-auto w-full min-h-screen relative shadow-xl bg-gray-50 flex flex-col">
 
@@ -494,7 +484,7 @@ export default function AlertsScreen() {
                         >
                             PROGRAM UPDATES
                         </h2>
-                        {dedupedClientNotifications.map(notification => (
+                        {clientNotifications.map(notification => (
                             <ProgramNotificationItem
                                 key={notification.id}
                                 notification={notification}

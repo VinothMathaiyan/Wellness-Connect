@@ -1202,7 +1202,7 @@ export async function getClientNotifications(
     .eq('to_user_id', clientId)
     .in('type', ['program_assigned', 'session_cancelled', 'session_scheduled', 'profile_updated', 'assessment_complete'])
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(50);
 
   if (error) throw error;
 
