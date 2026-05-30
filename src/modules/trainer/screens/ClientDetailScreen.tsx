@@ -32,6 +32,7 @@ import {
 import type { TrainerClientSession } from '../../../types';
 import ScreenHeader from '@/components/ScreenHeader';
 import { formatDateLong, formatDate } from '@/utils/dateUtils';
+import RiskDotAvatar from '../components/RiskDotAvatar';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -708,14 +709,11 @@ export default function ClientDetailScreen() {
         title={client.name}
         onBack={() => navigate(-1)}
         avatar={
-          <>
-            {client.riskLevel === 'red' && (
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
-            )}
-            {client.riskLevel === 'amber' && (
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-            )}
-          </>
+          <RiskDotAvatar
+            clientId={clientId}
+            clientName={client.name}
+            hasOpenAlerts={client.riskLevel !== 'none'}
+          />
         }
       />
 
