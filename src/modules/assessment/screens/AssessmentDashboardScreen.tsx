@@ -34,7 +34,7 @@ export default function AssessmentDashboardScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // [DEV ONLY] Backfill button state — see PART 1 Change 5. Remove before production.
+  // [DEV/PREVIEW ONLY] Backfill button state — visible on dev branch and localhost. Hidden in production builds.
   const [backfillRunning, setBackfillRunning] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -307,8 +307,8 @@ export default function AssessmentDashboardScreen() {
             </div>
           </div>
 
-          {/* [DEV ONLY] Temporary admin button — see PART 1 Change 5. Remove before production. */}
-          {import.meta.env.DEV && (
+          {/* [DEV/PREVIEW ONLY] Temporary admin button — visible on dev branch and localhost. Hidden in production builds. */}
+          {(import.meta.env.DEV || import.meta.env.VITE_GIT_BRANCH === 'dev') && (
             <div className="pt-2 pb-1 flex justify-center">
               <button
                 onClick={handleBackfill}
