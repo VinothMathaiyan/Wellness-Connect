@@ -4,6 +4,7 @@ import { ChevronLeft, Send } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ClientBottomNav from '../components/ClientBottomNav';
 import ScreenHeader from '@/components/ScreenHeader';
+import ProfileMenu from '../../../components/ProfileMenu';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
 import {
@@ -161,6 +162,7 @@ export default function ClientMessageThreadScreen() {
             title={isLoading ? '...' : otherName || 'Conversation'}
             subtitle={roleLabel(otherRole)}
             onBack={() => navigate('/client/messages')}
+            avatar={<ProfileMenu />}
           />
         </div>
 

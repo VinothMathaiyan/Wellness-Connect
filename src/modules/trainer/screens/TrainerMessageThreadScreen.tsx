@@ -12,6 +12,7 @@ import {
   type AssessmentMessage,
 } from '../../../services/supabaseService';
 import ScreenHeader from '@/components/ScreenHeader';
+import ProfileMenu from '../../../components/ProfileMenu';
 
 function formatTime(isoString: string): string {
   const date = new Date(isoString);
@@ -177,6 +178,7 @@ export default function TrainerMessageThreadScreen() {
             title={isLoading ? '...' : otherName || 'Conversation'}
             subtitle={roleLabel(otherRole)}
             onBack={() => navigate('/trainer/messages')}
+            avatar={<ProfileMenu />}
           />
         </div>
 

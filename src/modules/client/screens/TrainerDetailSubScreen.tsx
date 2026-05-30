@@ -21,6 +21,8 @@ import {
 import { getTrainerProfile, requestCallback, sendMessage, requestTrainerLink } from '../../../services/supabaseService';
 import { useWellness } from '../../../context/WellnessContext';
 import ScreenHeader from '@/components/ScreenHeader';
+import ProfileMenu from '../../../components/ProfileMenu';
+import type { TrainerProfile, User } from '../../../types';
 
 interface TrainerDetailSubScreenProps {
     trainer: User;
@@ -144,6 +146,7 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
                     variant="sub"
                     title="Trainer Profile"
                     onBack={onBack}
+                    avatar={<ProfileMenu />}
                 />
             </div>
 

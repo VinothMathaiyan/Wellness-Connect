@@ -19,6 +19,7 @@ import {
 } from '../../../services/supabaseService';
 import { supabase } from '../../../lib/supabaseClient';
 import ScreenHeader from '@/components/ScreenHeader';
+import ProfileMenu from '../../../components/ProfileMenu';
 import { formatDate } from '@/utils/dateUtils';
 import { todayISO } from '@/utils/date';
 
@@ -199,6 +200,7 @@ export default function ScheduleSessionScreen() {
         title="Schedule Session"
         subtitle="All times in IST"
         onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
       />
 
       <div className="flex-1 overflow-y-auto pb-36">

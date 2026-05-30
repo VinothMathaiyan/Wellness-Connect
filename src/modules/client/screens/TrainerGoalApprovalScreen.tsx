@@ -18,6 +18,7 @@ import type { TrainingProgram } from '../../../types';
 import { fetchTrainingProgram, submitProgramApproval } from '../../../services/supabaseService';
 import { PlanActionSection } from '../components/PlanActionSection';
 import ScreenHeader from '@/components/ScreenHeader';
+import ProfileMenu from '../../../components/ProfileMenu';
 
 type ScreenState =
     | 'LOADING'
@@ -117,6 +118,7 @@ export default function TrainingGoalApprovalScreen({ clientId, isFirstEntry = fa
                             variant="sub"
                             title="Review Your Plan"
                             onBack={() => navigate(-1)}
+                            avatar={<ProfileMenu />}
                         />
                     </div>
                     <div className="flex-1 flex flex-col items-center justify-center px-8 text-center space-y-6">
@@ -141,6 +143,7 @@ export default function TrainingGoalApprovalScreen({ clientId, isFirstEntry = fa
                             variant="sub"
                             title="Review Your Plan"
                             onBack={() => navigate(-1)}
+                            avatar={<ProfileMenu />}
                         />
                     </div>
                     <div className="flex-1 flex flex-col items-center justify-center px-8 text-center space-y-6">
@@ -167,6 +170,7 @@ export default function TrainingGoalApprovalScreen({ clientId, isFirstEntry = fa
                             variant="sub"
                             title="Review Your Plan"
                             onBack={(!isFirstEntry || approvalChoice || state === 'CHANGES_SUBMITTED') ? () => navigate(-1) : undefined}
+                            avatar={<ProfileMenu />}
                         />
                     </div>
 

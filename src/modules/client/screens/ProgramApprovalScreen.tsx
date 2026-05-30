@@ -7,8 +7,10 @@ import {
   Loader2,
   MessageSquare,
   X,
+} from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ScreenHeader from '@/components/ScreenHeader';
+import ProfileMenu from '../../../components/ProfileMenu';
 import { useWellness } from '../../../context/WellnessContext';
 import {
   approveProgram,
@@ -166,6 +168,7 @@ export default function ProgramApprovalScreen() {
             variant="sub"
             title="Review Program"
             onBack={() => navigate(-1)}
+            avatar={<ProfileMenu />}
           />
         </div>
 

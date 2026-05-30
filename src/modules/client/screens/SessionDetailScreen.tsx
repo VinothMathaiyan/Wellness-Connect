@@ -160,6 +160,7 @@ export default function SessionDetailScreen() {
             variant="sub"
             title="Session Detail"
             onBack={() => navigate(-1)}
+            avatar={<ProfileMenu />}
           />
         </div>
         <div className="flex-1 flex items-center justify-center">
@@ -177,6 +178,7 @@ export default function SessionDetailScreen() {
             variant="sub"
             title="Session Detail"
             onBack={() => navigate(-1)}
+            avatar={<ProfileMenu />}
           />
         </div>
         <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
