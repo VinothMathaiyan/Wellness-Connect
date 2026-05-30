@@ -2835,17 +2835,30 @@ export async function saveAssessmentRecommendations(
  * against a client's full assessment profile. Applies hard filters first
  * (rehab/medical certification, session mode, language, capacity), then scores
  * across 8 weighted dimensions (100 pts max). Results are persisted to the
- * trainer_recommendations table for the client Discover tab.
+ * trainer_recommendations table (via the save_trainer_recommendations RPC,
+ * which bypasses the table's RLS) for the client Discover tab.
+ *
+ * Returns a structured result so callers can surface failures — silent
+ * swallowing of the persist error is what previously left the table empty.
  */
+export interface RecommendationEngineResult {
+  ok: boolean;
+  count: number;
+  error?: string;
+}
+
 export async function runRecommendationEngine(
   clientId: string,
-): Promise<boolean> {
+): Promise<RecommendationEngineResult> {
   // 1. Fetch client data
-  const { data: cp } = await supabase
+  const { data: cp, error: cpError } = await supabase
     .from('client_profiles')
     .select('*')
     .eq('user_id', clientId)
     .maybeSingle();
+
+  if (cpError) return { ok: false, count: 0, error: `client_profiles: ${cpError.message}` };
+  if (!cp)     return { ok: false, count: 0, error: 'No client_profiles row for client' };
 
   const prefs = ((cp as Record<string, unknown>)?.training_preferences ?? {}) as Record<string, unknown>;
 
@@ -2853,16 +2866,17 @@ export async function runRecommendationEngine(
   // Eligibility for engine scoring requires the trainer has cleared the
   // assessment-team approval, not just is_active=true.
   const approvedIds = await getApprovedTrainerIdSet();
-  if (approvedIds.size === 0 || !cp) return false;
+  if (approvedIds.size === 0) return { ok: false, count: 0, error: 'No approved trainers' };
 
-  const { data: trainers } = await supabase
+  const { data: trainers, error: trainersError } = await supabase
     .from('profiles')
     .select(`
       *, workout_templates(goals, focus_areas, session_type)
     `)
     .in('id', Array.from(approvedIds));
 
-  if (!trainers) return false;
+  if (trainersError) return { ok: false, count: 0, error: `profiles: ${trainersError.message}` };
+  if (!trainers)     return { ok: false, count: 0, error: 'No trainer rows returned' };
 
   const results: {
     trainerId: string;
@@ -3071,38 +3085,104 @@ export async function runRecommendationEngine(
       .slice(0, 3);
   }
 
-  // Save to trainer_recommendations (engine type) — replace old results
-  await supabase.from('trainer_recommendations')
-    .delete()
-    .eq('client_id', clientId)
-    .eq('recommendation_type', 'engine');
+  // Persist via the SECURITY DEFINER RPC. Direct insert/delete is blocked by
+  // RLS (the table has no write policies), and ignoring the returned error is
+  // exactly what previously left the table empty — so we surface it here.
+  const payload = qualified.map((r, i) => ({
+    trainer_id: r.trainerId,
+    score: r.score,
+    score_breakdown: r.breakdown,
+    recommendation_reasons: r.reasons,
+    display_order: i + 1,
+  }));
 
-  if (qualified.length > 0) {
-    await supabase.from('trainer_recommendations').insert(
-      qualified.map((r, i) => ({
-        client_id: clientId,
-        trainer_id: r.trainerId,
-        recommendation_type: 'engine',
-        score: r.score,
-        score_breakdown: r.breakdown,
-        recommendation_reasons: r.reasons,
-        display_order: i + 1,
-        is_active: true,
-      })),
-    );
+  const { error: saveError } = await supabase.rpc('save_trainer_recommendations', {
+    p_client_id: clientId,
+    p_recs: payload,
+  });
+
+  if (saveError) {
+    console.error('runRecommendationEngine (save):', saveError);
+    return { ok: false, count: 0, error: saveError.message };
   }
 
-  return true;
+  return { ok: true, count: payload.length };
 }
 
 /**
  * Trigger the recommendation engine after assessment clearance.
  * Called from the assessment form after a 'cleared' or 'conditional' decision.
+ * Returns the engine result so the caller can log/surface failures.
  */
 export async function triggerRecommendationsAfterAssessment(
   clientId: string,
-): Promise<void> {
-  await runRecommendationEngine(clientId);
+): Promise<RecommendationEngineResult> {
+  const result = await runRecommendationEngine(clientId);
+  if (!result.ok) {
+    console.error('triggerRecommendationsAfterAssessment failed:', result.error);
+  }
+  return result;
+}
+
+/**
+ * One-off backfill: regenerate engine recommendations for every cleared /
+ * conditional client that currently has zero ACTIVE engine recommendations.
+ *
+ * Exposed so it can be invoked from a temporary admin/UI button or script —
+ * not hardcoded anywhere. Must be run while signed in as an assessor (the
+ * save_trainer_recommendations RPC enforces that). Returns a per-client report.
+ */
+export interface RecommendationBackfillRow {
+  clientId: string;
+  ok: boolean;
+  count: number;
+  error?: string;
+}
+
+export async function backfillTrainerRecommendations(): Promise<{
+  processed: number;
+  succeeded: number;
+  rows: RecommendationBackfillRow[];
+}> {
+  // Cleared/conditional clients.
+  const { data: cleared, error: clearedError } = await supabase
+    .from('assessments')
+    .select('client_id, clearance_status')
+    .in('clearance_status', ['cleared', 'conditional']);
+
+  if (clearedError) {
+    console.error('backfillTrainerRecommendations (assessments):', clearedError);
+    return { processed: 0, succeeded: 0, rows: [] };
+  }
+
+  // Clients that already have at least one active engine recommendation.
+  const { data: existing, error: existingError } = await supabase
+    .from('trainer_recommendations')
+    .select('client_id')
+    .eq('recommendation_type', 'engine')
+    .eq('is_active', true);
+
+  if (existingError) {
+    console.error('backfillTrainerRecommendations (existing):', existingError);
+    return { processed: 0, succeeded: 0, rows: [] };
+  }
+
+  const hasRecs = new Set((existing ?? []).map(r => r.client_id as string));
+  const targets = Array.from(
+    new Set((cleared ?? []).map(r => r.client_id as string)),
+  ).filter(id => !hasRecs.has(id));
+
+  const rows: RecommendationBackfillRow[] = [];
+  for (const clientId of targets) {
+    const result = await runRecommendationEngine(clientId);
+    rows.push({ clientId, ok: result.ok, count: result.count, error: result.error });
+  }
+
+  return {
+    processed: rows.length,
+    succeeded: rows.filter(r => r.ok).length,
+    rows,
+  };
 }
 
 /** Return type for client-facing Discover tab recommendation data. */
