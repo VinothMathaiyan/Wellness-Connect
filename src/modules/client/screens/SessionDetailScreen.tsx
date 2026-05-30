@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 
 
 
@@ -154,13 +155,13 @@ export default function SessionDetailScreen() {
   if (sessionLoading) {
     return (
       <MobileShell>
-        <header className="bg-[#1D9E75] text-white px-6 py-5 flex items-center justify-between sticky top-0 z-50">
-          <button onClick={() => navigate(-1)} className="p-1 -ml-1 hover:bg-white/10 rounded-full transition-colors">
-            <ChevronLeft size={24} />
-          </button>
-          <h1 className="text-[17px] font-bold tracking-tight">Session Detail</h1>
-          <div className="w-9 h-9" />
-        </header>
+        <div className="shrink-0 sticky top-0 z-50">
+          <ScreenHeader
+            variant="sub"
+            title="Session Detail"
+            onBack={() => navigate(-1)}
+          />
+        </div>
         <div className="flex-1 flex items-center justify-center">
           <p className="text-[14px] text-[#9CA3AF] font-medium">Loading session…</p>
         </div>
@@ -171,13 +172,13 @@ export default function SessionDetailScreen() {
   if (sessionNotFound || !session) {
     return (
       <MobileShell>
-        <header className="bg-[#1D9E75] text-white px-6 py-5 flex items-center justify-between sticky top-0 z-50">
-          <button onClick={() => navigate(-1)} className="p-1 -ml-1 hover:bg-white/10 rounded-full transition-colors">
-            <ChevronLeft size={24} />
-          </button>
-          <h1 className="text-[17px] font-bold tracking-tight">Session Detail</h1>
-          <div className="w-9 h-9" />
-        </header>
+        <div className="shrink-0 sticky top-0 z-50">
+          <ScreenHeader
+            variant="sub"
+            title="Session Detail"
+            onBack={() => navigate(-1)}
+          />
+        </div>
         <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
           <p className="text-[16px] font-semibold text-[#111827]">Session not found</p>
           <p className="text-[13px] text-[#6B7280]">This session may have been removed or the link is invalid.</p>
@@ -226,13 +227,14 @@ export default function SessionDetailScreen() {
   return (
     <MobileShell>
       {/* Header */}
-      <header className="bg-[#1D9E75] text-white px-6 py-5 flex items-center justify-between sticky top-0 z-50">
-        <button onClick={() => navigate(-1)} className="p-1 -ml-1 hover:bg-white/10 rounded-full transition-colors cursor-pointer">
-          <ChevronLeft size={24} />
-        </button>
-        <h1 className="text-[17px] font-bold tracking-tight">Session Detail</h1>
-        <ProfileMenu />
-      </header>
+      <div className="shrink-0 sticky top-0 z-50">
+        <ScreenHeader
+          variant="sub"
+          title="Session Detail"
+          onBack={() => navigate(-1)}
+          avatar={<ProfileMenu />}
+        />
+      </div>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-6 pb-24">
         {/* Cancelled banner — shown above everything when session is cancelled */}

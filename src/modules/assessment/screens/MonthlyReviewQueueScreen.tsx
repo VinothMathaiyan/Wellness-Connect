@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '@/components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
@@ -559,31 +560,13 @@ export default function MonthlyReviewQueueScreen() {
     <MobileShell className="bg-[#F2F8F7]">
       <div className="flex-1 overflow-y-auto pb-24">
         {/* Header */}
-        <div
-          className="px-5 pt-10 pb-5 rounded-b-3xl shadow-sm text-white"
-          style={{ background: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)' }}
-        >
-          <div className="flex items-center gap-3 mb-3">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="p-1 rounded-full text-white/80 hover:text-white active:scale-95 transition-transform"
-            >
-              <ChevronLeft size={24} />
-            </button>
-            <div>
-              <h1 className="text-xl font-bold">Monthly Reviews</h1>
-              {!isLoading && (
-                <p className="text-white/75 text-xs mt-0.5">
-                  {dueClients.length} due this month
-                </p>
-              )}
-            </div>
-            <div className="ml-auto">
-              <ProfileMenu />
-            </div>
-          </div>
-        </div>
+        <ScreenHeader
+          variant="sub"
+          title="Monthly Reviews"
+          subtitle={!isLoading && `${dueClients.length} due this month`}
+          onBack={() => navigate(-1)}
+          avatar={<ProfileMenu />}
+        />
 
         {/* Filter tabs */}
         <div className="px-5 mt-4">

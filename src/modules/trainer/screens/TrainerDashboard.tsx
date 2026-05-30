@@ -22,6 +22,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '../../../components/ScreenHeader';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import {
@@ -182,34 +183,16 @@ export default function TrainerDashboard() {
       <div className="flex-1 overflow-y-auto pb-32">
 
         {/* ─── Branded Operational Header — always shown ─────────────────────────── */}
-        <div className="relative bg-gradient-to-br from-teal-600 via-emerald-500 to-teal-700 px-5 pt-6 pb-7 rounded-b-3xl overflow-hidden shadow-md">
-          <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/10 pointer-events-none" />
-          <div className="absolute bottom-0 -left-6 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
-
-          <div className="relative z-10 flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                <Zap size={15} className="text-white" />
-              </div>
-              <span className="text-white font-bold text-[15px] tracking-tight">WellnessConnect</span>
-            </div>
-            <div className="flex items-center gap-2.5">
-              {/* Avatar + profile menu — shared component */}
-              <ProfileMenu variant="dark" avatarSrc={trainerAvatarSrc} />
-            </div>
-          </div>
-
-          <div className="relative z-10">
-            <h1 className="text-white text-[22px] font-bold tracking-tight leading-tight">
-              Good Morning, {trainerName} 👋
-            </h1>
-            <p className="text-white/80 text-[13px] font-medium mt-1">
-              {urgentCount > 0
-                ? `${urgentCount} client${urgentCount === 1 ? '' : 's'} require attention today`
-                : 'All clients are on track today'}
-            </p>
-          </div>
-        </div>
+        <ScreenHeader
+          variant="hero"
+          greeting={`Good Morning, ${trainerName} 👋`}
+          subtitle={
+            urgentCount > 0
+              ? `${urgentCount} client${urgentCount === 1 ? '' : 's'} require attention today`
+              : 'All clients are on track today'
+          }
+          avatar={<ProfileMenu avatarSrc={trainerAvatarSrc} />}
+        />
 
         {/* ─── Loading Skeleton ───────────────────────────────────────────────────── */}
         {isLoading ? (

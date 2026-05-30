@@ -30,6 +30,7 @@ import {
   markSessionComplete,
 } from '../../../services/supabaseService';
 import type { TrainerClientSession } from '../../../types';
+import ScreenHeader from '@/components/ScreenHeader';
 import { formatDateLong, formatDate } from '@/utils/dateUtils';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -702,24 +703,21 @@ export default function ClientDetailScreen() {
     <MobileShell className="bg-[#F2F8F7]">
 
       {/* ─── Sticky Header ─────────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 py-4 flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
-          aria-label="Go back"
-        >
-          <ChevronLeft size={22} className="text-text-primary" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <p className="text-[17px] font-bold text-text-primary leading-tight truncate">{client.name}</p>
-        </div>
-        {client.riskLevel === 'red' && (
-          <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
-        )}
-        {client.riskLevel === 'amber' && (
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-        )}
-      </div>
+      <ScreenHeader
+        variant="sub"
+        title={client.name}
+        onBack={() => navigate(-1)}
+        avatar={
+          <>
+            {client.riskLevel === 'red' && (
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+            )}
+            {client.riskLevel === 'amber' && (
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
+            )}
+          </>
+        }
+      />
 
       {/* ─── Scrollable Content ─────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto pb-32">

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronRight, Users, ShieldAlert, FileCheck, CalendarClock, AlertTriangle } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '../../../components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { 
@@ -116,19 +117,12 @@ export default function AssessmentDashboardScreen() {
       <div className="flex-1 overflow-y-auto pb-24">
         
         {/* Header Card */}
-        <div 
-          className="px-5 pt-10 pb-6 rounded-b-3xl shadow-sm text-white relative overflow-visible"
-          style={{ background: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)' }}
-        >
-          <div className="flex justify-between items-start relative z-10">
-            <div>
-              <h1 className="text-2xl font-bold mb-1">{getGreeting()}, {firstName} 👋</h1>
-              <p className="text-white/80 text-sm font-medium">Assessment Command Center</p>
-            </div>
-            {/* Avatar + profile menu — shared component */}
-            <ProfileMenu variant="dark" initialsCount={2} logoutLabel="Sign Out" />
-          </div>
-        </div>
+        <ScreenHeader
+          variant="hero"
+          greeting={`Good morning, ${firstName} 👋`}
+          subtitle="Assessment Command Center"
+          avatar={<ProfileMenu logoutLabel="Sign Out" />}
+        />
 
         <div className="px-5 mt-5 space-y-6">
           

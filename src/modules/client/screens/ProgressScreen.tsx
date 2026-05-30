@@ -26,6 +26,7 @@ import {
 import { useProgressData } from '../../../hooks/useProgressData';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 
 
 
@@ -53,11 +54,13 @@ export default function ProgressScreen() {
     return (
         <MobileShell>
             {/* Top Navigation Bar */}
-            <header className="h-[52px] w-full flex items-center justify-between px-[20px] bg-white border-b-[0.5px] border-[#E5E7EB] shrink-0 sticky top-0 z-20">
-                <div className="w-[36px]" />
-                <h1 className="text-[16px] font-semibold text-[#111827]">Progress</h1>
-                <ProfileMenu />
-            </header>
+            <div className="shrink-0 sticky top-0 z-20">
+                <ScreenHeader
+                    variant="sub"
+                    title="Progress"
+                    avatar={<ProfileMenu />}
+                />
+            </div>
 
             {/* Main scrollable content area */}
             <div className="flex-1 overflow-y-auto px-[16px] py-[16px] pb-[80px] scrollbar-hide space-y-6 bg-gray-50">

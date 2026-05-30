@@ -16,6 +16,7 @@ import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
 import { getTrainerClients, getPendingClientRequests, updateClientLinkStatus } from '../../../services/supabaseService';
 import type { TrainerClient } from '../../../services/supabaseService';
+import ScreenHeader from '@/components/ScreenHeader';
 import { toISODate } from '@/utils/date';
 
 type RiskLevel = 'red' | 'amber' | 'green';
@@ -231,28 +232,19 @@ export default function MyClientsScreen() {
     <MobileShell className="bg-[#F2F8F7]">
 
       {/* ─── Sticky Header ─────────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 pt-5 pb-4">
-        <div className="flex items-center gap-2 mb-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors text-text-primary"
-            aria-label="Go back"
-          >
-            <ChevronLeft size={22} />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-[18px] font-bold text-text-primary leading-tight">My Clients</h1>
-            <p className="text-[12px] text-text-secondary mt-0.5">
-              {pendingRequests.length > 0
-                ? `${clients.length} active · ${pendingRequests.length} pending`
-                : `${clients.length} active clients`}
-            </p>
-          </div>
-          <ProfileMenu />
-        </div>
-
+      <ScreenHeader
+        variant="sub"
+        title="My Clients"
+        subtitle={
+          pendingRequests.length > 0
+            ? `${clients.length} active · ${pendingRequests.length} pending`
+            : `${clients.length} active clients`
+        }
+        onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
+      >
         {/* Search + Filter row */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 mt-4">
           <div className="relative flex-1">
             <Search
               size={15}
@@ -298,7 +290,7 @@ export default function MyClientsScreen() {
             )}
           </button>
         </div>
-      </div>
+      </ScreenHeader>
 
       {/* ─── Client List ────────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32">

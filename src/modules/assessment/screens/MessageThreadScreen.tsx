@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Send } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '@/components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import {
@@ -155,26 +156,14 @@ export default function MessageThreadScreen() {
     <MobileShell className="bg-[#F2F8F7]">
       <div className="flex flex-col" style={{ height: '100vh', maxHeight: '100dvh' }}>
         {/* Header */}
-        <div
-          className="px-4 pt-10 pb-4 shadow-sm text-white shrink-0"
-          style={{ background: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)' }}
-        >
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/assessment/messages')}
-              className="p-1 rounded-full text-white/80 hover:text-white active:scale-95 transition-transform"
-            >
-              <ChevronLeft size={24} />
-            </button>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-bold truncate">
-                {isLoading ? '...' : otherName || 'Conversation'}
-              </h1>
-              <p className="text-white/70 text-xs">Assessment conversation</p>
-            </div>
-            <ProfileMenu />
-          </div>
+        <div className="shrink-0">
+          <ScreenHeader
+            variant="sub"
+            title={isLoading ? '...' : otherName || 'Conversation'}
+            subtitle="Assessment conversation"
+            onBack={() => navigate('/assessment/messages')}
+            avatar={<ProfileMenu />}
+          />
         </div>
 
         {/* Message area */}

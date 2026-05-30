@@ -6,6 +6,7 @@ import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
 import { getMessageThreads, getTrainerClients, type TrainerClient } from '../../../services/supabaseService';
+import ScreenHeader from '@/components/ScreenHeader';
 import { formatDate } from '@/utils/dateUtils';
 
 interface MessageThread {
@@ -118,22 +119,16 @@ export default function TrainerMessagesScreen() {
     <MobileShell className="bg-[#F2F8F7]">
       <div className="flex-1 overflow-y-auto pb-24">
         {/* Header */}
-        <div
-          className="px-5 pt-10 pb-5 rounded-b-3xl shadow-sm text-white"
-          style={{ background: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)' }}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-2xl font-bold mb-1">Messages</h1>
-              {unreadTotal > 0 && !isLoading && (
-                <p className="text-white/80 text-sm font-medium">{unreadTotal} unread</p>
-              )}
-            </div>
+        <ScreenHeader
+          variant="sub"
+          title="Messages"
+          subtitle={unreadTotal > 0 && !isLoading ? `${unreadTotal} unread` : undefined}
+          avatar={
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={openCompose}
-                className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold bg-white/15 text-white active:scale-95 transition-transform"
+                className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold bg-gray-100 text-gray-700 active:scale-95 transition-transform"
                 aria-label="New message"
               >
                 <PenSquare size={16} />
@@ -141,8 +136,8 @@ export default function TrainerMessagesScreen() {
               </button>
               <ProfileMenu />
             </div>
-          </div>
-        </div>
+          }
+        />
 
         <div className="px-4 mt-4 space-y-2">
           {/* Error */}

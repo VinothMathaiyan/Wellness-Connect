@@ -4,6 +4,7 @@ import { LogOut, UserCog } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '@/context/WellnessContext';
 import { supabase } from '@/lib/supabaseClient';
+import UserAvatar from './UserAvatar';
 
 /**
  * ProfileMenu — shared avatar + logout dropdown.
@@ -26,23 +27,16 @@ const ROLE_LABELS: Record<string, string> = {
 interface ProfileMenuProps {
   /** Render this image as the avatar instead of the text initial (e.g. trainer's uploaded photo). */
   avatarSrc?: string | null;
-  /** Avatar trigger styling. 'light' (default) = green-bordered white circle for light headers;
-   *  'dark' = translucent white circle for colored/gradient headers. */
-  variant?: 'light' | 'dark';
   /** Where to navigate after logout. Defaults to '/'. */
   logoutRedirect?: string;
   /** Logout button label. Defaults to 'Log out'. */
   logoutLabel?: string;
-  /** Number of initials to show when no avatarSrc is given. Defaults to 1. */
-  initialsCount?: 1 | 2;
 }
 
 export default function ProfileMenu({
   avatarSrc,
-  variant = 'light',
   logoutRedirect = '/',
   logoutLabel = 'Log out',
-  initialsCount = 1,
 }: ProfileMenuProps = {}) {
   const navigate = useNavigate();
   const { appState, userId, userRole, logout } = useWellness();
@@ -67,9 +61,6 @@ export default function ProfileMenu({
 
   const displayName = name || appState.full_name || 'My Account';
   const baseName = name || appState.full_name || 'User';
-  const initial = initialsCount === 2
-    ? baseName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
-    : baseName.charAt(0).toUpperCase();
   const roleLabel = userRole ? ROLE_LABELS[userRole] : 'Account';
 
   const handleLogout = async () => {
@@ -99,18 +90,10 @@ export default function ProfileMenu({
     <div className="relative">
       <button
         onClick={() => setOpen(prev => !prev)}
-        className={
-          variant === 'dark'
-            ? 'w-[36px] h-[36px] rounded-full overflow-hidden bg-white/20 border border-white/30 backdrop-blur-sm flex items-center justify-center text-[14px] font-bold text-white active:opacity-80 transition-opacity'
-            : 'w-[36px] h-[36px] rounded-full overflow-hidden bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-bold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors'
-        }
+        className="active:opacity-80 transition-opacity focus:outline-none rounded-full"
         aria-label="Profile menu"
       >
-        {avatarSrc ? (
-          <img src={avatarSrc} alt={displayName} className="w-full h-full object-cover" />
-        ) : (
-          initial
-        )}
+        <UserAvatar name={baseName} src={avatarSrc} variant="outlined" size="sm" />
       </button>
 
       <AnimatePresence>

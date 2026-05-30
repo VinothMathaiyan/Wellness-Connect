@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, AlertTriangle, Users } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '@/components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { getNewClientQueue, type Assessment } from '../../../services/supabaseService';
@@ -158,25 +159,13 @@ export default function NewClientQueueScreen() {
   return (
     <MobileShell className="bg-[#F2F8F7]">
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 pt-10 pb-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700 active:scale-95 transition-transform"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 leading-tight">Client Queue</h1>
-            <p className="text-sm font-medium text-gray-500">
-              {queue.filter(q => q.status === 'pending').length} awaiting assessment
-            </p>
-          </div>
-          <div className="ml-auto">
-            <ProfileMenu />
-          </div>
-        </div>
-        
+      <ScreenHeader
+        variant="sub"
+        title="Client Queue"
+        subtitle={`${queue.filter(q => q.status === 'pending').length} awaiting assessment`}
+        onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
+      >
         {/* Filter Tabs */}
         <div className="flex bg-gray-100 p-1 rounded-xl mt-5">
           <button
@@ -198,7 +187,7 @@ export default function NewClientQueueScreen() {
             Completed
           </button>
         </div>
-      </div>
+      </ScreenHeader>
 
       <div className="flex-1 overflow-y-auto p-5 pb-24">
         {error && (

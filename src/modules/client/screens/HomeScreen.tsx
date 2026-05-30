@@ -4,6 +4,7 @@ import { Home, Users, BarChart3, MessageSquare, Bell, BarChart2, Phone, MapPin, 
 import type { ClientSession } from '../../../types';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '../../../components/ScreenHeader';
 import { formatDateLong } from '@/utils/dateUtils';
 
 
@@ -381,13 +382,11 @@ export default function HomeScreen() {
     <MobileShell>
 
         {/* Top Bar */}
-        <header className="h-[52px] w-full flex items-center justify-between px-[20px] bg-white shrink-0 border-b border-[#F3F4F6]">
-          <div className="w-[36px]" />
-          <h1 className="text-[16px] font-bold text-[#111827]">WellnessConnect</h1>
-
-          {/* Avatar + profile menu — shared component */}
-          <ProfileMenu />
-        </header>
+        <ScreenHeader
+          variant="sub"
+          title="WellnessConnect"
+          avatar={<ProfileMenu />}
+        />
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide pb-[72px]">

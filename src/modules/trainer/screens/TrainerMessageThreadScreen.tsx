@@ -11,6 +11,7 @@ import {
   sendAssessmentMessage,
   type AssessmentMessage,
 } from '../../../services/supabaseService';
+import ScreenHeader from '@/components/ScreenHeader';
 
 function formatTime(isoString: string): string {
   const date = new Date(isoString);
@@ -170,25 +171,13 @@ export default function TrainerMessageThreadScreen() {
     <MobileShell className="bg-[#F2F8F7]">
       <div className="flex flex-col" style={{ height: '100vh', maxHeight: '100dvh' }}>
         {/* Header */}
-        <div
-          className="px-4 pt-10 pb-4 shadow-sm text-white shrink-0"
-          style={{ background: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)' }}
-        >
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/trainer/messages')}
-              className="p-1 rounded-full text-white/80 hover:text-white active:scale-95 transition-transform"
-            >
-              <ChevronLeft size={24} />
-            </button>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-bold truncate">
-                {isLoading ? '...' : otherName || 'Conversation'}
-              </h1>
-              <p className="text-white/70 text-xs">{roleLabel(otherRole)}</p>
-            </div>
-          </div>
+        <div className="shrink-0">
+          <ScreenHeader
+            variant="sub"
+            title={isLoading ? '...' : otherName || 'Conversation'}
+            subtitle={roleLabel(otherRole)}
+            onBack={() => navigate('/trainer/messages')}
+          />
         </div>
 
         {/* Message area */}

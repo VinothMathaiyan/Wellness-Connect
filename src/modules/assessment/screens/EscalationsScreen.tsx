@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, Loader2, AlertTriangle, ShieldAlert } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '@/components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
@@ -223,28 +224,17 @@ export default function EscalationsScreen() {
     <MobileShell className="bg-[#F2F8F7]">
 
       {/* ── Header ── */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 pt-10 pb-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700 active:scale-95 transition-transform"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 leading-tight">Escalations</h1>
-            <p
-              className="text-sm font-medium"
-              style={{ color: openCount > 0 ? '#dc2626' : '#6b7280' }}
-            >
-              {isLoading ? '—' : `${openCount} open`}
-            </p>
-          </div>
-          <div className="ml-auto">
-            <ProfileMenu />
-          </div>
-        </div>
-
+      <ScreenHeader
+        variant="sub"
+        title="Escalations"
+        subtitle={
+          <span style={{ color: openCount > 0 ? '#dc2626' : '#6b7280' }}>
+            {isLoading ? '—' : `${openCount} open`}
+          </span>
+        }
+        onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
+      >
         {/* Filter tabs */}
         <div className="flex bg-gray-100 p-1 rounded-xl mt-4">
           {TABS.map(tab => (
@@ -260,7 +250,7 @@ export default function EscalationsScreen() {
             </button>
           ))}
         </div>
-      </div>
+      </ScreenHeader>
 
       {/* ── Scrollable body ── */}
       <div className="flex-1 overflow-y-auto p-5 pb-24">

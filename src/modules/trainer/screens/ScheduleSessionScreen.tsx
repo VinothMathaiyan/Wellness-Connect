@@ -18,6 +18,7 @@ import {
   type ScheduleSessionOptions,
 } from '../../../services/supabaseService';
 import { supabase } from '../../../lib/supabaseClient';
+import ScreenHeader from '@/components/ScreenHeader';
 import { formatDate } from '@/utils/dateUtils';
 import { todayISO } from '@/utils/date';
 
@@ -193,19 +194,12 @@ export default function ScheduleSessionScreen() {
   return (
     <MobileShell className="bg-[#F2F8F7]">
       {/* 1. Header */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 py-4 flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
-          aria-label="Go back"
-        >
-          <ChevronLeft size={22} className="text-gray-800" />
-        </button>
-        <div className="flex-1">
-          <p className="text-[17px] font-bold text-gray-900">Schedule Session</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">All times in IST</p>
-        </div>
-      </div>
+      <ScreenHeader
+        variant="sub"
+        title="Schedule Session"
+        subtitle="All times in IST"
+        onBack={() => navigate(-1)}
+      />
 
       <div className="flex-1 overflow-y-auto pb-36">
         <div className="px-4 pt-4 pb-6 space-y-3">

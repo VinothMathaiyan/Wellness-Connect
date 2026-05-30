@@ -18,9 +18,9 @@ import {
     RefreshCw,
     Loader2,
 } from 'lucide-react';
-import type { TrainerProfile, User } from '../../../types';
 import { getTrainerProfile, requestCallback, sendMessage, requestTrainerLink } from '../../../services/supabaseService';
 import { useWellness } from '../../../context/WellnessContext';
+import ScreenHeader from '@/components/ScreenHeader';
 
 interface TrainerDetailSubScreenProps {
     trainer: User;
@@ -139,16 +139,13 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
             className="absolute top-0 left-0 right-0 bottom-[56px] z-40 flex flex-col bg-gray-50 overflow-hidden"
         >
             {/* Header */}
-            <header className="bg-white px-4 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-                <button
-                    onClick={onBack}
-                    className="p-2 -ml-2 text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                    <ChevronLeft size={24} />
-                </button>
-                <h1 className="font-bold text-[18px] text-gray-900">Trainer Profile</h1>
-                <div className="w-10" />
-            </header>
+            <div className="shrink-0 sticky top-0 z-10">
+                <ScreenHeader
+                    variant="sub"
+                    title="Trainer Profile"
+                    onBack={onBack}
+                />
+            </div>
 
             <div className="flex-1 overflow-y-auto scrollbar-hide pb-28">
 
