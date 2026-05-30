@@ -18,7 +18,6 @@ import {
     BarChart3,
     MessageSquare,
     Bell,
-    MapPin,
     Clock,
 } from 'lucide-react';
 import type { TrainerProfile, User } from '../../../types';
@@ -327,7 +326,7 @@ export default function TrainersScreen() {
 
                   {!recsLoading && !recsError && (
                     <>
-                      {/* ── Section A: Recommended For You ───────── */}
+                      {/* ── Recommended For You — engine recs (same source as Discover) ── */}
                       <div>
                         <div className="flex items-center gap-2 mb-3">
                           <h2 className="text-[16px] font-bold text-gray-900">Recommended For You</h2>
@@ -335,39 +334,35 @@ export default function TrainersScreen() {
                             className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
                             style={{ backgroundColor: '#F0FDF4', color: '#166534' }}
                           >
-                            Based on your goals &amp; location
+                            Based on your goals &amp; health profile
                           </span>
                         </div>
 
-                        {recommended.length > 0 ? (
-                          <div className="space-y-3">
-                            {recommended.map(trainer => (
-                              <TrainerRecommendationCard
-                                key={trainer.id}
-                                trainer={trainer}
-                                onViewProfile={() => {
-                                  setSelectedTrainerDetail({
-                                    id: trainer.id,
-                                    full_name: trainer.full_name,
-                                    role: 'trainer',
-                                    city: trainer.city ?? undefined,
-                                    specialties: trainer.specialties ?? [],
-                                    rating: trainer.rating ?? undefined,
-                                    photo_url: trainer.photo_url ?? null,
-                                    bio: trainer.bio ?? undefined,
-                                  });
-                                }}
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="bg-white rounded-2xl p-6 flex flex-col items-center text-center shadow-sm" style={{ border: '1px solid #F3F4F6' }}>
-                            <MapPin size={28} color="#9CA3AF" className="mb-2" />
-                            <p className="text-[14px] font-semibold text-gray-700 mb-1">No nearby matches yet</p>
-                            <p className="text-[12px] text-gray-400 mb-4">Explore trainers in the Discover tab</p>
+                        {engineRecs.length > 0 ? (
+                          <>
+                            <div className="space-y-3">
+                              {engineRecs.map(rec => (
+                                <div key={rec.trainer_id} className="relative">
+                                  {/* Match score pill — same as Discover tab */}
+                                  <div
+                                    className="absolute top-3 right-3 z-10 text-[11px] font-bold px-2.5 py-1 rounded-full shadow-sm"
+                                    style={{ backgroundColor: '#F0FDFA', color: '#0D9488', border: '1px solid #5EEAD4' }}
+                                  >
+                                    {rec.score}% match
+                                  </div>
+                                  <TrainerRecommendationCard
+                                    trainer={rec.trainer}
+                                    onViewProfile={() => {
+                                      const u = trainers.find(t => t.id === rec.trainer_id);
+                                      if (u) setSelectedTrainerDetail(u);
+                                    }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
                             <button
                               onClick={() => setActiveTab('discover')}
-                              className="font-semibold rounded-xl px-5 transition-colors"
+                              className="w-full font-semibold rounded-xl mt-3 transition-colors"
                               style={{
                                 minHeight: '44px',
                                 backgroundColor: '#F0FDF4',
@@ -376,8 +371,14 @@ export default function TrainersScreen() {
                                 border: '1px solid #BBF7D0',
                               }}
                             >
-                              Browse Trainers
+                              Browse all trainers
                             </button>
+                          </>
+                        ) : (
+                          <div className="bg-white rounded-2xl p-6 flex flex-col items-center text-center shadow-sm" style={{ border: '1px solid #F3F4F6' }}>
+                            <Users size={28} color="#9CA3AF" className="mb-2" />
+                            <p className="text-[14px] font-semibold text-gray-700 mb-1">No recommendations yet</p>
+                            <p className="text-[12px] text-gray-400">Your assessment may still be finalising.</p>
                           </div>
                         )}
                       </div>
