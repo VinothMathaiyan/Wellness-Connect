@@ -2,14 +2,18 @@ import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Search, Check, AlertCircle, MapPin } from 'lucide-react';
 import type { TrainingPreferences } from '../../../types';
-import { supabase } from '../../../lib/supabaseClient';
 import Button from '../../../components/Button';
 import Input from '../../../components/Input';
 import ProgressBar from '../../../components/ProgressBar';
 import OnboardingLayout from '../components/OnboardingLayout';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { upsertClientProfile, createAssessmentRequest } from '../../../services/supabaseService';
+import {
+  upsertClientProfile,
+  createAssessmentRequest,
+  getProfile,
+  getClientProfile,
+} from '../../../services/supabaseService';
 
 const CITIES = [
   "Chennai", "Bangalore", "Mumbai", "Delhi", "Hyderabad", "Pune",
@@ -36,6 +40,10 @@ const PREFERRED_TIME_OPTIONS = ["Early Morning", "Morning", "Afternoon", "Evenin
 
 export default function HealthProfileScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // "Edit Profile" (from ProfileMenu) opens this screen to update an existing
+  // profile rather than continue the signup flow.
+  const isEditMode = location.state?.mode === 'edit';
   const { appState, handleHealthProfileContinue, userId } = useWellness();
   const initialData = appState;
   // Parse initial DOB
@@ -62,28 +70,52 @@ export default function HealthProfileScreen() {
     preferred_times: [],
   });
 
-  // Pre-populate training preferences from DB if already saved
+  // Pre-populate from DB. Training preferences are always restored (so a
+  // returning client mid-onboarding doesn't lose them); in Edit Profile mode we
+  // also restore every other field from client_profiles + profiles.city.
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
-    supabase
-      .from('client_profiles')
-      .select('training_preferences')
-      .eq('user_id', userId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancelled) return;
-        const prefs = data?.training_preferences as TrainingPreferences | null;
-        if (prefs) {
-          setTrainingPrefs({
-            training_styles: prefs.training_styles ?? [],
-            session_mode:    prefs.session_mode ?? '',
-            preferred_times: prefs.preferred_times ?? [],
-          });
-        }
-      });
+    (async () => {
+      const cp = await getClientProfile(userId);
+      if (cancelled || !cp) return;
+
+      const prefs = cp.training_preferences as TrainingPreferences | null;
+      if (prefs) {
+        setTrainingPrefs({
+          training_styles: prefs.training_styles ?? [],
+          session_mode:    prefs.session_mode ?? '',
+          preferred_times: prefs.preferred_times ?? [],
+        });
+      }
+
+      if (!isEditMode) return;
+
+      const profile = await getProfile(userId);
+      if (cancelled) return;
+
+      const dob = (cp.dob as string | null) ?? '';
+      const [dy, dm, dd] = dob ? dob.split('-') : ['', '', ''];
+      const heightCmVal = cp.height_cm as number | null;
+      const weightKgVal = cp.weight_kg as number | null;
+
+      setFormData(prev => ({
+        ...prev,
+        dobDay:      dd || '',
+        dobMonth:    dm || '',
+        dobYear:     dy || '',
+        gender:      (cp.gender as string | null) ?? '',
+        heightValue: heightCmVal != null ? String(heightCmVal) : '',
+        heightInches: '',
+        heightUnit:  'cm',
+        weightValue: weightKgVal != null ? String(weightKgVal) : '',
+        weightUnit:  'kg',
+        city:        (profile?.city as string | null) ?? '',
+        fitnessGoals: Array.isArray(cp.goals) ? (cp.goals as string[]) : [],
+      }));
+    })();
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, isEditMode]);
 
   const toggleTrainingStyle = (style: string) => {
     setTrainingPrefs(prev => {
@@ -327,14 +359,18 @@ export default function HealthProfileScreen() {
       }
 
       // Auto-create the assessment record so this client surfaces in the
-      // Assessment App queue. Silent + non-blocking.
-      await createAssessmentRequest(userId);
+      // Assessment App queue. Silent + non-blocking. Skipped in edit mode —
+      // editing an existing profile must not spawn a new assessment request.
+      if (!isEditMode) {
+        await createAssessmentRequest(userId);
+      }
     } else {
       console.warn('[HealthProfile] No userId — skipping Supabase save');
     }
 
     setIsSaving(false);
-    navigate('/onboarding/assessment');
+    // Edit Profile returns to the dashboard; signup continues to the next step.
+    navigate(isEditMode ? '/client/dashboard' : '/onboarding/assessment');
   };
 
   const filteredCities = useMemo(() => {

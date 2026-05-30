@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import {
@@ -6,7 +6,15 @@ import {
   TOTAL_STEPS,
 } from '../../hooks/useTrainerOnboarding';
 import { useWellness } from '../../../../context/WellnessContext';
-import { isTrainerOnboardingComplete } from '../../../../services/supabaseService';
+import { isTrainerOnboardingComplete, getProfile } from '../../../../services/supabaseService';
+
+// session_intensity is persisted as a short token ('low' | 'medium' | 'high');
+// the expertise step compares against the full label, so map it back here.
+const INTENSITY_LABEL: Record<string, string> = {
+  low:    'Low (recovery/gentle)',
+  medium: 'Medium (moderate)',
+  high:   'High (intense/performance)',
+};
 import TrainerProfileStep from './TrainerProfileStep';
 import TrainerExpertiseStep from './TrainerExpertiseStep';
 import TrainerAvailabilityStep from './TrainerAvailabilityStep';
@@ -38,6 +46,36 @@ export default function TrainerOnboardingFlow() {
     if (!userId || isEditMode) return;
     isTrainerOnboardingComplete(userId).then(complete => {
       if (complete) navigate('/trainer/dashboard', { replace: true });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // Edit / resubmit: pre-populate every step from the existing profiles row so
+  // the trainer edits their real data instead of a blank form. Runs once.
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (!userId || (!isEditMode && !isResubmit) || prefilledRef.current) return;
+    prefilledRef.current = true;
+    getProfile(userId).then(p => {
+      if (!p) return;
+      const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
+      const intensity = (p.session_intensity as string | null) ?? '';
+      updateData({
+        photoUrl:         (p.avatar_url as string | null) ?? (p.photo_url as string | null) ?? null,
+        certificationName: arr(p.certifications).join(', '),
+        yearsOfExperience: p.experience_years != null ? String(p.experience_years) : '',
+        bio:              (p.bio as string | null) ?? '',
+        specialisations:  arr(p.specialties),
+        focusAreas:       arr(p.focus_areas),
+        sessionTypes:     arr(p.session_types),
+        sessionIntensity: INTENSITY_LABEL[intensity] ?? '',
+        coachingStyles:   arr(p.coaching_styles),
+        languages:        arr(p.languages),
+        city:             (p.city as string | null) ?? '',
+        maxClients:       (p.max_clients as number | null) ?? 20,
+        medicalCertified: (p.medical_certified as boolean | null) ?? false,
+        rehabCertified:   (p.rehab_certified as boolean | null) ?? false,
+      });
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);

@@ -1913,6 +1913,44 @@ export async function getApprovedTrainerIdSet(): Promise<Set<string>> {
 }
 
 /**
+ * Fetch a user's full profiles row. Used by the Edit Profile flow to
+ * pre-populate the onboarding forms. Returns null on error / missing row.
+ */
+export async function getProfile(
+  userId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) {
+    console.error('getProfile:', error);
+    return null;
+  }
+  return data;
+}
+
+/**
+ * Fetch a client's client_profiles row (the assessment-owned detail table).
+ * Used by the client Edit Profile flow. Returns null on error / missing row.
+ */
+export async function getClientProfile(
+  userId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await supabase
+    .from('client_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) {
+    console.error('getClientProfile:', error);
+    return null;
+  }
+  return data;
+}
+
+/**
  * Fetch all approved+active trainer profiles for the client TrainersScreen.
  * D6: pending/rejected trainers are excluded via the approved_trainers view.
  * Returns [] on error — screen handles empty state.
