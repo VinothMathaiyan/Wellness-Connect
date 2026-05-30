@@ -31,6 +31,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { ClientNotification, Notification } from '../../../types';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 
 
 
@@ -403,12 +404,12 @@ export default function AlertsScreen() {
     return (
         <div className="max-w-md mx-auto w-full min-h-screen relative shadow-xl bg-gray-50 flex flex-col">
 
-            {/* ZONE 1 — TOP BAR */}
-            <header className="h-[52px] w-full flex items-center justify-between px-[20px] bg-white border-b-[0.5px] border-[#E5E7EB] shrink-0 sticky top-0 z-20">
-                <div className="w-[36px]" />
-                <h1 className="text-[16px] font-semibold text-[#111827]">Alerts</h1>
-                <ProfileMenu />
-            </header>
+            {/* ZONE 1 — TOP BAR — tab destination: title-only header, no back arrow */}
+            <ScreenHeader
+                variant="sub"
+                title="Alerts"
+                avatar={<ProfileMenu />}
+            />
 
             {/* MAIN LIST AREA */}
             <div className="flex-1 overflow-y-auto px-[16px] pb-[80px] scrollbar-hide">
