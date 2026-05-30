@@ -176,6 +176,12 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Single unified OTP entry. /signup is canonical; '/' and the legacy
+          /signin path redirect here. There is no separate sign-in screen —
+          new-vs-returning is detected automatically after OTP success
+          (see SignUpScreen.completeSignIn / getProfileForAuth). */}
+      <Route path="/" element={<Navigate to="/signup" replace />} />
+      <Route path="/signin" element={<Navigate to="/signup" replace />} />
       <Route path="/signup" element={<SignUpScreen />} />
       <Route path="/role-selection" element={<RoleSelectionScreen />} />
       <Route path="/onboarding/profile" element={<HealthProfileScreen />} />
