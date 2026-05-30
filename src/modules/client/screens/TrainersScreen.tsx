@@ -29,8 +29,6 @@ import TrainerRecommendationCard from '../components/TrainerRecommendationCard';
 import ProfileMenu from '../../../components/ProfileMenu';
 import ScreenHeader from '@/components/ScreenHeader';
 
-const CATEGORIES = ['All', 'Yoga', 'HIIT', 'Strength', 'Nutrition', 'Ayurveda', 'Wellness'];
-
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
 import {
@@ -41,6 +39,7 @@ import {
   getAssessmentRecommendations,
   getClientRecommendations,
   getClientPendingTrainerLinks,
+  getTrainerCategories,
 } from '../../../services/supabaseService';
 import type { ClientRecommendation } from '../../../services/supabaseService';
 
@@ -69,6 +68,9 @@ export default function TrainersScreen() {
   // ── Requested tab state ─────────────────────────────────────────────────────
   const [pendingLinks, setPendingLinks] = useState<{ trainer_id: string; trainer_name: string; created_at: string }[]>([]);
 
+  // ── Category filter pills (Discover tab) — derived from live trainer data ────
+  const [categories, setCategories] = useState<string[]>([]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -80,12 +82,14 @@ export default function TrainersScreen() {
       userId ? getClientActiveTrainerIds(userId) : Promise.resolve([]),
       userId ? getAssessmentRecommendations(userId) : Promise.resolve([]),
       userId ? getClientPendingTrainerLinks(userId) : Promise.resolve([]),
-    ]).then(([profiles, activeIds, recIds, pending]) => {
+      getTrainerCategories(),
+    ]).then(([profiles, activeIds, recIds, pending, cats]) => {
       if (cancelled) return;
       setTrainers(profiles);
       setActiveTrainerIds(activeIds);
       setAssessmentRecIds(recIds);
       setPendingLinks(pending);
+      setCategories(cats);
     }).catch(err => {
       console.error('TrainersScreen fetch:', err);
       if (!cancelled) setFetchError(true);
@@ -444,9 +448,9 @@ export default function TrainersScreen() {
                 </button>
               </div>
 
-              {/* Filters */}
-              <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4">
-                {CATEGORIES.map((cat) => (
+              {/* Filters — "All" always first, real categories from live data after */}
+              <div className="flex flex-wrap gap-2 pb-2">
+                {['All', ...categories].map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}

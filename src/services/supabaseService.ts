@@ -1967,6 +1967,33 @@ export const getTrainerProfiles = async (): Promise<User[]> => {
 };
 
 /**
+ * Fetch the distinct list of specialties offered across all approved+active
+ * trainers, sorted alphabetically. Powers the category filter pills on the
+ * client Discover screen so they always match real trainer data.
+ *
+ * Derived FROM the approved_trainers view (same approved+active source as
+ * getTrainerProfiles), flattening + de-duping the specialties arrays in JS.
+ * Because categories are derived from live trainers, every returned category
+ * is guaranteed to have at least one matching trainer.
+ * Returns [] on error.
+ */
+export const getTrainerCategories = async (): Promise<string[]> => {
+  const { data, error } = await supabase
+    .from('approved_trainers')
+    .select('specialties');
+
+  if (error) { console.error('getTrainerCategories:', error); return []; }
+
+  const set = new Set<string>();
+  for (const row of (data ?? []) as { specialties: string[] | null }[]) {
+    for (const s of row.specialties ?? []) {
+      if (s) set.add(s);
+    }
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+};
+
+/**
  * Fetch the trainer_ids of all active trainer_client_links for a client.
  * Used to split the trainer list into "My Trainer" vs "Discover".
  * Returns [] on error.
