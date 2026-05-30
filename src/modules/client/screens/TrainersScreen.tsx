@@ -35,7 +35,6 @@ import {
   getTrainerProfiles,
   getClientActiveTrainerIds,
   getRecommendedTrainers,
-  getExpertPickedTrainers,
   getAssessmentRecommendations,
   getClientRecommendations,
   getClientPendingTrainerLinks,
@@ -57,7 +56,6 @@ export default function TrainersScreen() {
 
   // ── Recommendation state (My Trainer tab — unassigned view) ─────────────────
   const [recommended, setRecommended] = useState<TrainerProfile[]>([]);
-  const [expertPicks, setExpertPicks] = useState<TrainerProfile[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError,   setRecsError]   = useState(false);
 
@@ -109,12 +107,10 @@ export default function TrainersScreen() {
 
     Promise.all([
       getRecommendedTrainers(userId),
-      getExpertPickedTrainers(),
       getClientRecommendations(userId),
-    ]).then(([recs, experts, clientRecs]) => {
+    ]).then(([recs, clientRecs]) => {
       if (cancelled) return;
       setRecommended(recs);
-      setExpertPicks(experts);
       setEngineRecs(clientRecs.engineRecs);
       setManualRecs(clientRecs.manualRecs);
     }).catch(err => {
@@ -384,36 +380,6 @@ export default function TrainersScreen() {
                             </button>
                           </div>
                         )}
-                      </div>
-
-                      {/* ── Section B: Selected By Wellness Experts ─ */}
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <h2 className="text-[16px] font-bold text-gray-900">Selected By Wellness Experts</h2>
-                          <span
-                            className="text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0"
-                            style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}
-                          >
-                            Expert Pick
-                          </span>
-                        </div>
-                        <p
-                          className="mb-3"
-                          style={{ fontSize: '12px', color: '#6B7280' }}
-                        >
-                          Recommended by our assessment team based on your health profile
-                        </p>
-                        <div className="space-y-3">
-                          {expertPicks.map(trainer => (
-                            <TrainerRecommendationCard
-                              key={trainer.id}
-                              trainer={trainer}
-                              onViewProfile={() => {
-                                setActiveTab('discover');
-                              }}
-                            />
-                          ))}
-                        </div>
                       </div>
                     </>
                   )}

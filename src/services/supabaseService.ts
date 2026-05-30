@@ -3670,42 +3670,6 @@ export const getClientLinkStatusMap = async (
   return map;
 };
 
-/** Returns a hardcoded expert-picked trainer list.
- *  TODO: Replace with assessment team API when available. */
-export const getExpertPickedTrainers = async (): Promise<TrainerProfile[]> => {
-  const mockExpertPicks: TrainerProfile[] = [
-    {
-      id:               'expert-mock-1',
-      full_name:        'Dr. Priya Nair',
-      city:             'Chennai',
-      specialties:      ['Rehabilitation', 'Yoga'],
-      certifications:   null,
-      bio:              'Recommended by our assessment team for post-injury recovery.',
-      availability:     null,
-      experience_years: 12,
-      session_count:    null,
-      rating:           4.9,
-      avatar_url:       null,
-      photo_url:        null,
-    },
-    {
-      id:               'expert-mock-2',
-      full_name:        'Arjun Mehta',
-      city:             'Bangalore',
-      specialties:      ['Strength Training', 'Functional Fitness'],
-      certifications:   null,
-      bio:              'Expert pick for structured strength and conditioning programs.',
-      availability:     null,
-      experience_years: 9,
-      session_count:    null,
-      rating:           4.7,
-      avatar_url:       null,
-      photo_url:        null,
-    },
-  ];
-  return Promise.resolve(mockExpertPicks);
-};
-
 // ─── Session Exercises + Mark Complete (Phase 4A) ─────────────────────────────
 
 
