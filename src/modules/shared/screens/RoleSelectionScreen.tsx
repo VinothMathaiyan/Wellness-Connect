@@ -70,6 +70,11 @@ export default function RoleSelectionScreen() {
     const cleanEmail = email.trim() || null;
 
     try {
+      // COMPLIANCE: profiles.consent_at is recorded ONCE by the DB column
+      // DEFAULT (now()) when this row is first created — which is immediately
+      // after the consent checkbox + OTP. Never add consent_at to this payload:
+      // on a re-upsert it would overwrite the original timestamp and falsify
+      // the consent record.
       const { error } = await supabase
         .from('profiles')
         .upsert({
