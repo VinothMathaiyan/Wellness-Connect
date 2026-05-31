@@ -434,12 +434,11 @@ export default function ClientProgressView() {
                     <div
                       key={row.log_date}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
                         padding: '10px 14px',
                         borderBottom: idx < recent.length - 1 ? '1px solid #F9FAFB' : 'none',
                       }}
                     >
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
                       <span style={{ flex: 1, fontSize: 13, color: '#374151', fontWeight: 500 }}>
                         {fmtDate(row.log_date)}
                       </span>
@@ -467,6 +466,12 @@ export default function ClientProgressView() {
                       >
                         {row.workout_done === true ? '✓' : row.workout_done === false ? '✗' : '--'}
                       </span>
+                      </div>
+                      {row.note_for_trainer && (
+                        <p style={{ fontSize: 12, color: '#6B7280', fontStyle: 'italic', margin: '4px 0 0', lineHeight: 1.4 }}>
+                          Note: {row.note_for_trainer}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -86,7 +86,7 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
   const [currentStep, setCurrentStep] = useState(1);
   const [logDate, setLogDate] = useState(() => todayISO());
   const [log, setLog] = useState<DailyCheckInDraft>({
-    water_litres: existingLog?.water_glasses ? existingLog.water_glasses * 0.25 : 0,
+    water_litres: existingLog?.water_litres ?? 0,
     sleep_hours: existingLog?.sleep_hours ?? 8,
     sleep_quality_score: 0,
     mood_score: existingLog?.mood_score ?? 0,
@@ -107,11 +107,15 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
   };
 
   const computeReadinessScore = () => {
-    const sleepScore = Math.round((Math.min(Math.max(log.sleep_hours, 4), 10) - 4) / 6 * 30);
-    const moodScore = Math.round((Math.max(log.mood_score, 0) / 5) * 25);
-    const energyScore = Math.round((Math.max(log.energy_level, 0) / 5) * 25);
-    const waterScore = Math.round(Math.min(Math.round(log.water_litres * 4) / 8, 1) * 20);
-    return Math.min(100, Math.max(0, sleepScore + moodScore + energyScore + waterScore));
+    const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+    const sleepPts    = Math.round((clamp(log.sleep_hours, 4, 10) - 4) / 6 * 20);           // max 20
+    const qualityPts  = Math.round(((log.sleep_quality_score || 0) / 5) * 10);               // max 10
+    const moodPts     = Math.round(((log.mood_score || 0) / 5) * 15);                        // max 15
+    const energyPts   = Math.round(((log.energy_level || 0) / 5) * 15);                      // max 15
+    const painPts     = Math.round((1 - ((log.pain_score ?? 0) / 10)) * 20);                 // max 20, INVERTED
+    const mobilityPts = Math.round(((log.mobility_score || 0) / 10) * 10);                   // max 10
+    const waterPts    = Math.round(Math.min(log.water_litres / 2.5, 1) * 10);                // max 10
+    return clamp(sleepPts + qualityPts + moodPts + energyPts + painPts + mobilityPts + waterPts, 0, 100);
   };
 
   const handleComplete = async () => {
@@ -125,11 +129,12 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
       sleep_quality_score: log.sleep_quality_score,
       mood_score: log.mood_score,
       energy_score: log.energy_level,
-      water_glasses: Math.round(log.water_litres * 4),
+      water_litres: log.water_litres,
       workout_done: false,
       pain_score: log.pain_score ?? null,
       mobility_score: log.mobility_score,
       readiness_score: computeReadinessScore(),
+      note_for_trainer: log.trainer_note || null,
     };
 
     if (userId) {
@@ -508,7 +513,7 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
                        <div className="h-full bg-[#1D9E75]" style={{ width: `${(log.mobility_score || 5) * 10}%` }} />
                     </div>
                     <input 
-                      type="range" min="0" max="10" step="1"
+                      type="range" min="1" max="10" step="1"
                       className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
                       value={log.mobility_score || 5}
                       onChange={(e) => handleUpdate({ mobility_score: parseInt(e.target.value) })}
@@ -569,14 +574,15 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
                     {[
                       { label: 'Water', emoji: '💧', active: (log.water_litres || 0) > 0 },
                       { label: 'Sleep', emoji: '🌙', active: (log.sleep_hours || 0) > 0 },
+                      { label: 'Quality', emoji: '💤', active: (log.sleep_quality_score || 0) > 0 },
                       { label: 'Mood', emoji: '😊', active: (log.mood_score || 0) > 0 },
                       { label: 'Energy', emoji: '⚡', active: (log.energy_level || 0) > 0 },
                       { label: 'Pain', emoji: '😌', active: (log.pain_score !== null && log.pain_score !== undefined) },
                       { label: 'Mobility', emoji: '🦵', active: (log.mobility_score !== null && log.mobility_score !== undefined) },
                     ].map(it => (
                       <div key={it.label} className="flex flex-col items-center gap-1.5">
-                         <span className="text-[30px] mb-1 leading-none">{it.emoji}</span>
-                         <span className="text-[11px] font-medium text-[#9CA3AF]">{it.label}</span>
+                         <span className="text-[24px] mb-1 leading-none">{it.emoji}</span>
+                         <span className="text-[10px] font-medium text-[#9CA3AF]">{it.label}</span>
                           {it.active ? (
                             <div className="w-[18px] h-[18px] rounded-full bg-[#1D9E75] flex items-center justify-center mt-1">
                               <Check size={12} className="text-white" strokeWidth={3} />
@@ -587,7 +593,7 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
                       </div>
                     ))}
                  </div>
-                 {doneCount >= 6 && (
+                 {doneCount >= 7 && (
                    <motion.div 
                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                       className="mt-8 p-3 bg-[#E1F5EE] rounded-[10px] flex items-center justify-center"

@@ -160,7 +160,7 @@ export default function WeeklyReportScreen() {
 
   const readinessVals = weeklyLogs.map(l => l.readiness_score ?? 0);
   const sleepVals     = weeklyLogs.map(l => l.sleep_hours);
-  const waterVals     = weeklyLogs.map(l => l.water_glasses * 0.25);
+  const waterVals     = weeklyLogs.map(l => l.water_litres);
   const moodVals      = weeklyLogs.map(l => l.mood_score);
   const energyVals    = weeklyLogs.map(l => l.energy_score);
   const painVals      = weeklyLogs.map(l => l.pain_score ?? 0);

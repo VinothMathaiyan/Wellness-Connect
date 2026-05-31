@@ -96,7 +96,7 @@ export async function getWeeklyLogs(userId: string): Promise<DailyLog[]> {
 
   const { data, error } = await supabase
     .from('daily_metrics')
-    .select('log_date, sleep_hours, sleep_quality_score, mood_score, energy_score, water_glasses, workout_done, readiness_score, pain_score, mobility_score')
+    .select('log_date, sleep_hours, sleep_quality_score, mood_score, energy_score, water_litres, workout_done, readiness_score, pain_score, mobility_score')
     .eq('user_id', userId)
     .gte('log_date', startStr)
     .lte('log_date', endStr)
@@ -528,7 +528,7 @@ export const getCheckinReview = async (
       .maybeSingle(),
     supabase
       .from('daily_metrics')
-      .select('log_date, readiness_score, mobility_score, pain_score, energy_score')
+      .select('log_date, readiness_score, mobility_score, pain_score, energy_score, note_for_trainer')
       .eq('user_id', clientId)
       .order('log_date', { ascending: false })
       .limit(2),
@@ -562,6 +562,7 @@ export const getCheckinReview = async (
     mobilityScore:  latest?.mobility_score ?? null,
     painScore:      latest?.pain_score ?? null,
     energyScore:    latest?.energy_score ?? null,
+    noteForTrainer: latest?.note_for_trainer ?? null,
   };
 };
 
@@ -1654,12 +1655,13 @@ export interface DailyCheckinMetrics {
   sleep_hours?: number;
   mood_score?: number;           // CHECK 1..5
   energy_score?: number;         // CHECK 1..5
-  water_glasses?: number;        // CHECK 0..8
+  water_litres?: number;         // numeric — honest litre value (e.g. 2.5)
   workout_done?: boolean;
   readiness_score?: number;      // CHECK 0..100
   pain_score?: number | null;
   mobility_score?: number;
   sleep_quality_score?: number;  // CHECK 1..5
+  note_for_trainer?: string | null;
 }
 
 /**
@@ -1674,7 +1676,7 @@ export const submitDailyCheckin = async (
   // Normalise optional fields so unfilled values do not violate the
   // daily_metrics CHECK constraints. mood_score / energy_score must be 1–5
   // (or NULL) — a 0 from an unanswered question would be rejected — and
-  // water_glasses must be 0–8.
+  // water_litres is a numeric column (0–N).
   const moodScore =
     metrics.mood_score != null && metrics.mood_score >= 1 ? metrics.mood_score : null;
   const energyScore =
@@ -1683,7 +1685,7 @@ export const submitDailyCheckin = async (
     metrics.sleep_quality_score != null && metrics.sleep_quality_score >= 1
       ? metrics.sleep_quality_score
       : null;
-  const waterGlasses = Math.min(Math.max(metrics.water_glasses ?? 0, 0), 8);
+  const waterLitres = Math.max(metrics.water_litres ?? 0, 0);
   const logDate = metrics.log_date ?? todayISO();
 
   const { error } = await supabase
@@ -1696,11 +1698,12 @@ export const submitDailyCheckin = async (
         sleep_quality_score: sleepQualityScore,
         mood_score: moodScore,
         energy_score: energyScore,
-        water_glasses: waterGlasses,
+        water_litres: waterLitres,
         workout_done: metrics.workout_done ?? false,
         pain_score: metrics.pain_score ?? null,
         mobility_score: metrics.mobility_score ?? null,
         readiness_score: metrics.readiness_score ?? null,
+        note_for_trainer: metrics.note_for_trainer ?? null,
       },
       { onConflict: 'user_id,log_date' },
     );
@@ -3904,7 +3907,7 @@ export const getClientTodayCheckinStatus = async (
   const today = todayISO();
   const { data, error } = await supabase
     .from('daily_metrics')
-    .select('sleep_hours, sleep_quality_score, mood_score, energy_score, water_glasses, workout_done, pain_score')
+    .select('sleep_hours, sleep_quality_score, mood_score, energy_score, water_litres, workout_done, pain_score')
     .eq('user_id', userId)
     .eq('log_date', today)
     .maybeSingle();
@@ -3921,7 +3924,7 @@ export const getClientTodayCheckinStatus = async (
     data.sleep_quality_score,
     data.mood_score,
     data.energy_score,
-    data.water_glasses,
+    data.water_litres,
     data.workout_done !== null && data.workout_done !== undefined ? 1 : null,
     data.pain_score,
   ];
@@ -4104,6 +4107,7 @@ export interface ClientProgressOverview {
     log_date: string;
     readiness_score: number | null;
     workout_done: boolean | null;
+    note_for_trainer: string | null;
   }>;                                // last 10 rows, newest first
   currentProgram: {
     planId: string;
@@ -4148,7 +4152,7 @@ export async function getClientProgressOverview(
       .maybeSingle(),
     supabase
       .from('daily_metrics')
-      .select('log_date, readiness_score, sleep_hours, energy_score, mood_score, pain_score, workout_done')
+      .select('log_date, readiness_score, sleep_hours, energy_score, mood_score, pain_score, workout_done, note_for_trainer')
       .eq('user_id', clientId)
       .gte('log_date', start30)
       .order('log_date', { ascending: true }),
@@ -4183,6 +4187,7 @@ export async function getClientProgressOverview(
     mood_score: number | null;
     pain_score: number | null;
     workout_done: boolean | null;
+    note_for_trainer: string | null;
   }
   const rows = (metricsRes.data ?? []) as MetricsRowDB[]; // ascending by log_date
 
@@ -4230,7 +4235,7 @@ export async function getClientProgressOverview(
   const recentCheckins = [...rows]
     .sort((a, b) => b.log_date.localeCompare(a.log_date))
     .slice(0, 10)
-    .map(r => ({ log_date: r.log_date, readiness_score: r.readiness_score, workout_done: r.workout_done }));
+    .map(r => ({ log_date: r.log_date, readiness_score: r.readiness_score, workout_done: r.workout_done, note_for_trainer: r.note_for_trainer }));
 
   // ── Current program ─────────────────────────────────────────────────────────
   let currentProgram: ClientProgressOverview['currentProgram'] = null;

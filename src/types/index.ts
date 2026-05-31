@@ -104,11 +104,12 @@ export interface DailyLog {
   sleep_quality_score: number;    // 1–5         — daily_metrics.sleep_quality_score
   mood_score: number;             // 1–5         — daily_metrics.mood_score
   energy_score: number;           // 1–5         — daily_metrics.energy_score
-  water_glasses: number;          // 0–8         — daily_metrics.water_glasses
+  water_litres: number;           // 0–2.5+      — daily_metrics.water_litres (numeric)
   workout_done: boolean;          //             — daily_metrics.workout_done
   pain_score: number | null;      // 0,2,5,7,10  — daily_metrics.pain_score
-  mobility_score: number;         // 0–10        — daily_metrics.mobility_score
+  mobility_score: number;         // 1–10        — daily_metrics.mobility_score
   readiness_score?: number;       // computed 0–100 — daily_metrics.readiness_score
+  note_for_trainer?: string | null; //           — daily_metrics.note_for_trainer
 }
 
 // ─── Macros (meal_logs.macros_json) ─────────────────────────────────────────
@@ -345,6 +346,7 @@ export interface CheckinReviewData {
   mobilityScore: number | null;
   painScore: number | null;
   energyScore: number | null;
+  noteForTrainer: string | null;
 }
 
 // ─── Trainer view of a client's session (sessions table — ClientDetailScreen) ─
