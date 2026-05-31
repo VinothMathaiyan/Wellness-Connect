@@ -1684,10 +1684,17 @@ const upsertRiskAlertForCheckin = async (
   readinessScore: number | null,
   painScore: number | null,
 ): Promise<void> => {
-  const readiness = readinessScore ?? 100; // missing readiness is not "at risk"
-  const pain = painScore ?? 0;
+  // Coerce defensively — a stringified "11" would break the numeric threshold
+  // comparison ("11" < 30 is false). Number() makes the path robust.
+  const readiness = readinessScore != null ? Number(readinessScore) : 100; // missing = not "at risk"
+  const pain = painScore != null ? Number(painScore) : 0;
   const isAtRisk = readiness < 30 || pain >= 8;
-  if (!isAtRisk) return; // a good check-in does not clear an earlier alert.
+  if (!isAtRisk) {
+    console.log(
+      `[riskAlert] client=${clientId} readiness=${readiness} pain=${pain} isAtRisk=false action=skip`,
+    );
+    return; // a good check-in does not clear an earlier alert.
+  }
 
   const severity: 'medium' | 'high' =
     readiness < 20 || pain === 10 ? 'high' : 'medium';
@@ -1725,6 +1732,10 @@ const upsertRiskAlertForCheckin = async (
     console.error('upsertRiskAlertForCheckin (select):', selectError);
     return;
   }
+
+  console.log(
+    `[riskAlert] client=${clientId} readiness=${readiness} pain=${pain} isAtRisk=true action=${existing ? 'update' : 'insert'}`,
+  );
 
   if (existing) {
     // Refresh the alert in place. Do NOT touch is_read so an acknowledged
