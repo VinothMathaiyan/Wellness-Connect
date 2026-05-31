@@ -143,8 +143,8 @@ export default function ProgressScreen() {
                         {userData.riskStatus === 'green'
                             ? "✓ No injury risk detected · Last checked today"
                             : userData.riskStatus === 'yellow'
-                                ? "⚠ Yellow flag active · Trainer has been notified"
-                                : "🚨 Red flag — Assessment team has been alerted"}
+                                ? "⚠ Yellow flag active · Keep an eye on your recovery"
+                                : "🚨 Red flag — Your trainer has been notified"}
                     </span>
                 </div>
 

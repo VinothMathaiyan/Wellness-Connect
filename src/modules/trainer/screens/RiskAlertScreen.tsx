@@ -27,6 +27,8 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
   missed_workout: 'Missed Workout Sessions',
   hydration:      'Hydration Levels Low',
   general:        'General Wellness Flag',
+  low_readiness:  'Low Readiness',
+  high_pain:      'High Pain',
 };
 
 function severityToRiskLevel(severity: 'low' | 'medium' | 'high'): RiskLevel {

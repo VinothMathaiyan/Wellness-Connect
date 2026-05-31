@@ -223,7 +223,7 @@ export interface RiskAlert {
   id: string;
   client_id: string;
   trainer_id: string | null;
-  alert_type: 'mood_drop' | 'sleep_drop' | 'missed_workout' | 'hydration' | 'general';
+  alert_type: 'mood_drop' | 'sleep_drop' | 'missed_workout' | 'hydration' | 'general' | 'low_readiness' | 'high_pain';
   message: string;
   severity: 'low' | 'medium' | 'high';
   is_read: boolean;
@@ -710,7 +710,7 @@ export interface TrainerRiskAlert {
   id: string;
   client_id: string;
   trainer_id: string | null;
-  alert_type: 'mood_drop' | 'sleep_drop' | 'missed_workout' | 'hydration' | 'general';
+  alert_type: 'mood_drop' | 'sleep_drop' | 'missed_workout' | 'hydration' | 'general' | 'low_readiness' | 'high_pain';
   message: string | null;
   severity: 'low' | 'medium' | 'high';
   is_read: boolean;
@@ -1665,6 +1665,91 @@ export interface DailyCheckinMetrics {
 }
 
 /**
+ * Create or refresh a risk_alerts row when a check-in crosses the risk
+ * threshold (readiness < 30 OR pain >= 8). Targets the client's active trainer
+ * (trainer_id may be null when the client has no active link — the row is still
+ * created so the assessment team can pick it up).
+ *
+ * One-per-client-per-day: we SELECT any existing alert created today (there is
+ * no unique (client_id, created_at::date) constraint) and UPDATE it in place
+ * rather than inserting a duplicate. An already-acknowledged alert (is_read =
+ * true) keeps its read state so re-submitting the same day does not re-alarm
+ * the trainer; only the message/severity/alert_type/trainer_id are refreshed.
+ *
+ * Best-effort: callers wrap this so a failure here never blocks the check-in.
+ */
+const upsertRiskAlertForCheckin = async (
+  clientId: string,
+  logDate: string,
+  readinessScore: number | null,
+  painScore: number | null,
+): Promise<void> => {
+  const readiness = readinessScore ?? 100; // missing readiness is not "at risk"
+  const pain = painScore ?? 0;
+  const isAtRisk = readiness < 30 || pain >= 8;
+  if (!isAtRisk) return; // a good check-in does not clear an earlier alert.
+
+  const severity: 'medium' | 'high' =
+    readiness < 20 || pain === 10 ? 'high' : 'medium';
+
+  let alertType: 'low_readiness' | 'high_pain';
+  let message: string;
+  if (pain >= 8 && readiness < 30) {
+    alertType = 'low_readiness';
+    message = `Low readiness (${readiness}) with high pain (${pain}/10) reported on ${logDate}.`;
+  } else if (pain >= 8) {
+    alertType = 'high_pain';
+    message = `High pain (${pain}/10) reported on ${logDate}.`;
+  } else {
+    alertType = 'low_readiness';
+    message = `Low readiness score (${readiness}) reported on ${logDate}.`;
+  }
+
+  // Resolve the client's active trainer (first active link). May be none.
+  const activeTrainerIds = await getClientActiveTrainerIds(clientId);
+  const trainerId = activeTrainerIds[0] ?? null;
+
+  // One-per-day guard: look for an existing alert created today. todayISO()
+  // is the UTC calendar date (consistent with the rest of the app's date
+  // helpers); created_at >= start-of-today-UTC catches today's row.
+  const { data: existing, error: selectError } = await supabase
+    .from('risk_alerts')
+    .select('id, is_read')
+    .eq('client_id', clientId)
+    .gte('created_at', todayISO())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (selectError) {
+    console.error('upsertRiskAlertForCheckin (select):', selectError);
+    return;
+  }
+
+  if (existing) {
+    // Refresh the alert in place. Do NOT touch is_read so an acknowledged
+    // alert is not flipped back to unread on re-submit.
+    const { error: updateError } = await supabase
+      .from('risk_alerts')
+      .update({ alert_type: alertType, message, severity, trainer_id: trainerId })
+      .eq('id', existing.id);
+    if (updateError) console.error('upsertRiskAlertForCheckin (update):', updateError);
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from('risk_alerts')
+    .insert({
+      client_id: clientId,
+      trainer_id: trainerId,
+      alert_type: alertType,
+      message,
+      severity,
+    });
+  if (insertError) console.error('upsertRiskAlertForCheckin (insert):', insertError);
+};
+
+/**
  * Upsert a daily check-in log for the client.
  * Uses user_id + log_date as the conflict key (unique constraint
  * daily_metrics_user_id_log_date_key is already in place).
@@ -1719,6 +1804,20 @@ export const submitDailyCheckin = async (
     );
     return false;
   }
+
+  // Best-effort: raise a risk alert for low-readiness / high-pain check-ins.
+  // Wrapped so an alert failure never blocks the check-in from being saved.
+  try {
+    await upsertRiskAlertForCheckin(
+      userId,
+      logDate,
+      metrics.readiness_score ?? null,
+      metrics.pain_score ?? null,
+    );
+  } catch (alertErr) {
+    console.error('submitDailyCheckin (risk alert):', alertErr);
+  }
+
   return true;
 };
 

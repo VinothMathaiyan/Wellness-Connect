@@ -33,9 +33,12 @@ export interface ProgressData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Red (a real risk_alerts row was created on this check-in) aligns with the
+// alert threshold in submitDailyCheckin → upsertRiskAlertForCheckin: readiness
+// < 30. Between 30 and 69 we show a softer yellow advisory; no alert is raised.
 function deriveRiskStatus(readiness: number): 'green' | 'yellow' | 'red' {
     if (readiness >= 70) return 'green';
-    if (readiness >= 40) return 'yellow';
+    if (readiness >= 30) return 'yellow';
     return 'red';
 }
 
