@@ -1965,6 +1965,28 @@ export async function getProfile(
 }
 
 /**
+ * Update the basic identity fields that live on the profiles row (full_name,
+ * email). Everything else a client edits lives on client_profiles. Used by the
+ * Edit Profile flow — name + email are no longer collected at the auth entry
+ * screen, so this is the canonical way to change them after onboarding.
+ * Pass email = null to clear it.
+ */
+export async function updateProfileBasics(
+  userId: string,
+  fields: { full_name: string; email: string | null },
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ full_name: fields.full_name, email: fields.email })
+    .eq('id', userId);
+  if (error) {
+    console.error('updateProfileBasics:', error);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+/**
  * Fetch a client's client_profiles row (the assessment-owned detail table).
  * Used by the client Edit Profile flow. Returns null on error / missing row.
  */

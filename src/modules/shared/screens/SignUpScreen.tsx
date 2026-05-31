@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle } from 'lucide-react';
 import Button from '../../../components/Button';
 import Input from '../../../components/Input';
-import ProgressBar from '../../../components/ProgressBar';
 import MobileShell from '../../../components/MobileShell';
 
 
@@ -18,11 +17,10 @@ export default function SignUpScreen() {
   const navigate = useNavigate();
   const { appState, handleSignUpSuccess, setUserRole } = useWellness();
   const initialData = appState;
-  // Form State
+  // Form State — OTP-based auth only needs the phone to authenticate. Name and
+  // email are collected later, in onboarding, and only for new users.
   const [formData, setFormData] = useState({
-    full_name: initialData?.full_name || '',
     mobile: initialData?.mobile || '',
-    email: initialData?.email || '',
     consent: initialData?.data_consent || false
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -43,20 +41,9 @@ export default function SignUpScreen() {
   // Validation Logic based on Excel rules
   const validateField = (name: string, value: string | boolean) => {
     switch (name) {
-      case 'full_name':
-        if (!value || typeof value !== 'string' || value.length < 2 || !/^[a-zA-Z\s]+$/.test(value)) {
-          return "Please enter your full name";
-        }
-        return "";
       case 'mobile':
         if (!value || typeof value !== 'string' || !/^\d{10}$/.test(value)) {
           return "Please enter a valid 10-digit mobile number";
-        }
-        return "";
-      case 'email':
-        if (!value) return ""; // Non-mandatory
-        if (typeof value === 'string' && !/\S+@\S+\.\S+/.test(value)) {
-          return "Please enter a valid email address";
         }
         return "";
       case 'consent':
@@ -84,9 +71,7 @@ export default function SignUpScreen() {
   };
 
   const isFormValid =
-    validateField('full_name', formData.full_name) === "" &&
     validateField('mobile', formData.mobile) === "" &&
-    validateField('email', formData.email) === "" &&
     formData.consent === true;
 
   const hasPreviouslyVerified = !!initialData?.consentTimestamp;
@@ -97,11 +82,9 @@ export default function SignUpScreen() {
   const handleSendOtp = async () => {
     if (!isFormValid) {
       // Show validation errors if they somehow bypassed disabled state
-      setIsTouched({ full_name: true, mobile: true, email: true, consent: true });
+      setIsTouched({ mobile: true, consent: true });
       setErrors({
-        full_name: validateField('full_name', formData.full_name),
         mobile: validateField('mobile', formData.mobile),
-        email: validateField('email', formData.email),
         consent: validateField('consent', formData.consent)
       });
       return;
@@ -205,9 +188,7 @@ export default function SignUpScreen() {
       setIsLoading(false);
       setIsSuccess(true);
       handleSignUpSuccess({
-        full_name: formData.full_name,
         mobile: formData.mobile,
-        email: formData.email,
         consentTimestamp: new Date().toISOString(),
         privacy_accepted: true,
         medical_disclaimer: true,
@@ -242,9 +223,7 @@ export default function SignUpScreen() {
     setIsLoading(false);
     setIsSuccess(true);
     handleSignUpSuccess({
-      full_name: formData.full_name,
       mobile: formData.mobile,
-      email: formData.email,
       consentTimestamp: new Date().toISOString(),
       privacy_accepted: true,
       medical_disclaimer: true,
@@ -390,20 +369,9 @@ export default function SignUpScreen() {
           <h1 className="text-primary font-bold text-xl tracking-tight">WellnessConnect</h1>
         </div>
 
-        <ProgressBar currentStep={1} totalSteps={4} />
-
-        {/* Form Section */}
-        <div className="flex-1 px-6 pt-2 pb-28 overflow-y-auto space-y-4">
-          <Input
-            type="text"
-            placeholder="Full name"
-            value={formData.full_name}
-            onChange={(e) => handleChange('full_name', e.target.value)}
-            onBlur={() => handleBlur('full_name')}
-            disabled={isOtpSent}
-            error={errors.full_name}
-          />
-
+        {/* Form Section — phone-only entry. OTP authenticates by phone; name and
+            email are captured later in onboarding (new users only). */}
+        <div className="flex-1 px-6 pt-6 pb-28 overflow-y-auto space-y-4">
           <Input
             type="tel"
             placeholder="10-digit mobile number (+91)"
@@ -412,16 +380,6 @@ export default function SignUpScreen() {
             onBlur={() => handleBlur('mobile')}
             disabled={isOtpSent}
             error={errors.mobile}
-          />
-
-          <Input
-            type="email"
-            placeholder="Email address"
-            value={formData.email}
-            onChange={(e) => handleChange('email', e.target.value)}
-            onBlur={() => handleBlur('email')}
-            disabled={isOtpSent}
-            error={errors.email}
           />
 
           {/* Consent Block */}

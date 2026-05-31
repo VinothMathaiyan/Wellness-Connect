@@ -13,6 +13,7 @@ import {
   createAssessmentRequest,
   getProfile,
   getClientProfile,
+  updateProfileBasics,
 } from '../../../services/supabaseService';
 
 const CITIES = [
@@ -70,6 +71,10 @@ export default function HealthProfileScreen() {
     preferred_times: [],
   });
 
+  // Identity fields (full_name, email) live on the profiles row. Shown only in
+  // Edit Profile mode — new users capture these on the role-selection step.
+  const [identity, setIdentity] = useState({ fullName: '', email: '' });
+
   // Pre-populate from DB. Training preferences are always restored (so a
   // returning client mid-onboarding doesn't lose them); in Edit Profile mode we
   // also restore every other field from client_profiles + profiles.city.
@@ -93,6 +98,11 @@ export default function HealthProfileScreen() {
 
       const profile = await getProfile(userId);
       if (cancelled) return;
+
+      setIdentity({
+        fullName: (profile?.full_name as string | null) ?? '',
+        email:    (profile?.email as string | null) ?? '',
+      });
 
       const dob = (cp.dob as string | null) ?? '';
       const [dy, dm, dd] = dob ? dob.split('-') : ['', '', ''];
@@ -312,6 +322,20 @@ export default function HealthProfileScreen() {
 
   const handleContinue = async () => {
     if (!validate()) return;
+
+    // Edit mode only: name/email are editable here. Validate before saving.
+    if (isEditMode) {
+      const nm = identity.fullName.trim();
+      if (nm.length < 2 || !/^[a-zA-Z\s]+$/.test(nm)) {
+        setErrors(prev => ({ ...prev, fullName: 'Please enter your full name' }));
+        return;
+      }
+      if (identity.email.trim() && !/\S+@\S+\.\S+/.test(identity.email.trim())) {
+        setErrors(prev => ({ ...prev, email: 'Please enter a valid email address' }));
+        return;
+      }
+    }
+
     setSaveError(null);
     setIsSaving(true);
 
@@ -356,6 +380,19 @@ export default function HealthProfileScreen() {
         setIsSaving(false);
         setSaveError(`Save failed: ${result.errorMessage ?? 'Unknown error'}`);
         return;
+      }
+
+      // Edit mode: persist name/email to the profiles row.
+      if (isEditMode) {
+        const idRes = await updateProfileBasics(userId, {
+          full_name: identity.fullName.trim(),
+          email: identity.email.trim() || null,
+        });
+        if (!idRes.ok) {
+          setIsSaving(false);
+          setSaveError(`Save failed: ${idRes.error ?? 'Unknown error'}`);
+          return;
+        }
       }
 
       // Auto-create the assessment record so this client surfaces in the
@@ -439,6 +476,36 @@ export default function HealthProfileScreen() {
           {/* SECTION 1: ABOUT YOU */}
           <section className="space-y-6">
             <h2 className="label-caps !text-[11px] text-text-secondary">Section 1 — About You</h2>
+
+            {/* Name + email — editable only in Edit Profile mode. New users
+                capture these on the role-selection step. */}
+            {isEditMode && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-[13px] font-medium text-text-primary">Full name</label>
+                  <Input
+                    type="text"
+                    placeholder="Full name"
+                    value={identity.fullName}
+                    onChange={(e) => setIdentity(prev => ({ ...prev, fullName: e.target.value }))}
+                    error={errors.fullName}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[13px] font-medium text-text-primary">Email</label>
+                    <span className="text-[10px] text-text-secondary font-medium px-2 py-0.5 bg-input-bg rounded-md">Optional</span>
+                  </div>
+                  <Input
+                    type="email"
+                    placeholder="Email address"
+                    value={identity.email}
+                    onChange={(e) => setIdentity(prev => ({ ...prev, email: e.target.value }))}
+                    error={errors.email}
+                  />
+                </div>
+              </>
+            )}
 
             {/* DOB */}
             <div className="space-y-2">
