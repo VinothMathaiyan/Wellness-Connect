@@ -25,11 +25,11 @@ import { useWellness } from '../../../context/WellnessContext';
 import {
   getClientDetail,
   getClientSessions,
-  cancelSession,
+  setSessionStatus,
   updateSessionNote,
   markSessionComplete,
 } from '../../../services/supabaseService';
-import type { TrainerClientSession } from '../../../types';
+import type { TrainerClientSession, TrainerSessionStatus } from '../../../types';
 import ScreenHeader from '@/components/ScreenHeader';
 import { formatDateLong, formatDate } from '@/utils/dateUtils';
 import RiskDotAvatar from '../components/RiskDotAvatar';
@@ -74,6 +74,26 @@ const APPROVAL_BADGE: Record<string, string> = {
   pending_review: 'bg-amber-50 text-amber-700',
   draft:    'bg-gray-100 text-gray-500',
 };
+
+// Terminal "cancelled-like" statuses — all dimmed, note-eligible, reschedulable.
+// (completed is terminal too but rendered as a positive state, not here.)
+const CANCELLED_STATUSES = ['cancelled', 'no_show', 'cancelled_client', 'cancelled_trainer'];
+
+// Past-tense labels shown on a terminal session card.
+const CANCELLED_LABELS: Record<string, string> = {
+  cancelled:         'Cancelled',
+  no_show:           'No-show',
+  cancelled_client:  'Cancelled (client)',
+  cancelled_trainer: 'Cancelled (trainer)',
+};
+
+// The three explicit terminal actions a trainer can take on a scheduled session.
+type TerminalAction = 'no_show' | 'cancelled_client' | 'cancelled_trainer';
+const TERMINAL_ACTIONS: { status: TerminalAction; label: string; color: string }[] = [
+  { status: 'no_show',           label: 'No-show',          color: '#D97706' },
+  { status: 'cancelled_client',  label: 'Cancel (client)',  color: '#DC2626' },
+  { status: 'cancelled_trainer', label: 'Cancel (trainer)', color: '#DC2626' },
+];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -235,6 +255,8 @@ export default function ClientDetailScreen() {
 
   const [sessions, setSessions]         = useState<TrainerClientSession[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  // Which terminal status the trainer is confirming for `confirmingId`.
+  const [pendingStatus, setPendingStatus] = useState<TerminalAction | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancelError, setCancelError]   = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -275,20 +297,34 @@ export default function ClientDetailScreen() {
     getClientSessions(clientId, userId).then(setSessions);
   }, [clientId, userId]);
 
-  const handleCancelConfirm = async (sessionId: string) => {
-    if (!clientId || !userId) return;
-    const trainerId = userId;
-    const cId       = clientId;
+  // Begin/cancel the confirm step for a chosen terminal status.
+  const beginConfirm = (sessionId: string, status: TerminalAction) => {
+    setConfirmingId(sessionId);
+    setPendingStatus(status);
+    setCancelError(null);
+  };
+
+  const dismissConfirm = () => {
+    setConfirmingId(null);
+    setPendingStatus(null);
+    setCancelError(null);
+  };
+
+  // Apply the confirmed terminal status, then optimistically update local state.
+  const handleSetStatus = async (sessionId: string) => {
+    if (!clientId || !userId || !pendingStatus) return;
+    const status = pendingStatus;
     setCancellingId(sessionId);
     setCancelError(null);
     try {
-      await cancelSession(sessionId, trainerId, cId);
+      await setSessionStatus(sessionId, userId, clientId, status);
       setSessions(prev =>
-        prev.map(s => s.id === sessionId ? { ...s, status: 'cancelled' } : s),
+        prev.map(s => s.id === sessionId ? { ...s, status } : s),
       );
       setConfirmingId(null);
+      setPendingStatus(null);
     } catch {
-      setCancelError('Could not cancel. Try again.');
+      setCancelError('Could not update. Try again.');
     } finally {
       setCancellingId(null);
     }
@@ -367,7 +403,7 @@ export default function ClientDetailScreen() {
   const nextUpcomingSession: TrainerClientSession | null = upcomingScheduled[0] ?? null;
   const moreUpcomingCount = Math.max(upcomingScheduled.length - 1, 0);
   const pastCount = sessions.filter(
-    s => s.status === 'completed' || s.status === 'cancelled',
+    s => s.status === 'completed' || CANCELLED_STATUSES.includes(s.status),
   ).length;
 
   const client: ClientView = {
@@ -403,15 +439,15 @@ export default function ClientDetailScreen() {
 
   // ── Inline render helper for a single session card ─────────────────────────
   const renderSession = (session: TrainerClientSession, isLast: boolean) => {
-    const isScheduled   = session.status === 'scheduled';
-    const isCancelled   = session.status === 'cancelled';
-    const isCompleted   = session.status === 'completed';
-    const isConfirming  = confirmingId === session.id;
-    const isCancelling  = cancellingId === session.id;
-    const isCompleting  = completingId === session.id;
-    const isEditingNote = editingNoteSessionId === session.id;
-    const canHaveNote   = isCompleted || isCancelled;
-    const note          = session.trainer_note;
+    const isScheduled    = session.status === 'scheduled';
+    const isCancelledLike = CANCELLED_STATUSES.includes(session.status);
+    const isCompleted    = session.status === 'completed';
+    const isConfirming   = confirmingId === session.id;
+    const isCancelling   = cancellingId === session.id;
+    const isCompleting   = completingId === session.id;
+    const isEditingNote  = editingNoteSessionId === session.id;
+    const canHaveNote    = isCompleted || isCancelledLike;
+    const note           = session.trainer_note;
 
     // ── Time-gate: can only complete on or after session date (from midnight IST) ──
     const sessionDate = new Date(session.scheduled_at);
@@ -428,7 +464,7 @@ export default function ClientDetailScreen() {
         style={{
           padding: '12px 16px',
           borderBottom: isLast ? 'none' : '1px solid #F9FAFB',
-          opacity: isCancelled ? 0.6 : 1,
+          opacity: isCancelledLike ? 0.6 : 1,
         }}
       >
         {/* Row: date/type info + action */}
@@ -464,81 +500,12 @@ export default function ClientDetailScreen() {
             </p>
           </div>
 
-          {/* Right side — status-dependent action */}
-          {isScheduled && (
-            isConfirming ? (
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  onClick={() => handleCancelConfirm(session.id)}
-                  disabled={isCancelling}
-                  style={{
-                    fontSize: 12,
-                    color: '#ffffff',
-                    backgroundColor: '#DC2626',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '4px 10px',
-                    cursor: isCancelling ? 'default' : 'pointer',
-                    opacity: isCancelling ? 0.6 : 1,
-                  }}
-                >
-                  {isCancelling ? '…' : 'Confirm'}
-                </button>
-                <button
-                  onClick={() => { setConfirmingId(null); setCancelError(null); }}
-                  style={{
-                    fontSize: 12,
-                    color: '#6B7280',
-                    backgroundColor: 'transparent',
-                    border: '1px solid #D1D5DB',
-                    borderRadius: '8px',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Keep
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  onClick={() => canComplete && handleMarkComplete(session.id)}
-                  disabled={isCompleting || !canComplete}
-                  style={{
-                    fontSize: 12,
-                    color: canComplete ? '#ffffff' : '#9CA3AF',
-                    backgroundColor: canComplete ? '#10B981' : '#E5E7EB',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '4px 10px',
-                    cursor: (isCompleting || !canComplete) ? 'default' : 'pointer',
-                    opacity: (isCompleting || !canComplete) ? 0.6 : 1,
-                  }}
-                  title={canComplete ? undefined : `Available from ${formatDate(session.scheduled_at)}`}
-                >
-                  {isCompleting ? '…' : 'Complete'}
-                </button>
-                <button
-                  onClick={() => { setConfirmingId(session.id); setCancelError(null); }}
-                  style={{
-                    fontSize: 12,
-                    color: '#DC2626',
-                    border: '1px solid #DC2626',
-                    borderRadius: '8px',
-                    padding: '4px 10px',
-                    backgroundColor: 'transparent',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            )
-          )}
-
-          {isCancelled && (
+          {/* Right side — terminal status label (scheduled actions render below) */}
+          {isCancelledLike && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <span style={{ fontSize: 12, color: '#9CA3AF' }}>Cancelled</span>
+              <span style={{ fontSize: 12, color: '#9CA3AF' }}>
+                {CANCELLED_LABELS[session.status] ?? 'Cancelled'}
+              </span>
               <span
                 onClick={() => navigate(`/trainer/schedule-session/${clientId}`)}
                 style={{
@@ -559,6 +526,88 @@ export default function ClientDetailScreen() {
             </span>
           )}
         </div>
+
+        {/* Scheduled actions — Complete + three explicit terminal reasons.
+            Confirm-before-acting: a reason tap opens a Confirm/Keep prompt. */}
+        {isScheduled && !isConfirming && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10, marginLeft: 23 }}>
+            <button
+              onClick={() => canComplete && handleMarkComplete(session.id)}
+              disabled={isCompleting || !canComplete}
+              style={{
+                fontSize: 12,
+                color: canComplete ? '#ffffff' : '#9CA3AF',
+                backgroundColor: canComplete ? '#10B981' : '#E5E7EB',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '4px 10px',
+                cursor: (isCompleting || !canComplete) ? 'default' : 'pointer',
+                opacity: (isCompleting || !canComplete) ? 0.6 : 1,
+              }}
+              title={canComplete ? undefined : `Available from ${formatDate(session.scheduled_at)}`}
+            >
+              {isCompleting ? '…' : 'Complete'}
+            </button>
+            {TERMINAL_ACTIONS.map(({ status, label, color }) => (
+              <button
+                key={status}
+                onClick={() => beginConfirm(session.id, status)}
+                style={{
+                  fontSize: 12,
+                  color,
+                  border: `1px solid ${color}`,
+                  borderRadius: '8px',
+                  padding: '4px 10px',
+                  backgroundColor: 'transparent',
+                  cursor: 'pointer',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {isScheduled && isConfirming && (
+          <div style={{ marginTop: 10, marginLeft: 23 }}>
+            <p style={{ fontSize: 12, color: '#374151', margin: '0 0 6px' }}>
+              Mark this session as{' '}
+              <strong>{pendingStatus ? CANCELLED_LABELS[pendingStatus] : ''}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => handleSetStatus(session.id)}
+                disabled={isCancelling}
+                style={{
+                  fontSize: 12,
+                  color: '#ffffff',
+                  backgroundColor: '#DC2626',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '4px 10px',
+                  cursor: isCancelling ? 'default' : 'pointer',
+                  opacity: isCancelling ? 0.6 : 1,
+                }}
+              >
+                {isCancelling ? '…' : 'Confirm'}
+              </button>
+              <button
+                onClick={dismissConfirm}
+                style={{
+                  fontSize: 12,
+                  color: '#6B7280',
+                  backgroundColor: 'transparent',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: '8px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                Keep
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Inline errors */}
         {cancelError && isConfirming && (

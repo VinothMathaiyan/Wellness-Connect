@@ -2485,30 +2485,73 @@ export const cancelSession = async (
   }
 };
 
+// Set a terminal session status from the trainer side.
+export const setSessionStatus = async (
+  sessionId: string,
+  trainerId: string,
+  clientId: string,
+  status: 'no_show' | 'cancelled_client' | 'cancelled_trainer',
+): Promise<void> => {
+  const { data, error } = await supabase
+    .from('sessions')
+    .update({ status })
+    .eq('id', sessionId)
+    .eq('trainer_id', trainerId)
+    .eq('client_id', clientId)
+    .select();
+  if (error) { console.error('setSessionStatus:', error); throw error; }
+  if (!data || data.length === 0) throw new Error('Session not found or unauthorized');
+
+  // Notify the client (non-fatal), mirroring cancelSession. Skipped for
+  // cancelled_client — the client initiated it, so no inbound notification.
+  if (status === 'no_show' || status === 'cancelled_trainer') {
+    try {
+      await supabase.from('notifications').insert({
+        type:         status === 'no_show' ? 'session_no_show' : 'session_cancelled',
+        from_user_id: trainerId,
+        to_user_id:   clientId,
+        message:      status === 'no_show'
+          ? 'Your session was marked as a no-show by your trainer'
+          : 'Your session has been cancelled by your trainer',
+        is_read:      false,
+      });
+    } catch {
+      console.warn('setSessionStatus: notification insert failed — non-fatal');
+    }
+  }
+};
+
 
 // ─── Client Adherence (last 30 days vs prior 30 days) ────────────────────────
 
 /**
  * Compute a 0–100 adherence score from a set of session rows.
  *
- * Definitions:
- *   planned   = sessions in window with status in (completed, cancelled, scheduled)
- *               whose date has already passed.
- *   completed = sessions in window with status = 'completed'.
- *   score     = round(completed / planned * 100), capped at 100.
+ * Definition (authoritative): adherence = completed ÷ total sessions the client
+ * was expected to attend that have resolved to attended (completed) or missed
+ * (no_show). Cancellations of any kind (cancelled_client, cancelled_trainer,
+ * and the legacy generic 'cancelled') are excluded entirely — they never count
+ * for or against the client. Instructor-led sessions only (the sessions table);
+ * self-practice is a separate future metric.
  *
- * Returns null when planned === 0 — i.e. no sessions were expected in the
- * window, so adherence is undefined rather than "0%". Never fakes a number.
+ * Returns null when the denominator === 0 — i.e. no sessions have resolved in
+ * the window, so adherence is undefined rather than "0%". Never fakes a number.
  */
-const ADHERENCE_PLANNED_STATUSES = ['completed', 'cancelled', 'scheduled'] as const;
+// Sessions that count toward adherence denominator: a real expectation that
+// has resolved to attended or missed. Cancellations (either party) are
+// excluded entirely.
+// TODO: past-but-still-'scheduled' rows (date passed, trainer never marked them)
+// are deliberately EXCLUDED here (option 1) rather than treated as an implicit
+// miss. Cleaner — avoids guessing intent. Revisit in TEST 19 with real data.
+const ADHERENCE_DENOMINATOR_STATUSES = ['completed', 'no_show'] as const;
 
 function calculateAdherenceScore(rows: { status: string }[]): number | null {
-  const planned = rows.filter(r =>
-    (ADHERENCE_PLANNED_STATUSES as readonly string[]).includes(r.status),
+  const denominator = rows.filter(r =>
+    (ADHERENCE_DENOMINATOR_STATUSES as readonly string[]).includes(r.status),
   ).length;
-  if (planned === 0) return null;
+  if (denominator === 0) return null;            // no resolved sessions → undefined, not 0%
   const completed = rows.filter(r => r.status === 'completed').length;
-  return Math.min(100, Math.round((completed / planned) * 100));
+  return Math.min(100, Math.round((completed / denominator) * 100));
 }
 
 export interface ClientAdherenceResult {

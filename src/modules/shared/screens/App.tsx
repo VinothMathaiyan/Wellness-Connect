@@ -30,7 +30,6 @@ import TrainerPendingScreen from '../../trainer/screens/TrainerPendingScreen';
 import MyClientsScreen from '../../trainer/screens/MyClientsScreen';
 import ClientDetailScreen from '../../trainer/screens/ClientDetailScreen';
 import AcceptDeclineScreen from '../../trainer/screens/AcceptDeclineScreen';
-import SessionLogScreen from '../../trainer/screens/SessionLogScreen';
 import CheckinReviewScreen from '../../trainer/screens/CheckinReviewScreen';
 import ProgramBuilderScreen from '../../trainer/screens/ProgramBuilderScreen';
 import WeeklyPlanScreen from '../../trainer/screens/WeeklyPlanScreen';
@@ -208,7 +207,6 @@ function AppRoutes() {
       <Route path="/trainer/clients" element={<MyClientsScreen />} />
       <Route path="/trainer/client/:clientId" element={<ClientDetailScreen />} />
       <Route path="/trainer/client-request/:clientId" element={<AcceptDeclineScreen />} />
-      <Route path="/trainer/session-log/:clientId" element={<SessionLogScreen />} />
       <Route path="/trainer/checkin-review/:clientId" element={<CheckinReviewScreen />} />
       <Route path="/trainer/program-builder/:clientId" element={<ProgramBuilderScreen />} />
       <Route path="/trainer/weekly-plan/:clientId" element={<WeeklyPlanScreen />} />

@@ -350,12 +350,24 @@ export interface CheckinReviewData {
 }
 
 // ─── Trainer view of a client's session (sessions table — ClientDetailScreen) ─
+// Terminal/active states a session can hold in the public.sessions table.
+// status is free-text in the DB (no CHECK); this union documents the values
+// the trainer app reads/writes. cancelled_client/cancelled_trainer/no_show are
+// distinct terminal outcomes; plain 'cancelled' is the legacy generic value.
+export type TrainerSessionStatus =
+  | 'scheduled'
+  | 'completed'
+  | 'cancelled'
+  | 'no_show'
+  | 'cancelled_client'
+  | 'cancelled_trainer';
+
 export interface TrainerClientSession {
   id: string;
   scheduled_at: string;
   session_type: string;       // 'video' | 'in-person' | 'phone'
   duration_minutes: number;
-  status: string;             // 'scheduled' | 'completed' | 'cancelled'
+  status: TrainerSessionStatus;
   meeting_url: string | null;
   location: string | null;    // physical address for in-person sessions
   trainer_note: string | null;
