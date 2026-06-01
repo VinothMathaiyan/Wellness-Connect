@@ -325,18 +325,22 @@ export default function AcceptDeclineScreen() {
       })
       .catch(err => console.error('Pending load:', err))
       .finally(() => setIsLoadingClient(false));
-
-    // Fetch assessment notes for this client
-    const clientIdForNotes = routeClientId;
-    if (clientIdForNotes) {
-      getClientAssessmentNotes(clientIdForNotes)
-        .then(notes => setAssessmentNotes(notes))
-        .catch(err => console.error('Assessment notes load:', err))
-        .finally(() => setIsAssessmentLoading(false));
-    } else {
-      setIsAssessmentLoading(false);
-    }
   }, [userId, routeClientId]);
+
+  // Fetch assessment notes using the RESOLVED client id, not the raw route param
+  // (the param may be a placeholder/link id that won't match the assessments table).
+  useEffect(() => {
+    const idForNotes = realClientId ?? routeClientId;
+    if (!idForNotes) {
+      setIsAssessmentLoading(false);
+      return;
+    }
+    setIsAssessmentLoading(true);
+    getClientAssessmentNotes(idForNotes)
+      .then(notes => setAssessmentNotes(notes))
+      .catch(err => console.error('Assessment notes load:', err))
+      .finally(() => setIsAssessmentLoading(false));
+  }, [realClientId, routeClientId]);
 
   // Use the resolved real client ID for DB operations, falling back to route param
   const effectiveClientId = realClientId ?? routeClientId;
