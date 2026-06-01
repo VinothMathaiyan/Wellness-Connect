@@ -14,6 +14,7 @@ import {
   getPendingClientRequests,
   getActiveClientCount,
   getClientAssessmentNotes,
+  getClientProfileById,
   type ClientAssessmentNotes,
 } from '../../../services/supabaseService';
 
@@ -308,19 +309,34 @@ export default function AcceptDeclineScreen() {
       getPendingClientRequests(userId),
       getActiveClientCount(userId),
     ])
-      .then(([requests, clientCount]) => {
+      .then(async ([requests, clientCount]) => {
         setActiveClientCount(clientCount);
         const typedRequests = requests as unknown as PendingClientRequest[];
-        // Try exact match first; if the route param is the mock "pending-001",
-        // fall back to the first pending request so the screen works end-to-end.
-        const match = typedRequests.find(request => {
-          const client = firstPendingClient(request.client);
-          return request.client_id === routeClientId || client?.id === routeClientId;
-        }) ?? (typedRequests.length > 0 ? typedRequests[0] : null);
+        // Prefer an exact match on the route param (against client_id or the
+        // resolved client's id). Only fall back to the first pending request
+        // when there's no routeClientId to match against.
+        const exactMatch = routeClientId
+          ? typedRequests.find(request => {
+              const client = firstPendingClient(request.client);
+              return request.client_id === routeClientId || client?.id === routeClientId;
+            })
+          : undefined;
+        const match =
+          exactMatch ?? (!routeClientId && typedRequests.length > 0 ? typedRequests[0] : null);
         if (match) {
           const client = firstPendingClient(match.client);
           setPendingClient(client);
           setRealClientId(match.client_id ?? client?.id ?? null);
+          return;
+        }
+        // No match in the pending list — if we have a route param, fetch that
+        // client's profile directly so we still show real identity, not mock.
+        if (routeClientId) {
+          const profile = await getClientProfileById(routeClientId);
+          if (profile) {
+            setPendingClient(profile);
+            setRealClientId(profile.id);
+          }
         }
       })
       .catch(err => console.error('Pending load:', err))
@@ -367,15 +383,20 @@ export default function AcceptDeclineScreen() {
     }
   };
 
-  // Build display object — merge real data over mock fallback
+  // Build display object from the REAL client when one is resolved. Core
+  // identity (name, city, phone, goals) must never fall back to mock data.
+  // profiles has no health-conditions column, so healthConditions stays empty
+  // and goals maps from specialties — both expected, not a bug. The mock object
+  // is only used wholesale when no client id resolved at all (dev safety).
   const display: PendingClient = pendingClient ? {
-    ...mockPendingClient,
-    id:          pendingClient.id           ?? mockPendingClient.id,
-    name:        pendingClient.full_name    ?? mockPendingClient.name,
-    initials:    getInitials(pendingClient.full_name ?? '') || mockPendingClient.initials,
-    city:        pendingClient.city         ?? mockPendingClient.city,
-    phoneNumber: pendingClient.phone_number ?? '',
-    goals:       pendingClient.specialties  ?? mockPendingClient.goals,
+    ...mockPendingClient,            // non-identity placeholders only (fitnessLevel, max)
+    id:               pendingClient.id,
+    name:             pendingClient.full_name ?? 'Unknown Client',
+    initials:         getInitials(pendingClient.full_name ?? '') || '?',
+    city:             pendingClient.city ?? '',
+    phoneNumber:      pendingClient.phone_number ?? '',
+    healthConditions: [],
+    goals:            pendingClient.specialties ?? [],
   } : mockPendingClient;
 
   const atCapacity = false; // no defined max — never block accept

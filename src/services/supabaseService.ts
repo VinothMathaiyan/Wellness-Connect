@@ -2118,6 +2118,35 @@ export async function getClientProfile(
   return data;
 }
 
+export interface ClientProfileById {
+  id: string;
+  full_name: string | null;
+  city: string | null;
+  phone_number: string | null;
+  specialties: string[] | null;
+  photo_url: string | null;
+}
+
+/**
+ * Fetch a single client's core profile fields by their profiles.id.
+ * Used by AcceptDeclineScreen when reached via a direct route param that
+ * isn't present in the trainer's pending-requests list.
+ */
+export async function getClientProfileById(
+  clientId: string,
+): Promise<ClientProfileById | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, city, phone_number, specialties, photo_url')
+    .eq('id', clientId)
+    .maybeSingle();
+  if (error) {
+    console.error('getClientProfileById:', error);
+    return null;
+  }
+  return data as ClientProfileById | null;
+}
+
 /**
  * Fetch all approved+active trainer profiles for the client TrainersScreen.
  * D6: pending/rejected trainers are excluded via the approved_trainers view.

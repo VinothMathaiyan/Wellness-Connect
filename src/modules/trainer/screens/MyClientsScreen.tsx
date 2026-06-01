@@ -369,7 +369,18 @@ export default function MyClientsScreen() {
                         animate={{ opacity: 1, y: 0 }}
                         className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
                       >
-                        <div className="flex items-stretch">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => navigate(`/trainer/client-request/${req.client_id}`)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              navigate(`/trainer/client-request/${req.client_id}`);
+                            }
+                          }}
+                          className="flex items-stretch cursor-pointer"
+                        >
                           <div
                             className="w-1.5 shrink-0"
                             style={{ backgroundColor: '#f59e0b' }}
@@ -392,6 +403,7 @@ export default function MyClientsScreen() {
                                 PENDING
                               </span>
                             </div>
+                            <ChevronRight size={18} className="text-gray-300 shrink-0 ml-1" />
                           </div>
                         </div>
 
