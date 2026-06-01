@@ -294,7 +294,10 @@ export default function AcceptDeclineScreen() {
 
   const [screenState, setScreenState] = useState<ScreenState>('default');
   const [pendingClient, setPendingClient] = useState<PendingClientProfile | null>(null);
-  const [isLoadingClient, setIsLoadingClient] = useState(true);
+  // True until the pending-request resolution effect (list match + direct
+  // getClientProfileById fallback) completes. Gates the render so the mock
+  // dev placeholder never flashes before the real client resolves.
+  const [isResolvingClient, setIsResolvingClient] = useState(true);
   // The real client ID resolved from the pending request (may differ from mock route param)
   const [realClientId, setRealClientId] = useState<string | null>(null);
   // Real active client count fetched from DB
@@ -340,7 +343,7 @@ export default function AcceptDeclineScreen() {
         }
       })
       .catch(err => console.error('Pending load:', err))
-      .finally(() => setIsLoadingClient(false));
+      .finally(() => setIsResolvingClient(false));
   }, [userId, routeClientId]);
 
   // Fetch assessment notes using the RESOLVED client id, not the raw route param
@@ -399,6 +402,12 @@ export default function AcceptDeclineScreen() {
     goals:            pendingClient.specialties ?? [],
   } : mockPendingClient;
 
+  // Show the profile when a real client resolved, OR — as a dev last resort —
+  // when no client id was available at all (then `display` is the mock). If a
+  // routeClientId was present but resolved to nothing, show "Client not found".
+  const noIdAvailable = !routeClientId && !realClientId;
+  const showClient = pendingClient !== null || noIdAvailable;
+
   const atCapacity = false; // no defined max — never block accept
 
   return (
@@ -425,21 +434,50 @@ export default function AcceptDeclineScreen() {
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-8">
-          <ClientProfilePreview client={display} />
-          <AssessmentSummary notes={assessmentNotes} isLoading={isAssessmentLoading} />
-          <ClientLoadIndicator count={activeClientCount} />
+          {isResolvingClient ? (
+            /* Loading skeleton — matches the block style used in MyClientsScreen */
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <div
+                  key={i}
+                  style={{
+                    backgroundColor: '#e5e7eb',
+                    borderRadius: '16px',
+                    height: i === 1 ? '128px' : '88px',
+                    animation: 'pulse 2s infinite',
+                  }}
+                />
+              ))}
+            </div>
+          ) : !showClient ? (
+            /* Resolution finished but no real client for this route param —
+               graceful empty state instead of the mock dev placeholder. */
+            <div className="flex flex-col items-center justify-center text-center py-16">
+              <Users size={40} className="text-gray-300 mb-3" />
+              <p className="text-base font-bold text-gray-900">Client not found</p>
+              <p className="text-sm text-gray-500 mt-1">
+                This request may have been withdrawn or already actioned.
+              </p>
+            </div>
+          ) : (
+            <>
+              <ClientProfilePreview client={display} />
+              <AssessmentSummary notes={assessmentNotes} isLoading={isAssessmentLoading} />
+              <ClientLoadIndicator count={activeClientCount} />
 
-          {/* Action Zone */}
-          <div className="mt-2">
-            <ActionZone
-              atCapacity={atCapacity}
-              screenState={screenState}
-              onAccept={handleAccept}
-              onStartDecline={() => setScreenState('decline-form')}
-              onConfirmDecline={handleDecline}
-              onCancelDecline={() => setScreenState('default')}
-            />
-          </div>
+              {/* Action Zone */}
+              <div className="mt-2">
+                <ActionZone
+                  atCapacity={atCapacity}
+                  screenState={screenState}
+                  onAccept={handleAccept}
+                  onStartDecline={() => setScreenState('decline-form')}
+                  onConfirmDecline={handleDecline}
+                  onCancelDecline={() => setScreenState('default')}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
