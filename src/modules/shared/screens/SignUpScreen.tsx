@@ -415,10 +415,16 @@ export default function SignUpScreen() {
           <div className="flex items-stretch gap-2">
             {/* Country chip (+91) */}
             <div className="flex items-center gap-1.5 h-14 px-3.5 rounded-[14px] bg-input-bg border border-border-light text-[16px] font-semibold text-text-primary select-none">
-              <span className="w-[22px] h-4 rounded-[3px] overflow-hidden flex flex-col shadow-[0_0_0_1px_rgba(0,0,0,0.06)]" aria-hidden>
-                <i className="block h-1/3" style={{ background: '#FF9933' }} />
-                <i className="block h-1/3 bg-white" />
-                <i className="block h-1/3" style={{ background: '#138808' }} />
+              <span
+                className="w-[22px] h-4 rounded-[3px] overflow-hidden shadow-[0_0_0_1px_rgba(0,0,0,0.06)]"
+                aria-hidden
+                style={{ display: 'flex', flexDirection: 'column' }}
+              >
+                <i style={{ display: 'block', width: '100%', height: '33.33%', background: '#FF9933' }} />
+                <i style={{ display: 'flex', width: '100%', height: '33.34%', background: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                  <i style={{ display: 'block', width: '5px', height: '5px', borderRadius: '9999px', border: '1px solid #0A3A8B', boxSizing: 'border-box' }} />
+                </i>
+                <i style={{ display: 'block', width: '100%', height: '33.33%', background: '#138808' }} />
               </span>
               +91
             </div>
