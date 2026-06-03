@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { ChevronLeft, Share2 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
-import { getWeeklyLogs, getWeeklyReflection } from '../../../services/supabaseService';
+import { getWeeklyLogs, getWeeklyReflection, saveWeeklyReflection } from '../../../services/supabaseService';
 import type { DailyLog } from '../../../types';
 import { formatDate } from '@/utils/dateUtils';
 import { mondayOfWeek, dayIndexFromMonday } from '@/utils/date';
@@ -115,6 +115,7 @@ export default function WeeklyReportScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isReflectionLoading, setIsReflectionLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   // ── Fetch real weekly logs using userId from context ──────────────────────
   useEffect(() => {
@@ -484,13 +485,26 @@ export default function WeeklyReportScreen() {
             {/* STICKY BOTTOM BUTTON */}
             <div className="absolute bottom-0 left-0 right-0 p-3 px-4 bg-white shadow-[0_-2px_8px_rgba(0,0,0,0.06)] z-[100]">
                 <button
-                    onClick={() => {
-                        handleWeeklyReportSave(reflection);
+                    disabled={isSaving}
+                    onClick={async () => {
+                        if (isSaving) return;
+                        if (userId && reflection.trim().length > 0) {
+                            setIsSaving(true);
+                            try {
+                                await saveWeeklyReflection(userId, mondayOfWeek(), reflection.trim());
+                            } catch (err) {
+                                console.error('WeeklyReportScreen save:', err);
+                                setIsSaving(false);
+                                return; // stay on screen so the user doesn't lose their text
+                            }
+                            setIsSaving(false);
+                        }
+                        handleWeeklyReportSave(reflection); // keep existing context behaviour
                         navigate('/client/dashboard');
                     }}
-                    className="w-full h-[48px] bg-[#1D9E75] text-white rounded-[10px] text-[14px] font-bold flex items-center justify-center active:scale-[0.98] transition-transform shadow-sm"
+                    className="w-full h-[48px] bg-[#1D9E75] text-white rounded-[10px] text-[14px] font-bold flex items-center justify-center active:scale-[0.98] transition-transform shadow-sm disabled:opacity-60"
                 >
-                    {reflection.length > 0 ? "Save reflection & close" : "Close report"}
+                    {isSaving ? 'Saving…' : reflection.length > 0 ? "Save reflection & close" : "Close report"}
                 </button>
             </div>
 
