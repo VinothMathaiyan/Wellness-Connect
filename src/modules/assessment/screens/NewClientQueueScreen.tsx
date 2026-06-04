@@ -42,16 +42,19 @@ export default function NewClientQueueScreen() {
         const queueRes = await getNewClientQueue(userId!);
         if (queueRes.error) throw new Error(queueRes.error);
         
-        // Fetch completed — shared across the assessment team (any assessor)
+        // Fetch completed — shared across the assessment team (any assessor).
+        // Inner-join the client profile + role filter so only role='client'
+        // assessments show, consistent with the live queue.
         const { data: completedData, error: completedError } = await supabase
           .from('assessments')
           .select(`
             id, client_id, assessor_id, status, assessment_date,
             fitness_level, health_notes, trainer_recommendation,
             recommended_trainer_id, clearance_status, created_at,
-            client:profiles!assessments_client_id_fkey ( full_name )
+            client:profiles!assessments_client_id_fkey!inner ( full_name, role )
           `)
           .eq('status', 'completed')
+          .eq('client.role', 'client')
           .order('created_at', { ascending: false });
 
         if (completedError) throw new Error(completedError.message);
@@ -60,12 +63,19 @@ export default function NewClientQueueScreen() {
 
         setQueue(queueRes.data);
 
-        const mappedCompleted = (completedData || []).map((row: any) => ({
-          ...row,
-          client_name: Array.isArray(row.client)
-            ? (row.client[0]?.full_name ?? 'Unknown')
-            : (row.client?.full_name ?? 'Unknown'),
-        }));
+        const mappedCompleted = (completedData || [])
+          // Belt-and-suspenders: keep only client-role rows even if the
+          // embedded role filter is ever relaxed.
+          .filter((row: any) => {
+            const client = Array.isArray(row.client) ? row.client[0] : row.client;
+            return client?.role === 'client';
+          })
+          .map((row: any) => ({
+            ...row,
+            client_name: Array.isArray(row.client)
+              ? (row.client[0]?.full_name ?? 'Unknown')
+              : (row.client?.full_name ?? 'Unknown'),
+          }));
 
         setCompleted(mappedCompleted as Assessment[]);
 

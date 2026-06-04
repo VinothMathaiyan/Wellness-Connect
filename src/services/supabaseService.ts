@@ -4812,15 +4812,18 @@ export async function getNewClientQueue(
   // Shared queue: assessments are auto-created (unassigned) when a client saves
   // their health profile, so we show every pending / in-progress assessment to
   // the assessment team rather than filtering by a single assessor_id.
+  // Defense-in-depth: inner-join the client profile and restrict to role
+  // 'client' so a trainer's stray assessment stub never appears in the queue.
   const { data, error } = await supabase
     .from('assessments')
     .select(`
       id, client_id, assessor_id, status, assessment_date,
       fitness_level, health_notes, trainer_recommendation,
       recommended_trainer_id, clearance_status, created_at,
-      client:profiles!assessments_client_id_fkey ( full_name )
+      client:profiles!assessments_client_id_fkey!inner ( full_name, role )
     `)
     .in('status', ['pending', 'in_progress'])
+    .eq('client.role', 'client')
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -4829,17 +4832,27 @@ export async function getNewClientQueue(
   }
 
   type AssessmentRow = Omit<Assessment, 'client_name'> & {
-    client: { full_name: string } | Array<{ full_name: string }> | null;
+    client:
+      | { full_name: string; role: string }
+      | Array<{ full_name: string; role: string }>
+      | null;
   };
 
   const rows = (data ?? []) as unknown as AssessmentRow[];
   return {
-    data: rows.map(row => ({
-      ...row,
-      client_name: Array.isArray(row.client)
-        ? (row.client[0]?.full_name ?? 'Unknown')
-        : (row.client?.full_name ?? 'Unknown'),
-    })),
+    data: rows
+      // Belt-and-suspenders: keep only client-role rows even if the embedded
+      // filter is ever relaxed.
+      .filter(row => {
+        const client = Array.isArray(row.client) ? row.client[0] : row.client;
+        return client?.role === 'client';
+      })
+      .map(row => ({
+        ...row,
+        client_name: Array.isArray(row.client)
+          ? (row.client[0]?.full_name ?? 'Unknown')
+          : (row.client?.full_name ?? 'Unknown'),
+      })),
   };
 }
 
@@ -4907,6 +4920,19 @@ export async function submitAssessment(
 export async function createAssessmentRequest(
   clientId: string,
 ): Promise<boolean> {
+  // Role gate (authoritative): only client-role users get an assessment stub.
+  // A trainer who passes through the client health-profile screen (e.g. picked
+  // 'client' at role-selection, then switched to 'trainer') must NOT create an
+  // orphaned assessment row. Treat a non-client as a no-op success so the
+  // onboarding save flow is unaffected.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', clientId)
+    .maybeSingle();
+
+  if (!profile || profile.role !== 'client') return true; // no-op success
+
   const { data: existing } = await supabase
     .from('assessments')
     .select('id')
@@ -5633,10 +5659,16 @@ export async function getAssessorDashboardStats(assessorId: string): Promise<{
   const [newClientsRes, escalationsRes, approvalsRes, dueReviewsRes] =
     await Promise.all([
       // Shared queue count — matches getNewClientQueue (unassigned + assigned).
+      // Inner-join the client profile + role filter so a trainer's stray stub
+      // is excluded from the count, consistent with the queue.
       supabase
         .from('assessments')
-        .select('id', { count: 'exact', head: true })
-        .in('status', ['pending', 'in_progress']),
+        .select('id, client:profiles!assessments_client_id_fkey!inner ( role )', {
+          count: 'exact',
+          head: true,
+        })
+        .in('status', ['pending', 'in_progress'])
+        .eq('client.role', 'client'),
       supabase
         .from('escalations')
         .select('id', { count: 'exact', head: true })
