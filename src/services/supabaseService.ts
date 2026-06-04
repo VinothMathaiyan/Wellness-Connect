@@ -3930,7 +3930,7 @@ export async function getSessionExercises(
       .from('workout_plans')
       .select('id, template_id')
       .eq('client_id', clientId)
-      .in('status', ['active', 'approved', 'pending_review'])
+      .in('status', ['active', 'approved'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -3991,7 +3991,7 @@ export async function getActiveWorkoutPlanId(
       .from('workout_plans')
       .select('id')
       .eq('client_id', clientId)
-      .in('status', ['active', 'approved', 'pending_review'])
+      .in('status', ['active', 'approved'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();

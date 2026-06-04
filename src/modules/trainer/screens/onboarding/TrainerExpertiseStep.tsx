@@ -464,6 +464,9 @@ export default function TrainerExpertiseStep({
               />
             )}
           </button>
+          <p className="text-[11px] text-text-secondary">
+            Tap the pin to detect your city, or tap the field to choose from the list.
+          </p>
           {errors.city && (
             <p className="text-red text-[11px]">{errors.city}</p>
           )}

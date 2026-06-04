@@ -734,6 +734,9 @@ export default function HealthProfileScreen() {
                   <MapPin size={18} className="text-text-secondary" />
                 )}
               </button>
+              <p className="text-[11px] text-text-secondary mt-1">
+                Tap the pin to detect your city, or tap the field to choose from the list.
+              </p>
               {errors.city && <p className="text-red-500 text-[11px] mt-1">{errors.city}</p>}
               {cityDetectStatus === 'loading' && (
                 <p className="text-[11px] text-text-secondary mt-1">Detecting your city…</p>
