@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, MapPin, Search, Check } from 'lucide-react';
+import { ChevronLeft, MapPin, Search, Check, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { StepProps } from './TrainerOnboardingFlow';
 import { validateStep2 } from '../../hooks/useTrainerOnboarding';
+import { useLocation, locationErrorMessage } from '../../../../hooks/useLocation';
 import OnboardingLayout from '../../../client/components/OnboardingLayout';
 import Button from '../../../../components/Button';
 import Input from '../../../../components/Input';
@@ -62,6 +63,16 @@ export default function TrainerExpertiseStep({
   const [citySearch, setCitySearch] = useState('');
   const [isCustomCity, setIsCustomCity] = useState(false);
 
+  // Device-location auto-fill for the City field (one-tap, additive).
+  const {
+    detect: detectCity,
+    status: cityDetectStatus,
+    error: cityDetectError,
+    isSupported: isLocationSupported,
+  } = useLocation();
+  // Tracks manual edits so auto-fill never overwrites a value the user chose.
+  const [userEditedCity, setUserEditedCity] = useState(false);
+
   const filteredCities = useMemo(
     () => CITIES.filter(c => c.toLowerCase().includes(citySearch.toLowerCase())),
     [citySearch]
@@ -83,6 +94,30 @@ export default function TrainerExpertiseStep({
     setIsCustomCity(false);
     setCitySearch('');
     clearFieldError('city');
+  };
+
+  // Route a device-resolved city through the SAME selection paths as manual
+  // entry so required-field validation clears correctly: a canonical CITIES
+  // match reuses selectCity(); anything else uses the existing custom
+  // (isCustomCity) free-text path. Never overwrites a user-entered value.
+  const applyDetectedCity = (detectedCity: string) => {
+    const trimmed = detectedCity.trim();
+    if (!trimmed) return;
+    if (data.city.trim() && userEditedCity) return;
+    const match = CITIES.find(c => c.toLowerCase() === trimmed.toLowerCase());
+    if (match) {
+      selectCity(match);
+    } else {
+      setIsCustomCity(true);
+      setCitySearch('');
+      updateData({ city: trimmed });
+      clearFieldError('city');
+    }
+  };
+
+  const handleDetectCity = async () => {
+    const resolved = await detectCity();
+    if (resolved) applyDetectedCity(resolved.city);
   };
 
   const showOtherLanguageInput = data.languages.includes('Other');
@@ -402,13 +437,41 @@ export default function TrainerExpertiseStep({
             >
               {data.city || 'Select your city or location'}
             </span>
-            <MapPin
-              size={18}
-              className={errors.city ? 'text-red' : 'text-text-secondary'}
-            />
+            {/* Nested trigger: auto-fill from device location without opening
+                the city sheet. Hidden when geolocation is unsupported. The
+                MapPin keeps its red-on-error colour for the required field. */}
+            {isLocationSupported ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); void handleDetectCity(); }}
+                disabled={cityDetectStatus === 'loading'}
+                aria-label="Use my current location"
+                className="p-1 -m-1 disabled:opacity-60"
+              >
+                {cityDetectStatus === 'loading' ? (
+                  <Loader2 size={18} className="animate-spin text-primary" />
+                ) : (
+                  <MapPin
+                    size={18}
+                    className={errors.city ? 'text-red' : 'text-text-secondary'}
+                  />
+                )}
+              </button>
+            ) : (
+              <MapPin
+                size={18}
+                className={errors.city ? 'text-red' : 'text-text-secondary'}
+              />
+            )}
           </button>
           {errors.city && (
             <p className="text-red text-[11px]">{errors.city}</p>
+          )}
+          {cityDetectStatus === 'loading' && (
+            <p className="text-[11px] text-text-secondary">Detecting your city…</p>
+          )}
+          {cityDetectStatus === 'error' && locationErrorMessage(cityDetectError) && (
+            <p className="text-[11px] text-text-secondary">{locationErrorMessage(cityDetectError)}</p>
           )}
         </div>
       </div>
@@ -454,7 +517,7 @@ export default function TrainerExpertiseStep({
                 {filteredCities.map(city => (
                   <button
                     key={city}
-                    onClick={() => selectCity(city)}
+                    onClick={() => { setUserEditedCity(true); selectCity(city); }}
                     className="w-full flex items-center justify-between p-4 hover:bg-[#F9FAFB] rounded-xl transition-colors"
                   >
                     <span
@@ -510,7 +573,7 @@ export default function TrainerExpertiseStep({
                           placeholder="e.g. Remote, Dubai, Singapore"
                           autoFocus
                           value={data.city}
-                          onChange={e => updateData({ city: e.target.value })}
+                          onChange={e => { setUserEditedCity(true); updateData({ city: e.target.value }); }}
                         />
                       </div>
                       <Button

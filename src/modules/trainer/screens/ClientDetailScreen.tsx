@@ -458,6 +458,11 @@ export default function ClientDetailScreen() {
     todayStart.setHours(0, 0, 0, 0);
     const canComplete = todayStart >= sessionDay;
 
+    // ── Plan-gate: completing inserts a workout_log with a NOT NULL plan_id, so
+    //    an active plan is required even once the date gate passes. ──
+    const hasActivePlan = !!clientData?.currentPlan?.id;
+    const completable = canComplete && hasActivePlan;
+
     return (
       <div
         key={session.id}
@@ -532,22 +537,34 @@ export default function ClientDetailScreen() {
         {isScheduled && !isConfirming && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10, marginLeft: 23 }}>
             <button
-              onClick={() => canComplete && handleMarkComplete(session.id)}
-              disabled={isCompleting || !canComplete}
+              onClick={() => completable && handleMarkComplete(session.id)}
+              disabled={isCompleting || !completable}
               style={{
                 fontSize: 12,
-                color: canComplete ? '#ffffff' : '#9CA3AF',
-                backgroundColor: canComplete ? '#10B981' : '#E5E7EB',
+                color: completable ? '#ffffff' : '#9CA3AF',
+                backgroundColor: completable ? '#10B981' : '#E5E7EB',
                 border: 'none',
                 borderRadius: '8px',
                 padding: '4px 10px',
-                cursor: (isCompleting || !canComplete) ? 'default' : 'pointer',
-                opacity: (isCompleting || !canComplete) ? 0.6 : 1,
+                cursor: (isCompleting || !completable) ? 'default' : 'pointer',
+                opacity: (isCompleting || !completable) ? 0.6 : 1,
               }}
-              title={canComplete ? undefined : `Available from ${formatDate(session.scheduled_at)}`}
+              title={
+                !canComplete
+                  ? `Available from ${formatDate(session.scheduled_at)}`
+                  : !hasActivePlan
+                    ? 'Build a program to enable'
+                    : undefined
+              }
             >
               {isCompleting ? '…' : 'Complete'}
             </button>
+            {/* Date gate passed but no active plan — explain why Complete is disabled */}
+            {canComplete && !hasActivePlan && (
+              <span style={{ fontSize: 11, color: '#9CA3AF', alignSelf: 'center' }}>
+                Build a program to enable
+              </span>
+            )}
             {TERMINAL_ACTIONS.map(({ status, label, color }) => (
               <button
                 key={status}

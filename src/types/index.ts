@@ -385,3 +385,26 @@ export interface TrainingProgram {
     specialisations: string[];
   };
 }
+
+// ─── Device Location (onboarding city auto-fill) ──────────────────────────────
+// Coordinates are transient: captured only on an explicit tap, used solely to
+// resolve a city name, and never persisted. Only the resolved `city` string
+// flows into the existing profiles.city column.
+export interface LocationCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
+export interface ResolvedLocation {
+  city: string;
+  state?: string;
+  country?: string;
+}
+
+export type LocationErrorKind =
+  | 'unsupported'
+  | 'permission_denied'
+  | 'timeout'
+  | 'position_unavailable'
+  | 'geocode_failed'
+  | 'empty';

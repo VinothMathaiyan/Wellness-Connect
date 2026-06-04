@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Search, Check, AlertCircle, MapPin } from 'lucide-react';
+import { ChevronLeft, Search, Check, AlertCircle, MapPin, Loader2 } from 'lucide-react';
 import type { TrainingPreferences } from '../../../types';
+import { useLocation as useDeviceLocation, locationErrorMessage } from '../../../hooks/useLocation';
 import Button from '../../../components/Button';
 import Input from '../../../components/Input';
 import ProgressBar from '../../../components/ProgressBar';
@@ -158,6 +159,17 @@ export default function HealthProfileScreen() {
   const [showConfirmBack, setShowConfirmBack] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Device-location auto-fill for the City field (one-tap, additive).
+  const {
+    detect: detectCity,
+    status: cityDetectStatus,
+    error: cityDetectError,
+    isSupported: isLocationSupported,
+  } = useDeviceLocation();
+  // Tracks whether the user has manually picked/typed a city this session, so
+  // auto-fill never overwrites a value they chose themselves.
+  const [userEditedCity, setUserEditedCity] = useState(false);
 
   // Computed DOB string
   const dobString = useMemo(() => {
@@ -421,6 +433,29 @@ export default function HealthProfileScreen() {
     setCitySearch('');
   };
 
+  // Route a device-resolved city through the SAME selection paths as manual
+  // entry: a canonical CITIES match reuses selectCity(); anything else uses the
+  // existing custom (isCustomCity) free-text path. Never overwrites a value the
+  // user picked or typed themselves.
+  const applyDetectedCity = (detectedCity: string) => {
+    const trimmed = detectedCity.trim();
+    if (!trimmed) return;
+    if (formData.city && userEditedCity) return;
+    const match = CITIES.find(c => c.toLowerCase() === trimmed.toLowerCase());
+    if (match) {
+      selectCity(match);
+    } else {
+      setIsCustomCity(true);
+      setCitySearch('');
+      setFormData(prev => ({ ...prev, city: trimmed }));
+    }
+  };
+
+  const handleDetectCity = async () => {
+    const resolved = await detectCity();
+    if (resolved) applyDetectedCity(resolved.city);
+  };
+
   return (
     <OnboardingLayout
       header={
@@ -680,9 +715,32 @@ export default function HealthProfileScreen() {
                 <span className={`text-[14px] ${formData.city ? 'text-text-primary' : 'text-text-secondary opacity-60'}`}>
                   {formData.city || "Select your city"}
                 </span>
-                <MapPin size={18} className="text-text-secondary" />
+                {/* Nested trigger: auto-fill from device location without
+                    opening the city sheet. Hidden when geolocation is
+                    unsupported (the field still opens the sheet to pick/type). */}
+                {isLocationSupported ? (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleDetectCity(); }}
+                    disabled={cityDetectStatus === 'loading'}
+                    aria-label="Use my current location"
+                    className="p-1 -m-1 text-text-secondary disabled:opacity-60"
+                  >
+                    {cityDetectStatus === 'loading'
+                      ? <Loader2 size={18} className="animate-spin text-primary" />
+                      : <MapPin size={18} />}
+                  </button>
+                ) : (
+                  <MapPin size={18} className="text-text-secondary" />
+                )}
               </button>
               {errors.city && <p className="text-red-500 text-[11px] mt-1">{errors.city}</p>}
+              {cityDetectStatus === 'loading' && (
+                <p className="text-[11px] text-text-secondary mt-1">Detecting your city…</p>
+              )}
+              {cityDetectStatus === 'error' && locationErrorMessage(cityDetectError) && (
+                <p className="text-[11px] text-text-secondary mt-1">{locationErrorMessage(cityDetectError)}</p>
+              )}
             </div>
           </section>
 
@@ -850,7 +908,7 @@ export default function HealthProfileScreen() {
                   {filteredCities.map(city => (
                     <button
                       key={city}
-                      onClick={() => selectCity(city)}
+                      onClick={() => { setUserEditedCity(true); selectCity(city); }}
                       className="w-full flex items-center justify-between p-4 hover:bg-[#F9FAFB] rounded-xl transition-colors"
                     >
                       <span className={`text-sm ${formData.city === city ? 'text-primary font-bold' : 'text-text-primary'}`}>{city}</span>
@@ -895,7 +953,7 @@ export default function HealthProfileScreen() {
                             placeholder="e.g. Pune"
                             autoFocus
                             value={formData.city}
-                            onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                            onChange={(e) => { setUserEditedCity(true); setFormData(prev => ({ ...prev, city: e.target.value })); }}
                           />
                         </div>
                         <Button
