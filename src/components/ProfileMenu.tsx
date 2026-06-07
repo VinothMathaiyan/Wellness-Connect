@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { useWellness } from '@/context/WellnessContext';
 import { supabase } from '@/lib/supabaseClient';
 import UserAvatar from './UserAvatar';
+import WhatsAppSupportButton from '@/modules/shared/components/WhatsAppSupportButton';
+import { SUPPORT_WHATSAPP_NUMBER } from '@/config/support';
 
 /**
  * ProfileMenu — shared avatar + logout dropdown.
@@ -138,6 +140,19 @@ export default function ProfileMenu({
                     <UserCog size={15} style={{ color: '#374151', flexShrink: 0 }} />
                     <span style={{ color: '#374151', fontSize: 14, fontWeight: 600 }}>Edit Profile</span>
                   </button>
+                  <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '4px 0' }} />
+                </>
+              )}
+
+              {/* Contact Support — only shown (with its divider) when a support
+                  number is configured, so an unset env var leaves no orphan row. */}
+              {SUPPORT_WHATSAPP_NUMBER && (
+                <>
+                  <WhatsAppSupportButton
+                    userName={baseName}
+                    role={userRole}
+                    onClick={() => setOpen(false)}
+                  />
                   <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '4px 0' }} />
                 </>
               )}
