@@ -5314,6 +5314,79 @@ export async function getAssessorId(): Promise<string | null> {
   return data?.id ?? null;
 }
 
+// ── Messaging recipient pickers (Step 3 — unified "New message") ───────────────
+// Scoped recipient lists for the role-based "New message" pickers. All sends
+// still flow through sendAssessmentMessage into assessment_messages (the unified
+// backbone). RLS is OFF on assessment_messages, so these scoped queries are the
+// ONLY access control for who a client/trainer may start a conversation with —
+// scoping correctness here is critical.
+
+export interface MessageRecipientOption {
+  id: string;
+  full_name: string;
+  city: string | null;
+}
+
+/**
+ * Client picker — a client's ACTIVE-linked trainer(s) only.
+ * Scoped to trainer_client_links.status = 'active'. Unlinked / pending trainers
+ * are intentionally excluded (trainer discovery stays in the trainer-detail
+ * modal). Returns [] on error — caller handles the empty state.
+ */
+export async function getClientTrainers(clientId: string): Promise<MessageRecipientOption[]> {
+  const { data, error } = await supabase
+    .from('trainer_client_links')
+    .select(`
+      status,
+      trainer:profiles!trainer_client_links_trainer_id_fkey ( id, full_name, city )
+    `)
+    .eq('client_id', clientId)
+    .eq('status', 'active');
+
+  if (error) { console.error('getClientTrainers:', error); return []; }
+
+  const rows = (data ?? []) as unknown as Array<{
+    status: string;
+    trainer: { id: string; full_name: string; city: string | null } | null;
+  }>;
+
+  return rows
+    .map(r => r.trainer)
+    .filter((t): t is { id: string; full_name: string; city: string | null } => !!t)
+    .map(t => ({ id: t.id, full_name: t.full_name, city: t.city }));
+}
+
+/**
+ * Assessor picker — all trainers. The assessor scope is open by design, so this
+ * returns every trainer profile (not filtered to approved/active). Sorted by
+ * name. Returns [] on error — caller handles the empty state.
+ */
+export async function getAllTrainers(): Promise<MessageRecipientOption[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, city')
+    .eq('role', 'trainer')
+    .order('full_name', { ascending: true });
+
+  if (error) { console.error('getAllTrainers:', error); return []; }
+  return (data ?? []) as MessageRecipientOption[];
+}
+
+/**
+ * Assessor picker — all clients. Open scope by design. Sorted by name.
+ * Returns [] on error — caller handles the empty state.
+ */
+export async function getAllClients(): Promise<MessageRecipientOption[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, city')
+    .eq('role', 'client')
+    .order('full_name', { ascending: true });
+
+  if (error) { console.error('getAllClients:', error); return []; }
+  return (data ?? []) as MessageRecipientOption[];
+}
+
 // ─── Client Assessment Notes (AcceptDeclineScreen) ────────────────────────────
 
 export interface ClientAssessmentNotes {

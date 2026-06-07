@@ -32,12 +32,19 @@ export default function TrainerMessageThreadScreen() {
   const { userId } = useWellness();
   const { userId: otherUserId } = useParams<{ userId: string }>();
 
-  // clientId being discussed — may be passed via route state from the list.
-  const routeClientId = (location.state as { clientId?: string | null } | null)?.clientId ?? null;
+  // Route state from the list/picker: clientId being discussed, plus the
+  // recipient's name/role so a brand-new thread shows the header immediately.
+  const navState =
+    (location.state as {
+      clientId?: string | null;
+      recipientName?: string;
+      recipientRole?: string;
+    } | null) ?? null;
+  const routeClientId = navState?.clientId ?? null;
 
   const [messages, setMessages] = useState<AssessmentMessage[]>([]);
-  const [otherName, setOtherName] = useState('');
-  const [otherRole, setOtherRole] = useState<string | null>(null);
+  const [otherName, setOtherName] = useState(navState?.recipientName ?? '');
+  const [otherRole, setOtherRole] = useState<string | null>(navState?.recipientRole ?? null);
   const [clientId, setClientId] = useState<string | null>(routeClientId);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -80,9 +87,9 @@ export default function TrainerMessageThreadScreen() {
           setOtherName(profile.full_name);
         } else {
           const fromOther = msgs.find(m => m.from_user_id === otherUserId);
-          setOtherName(fromOther?.from_name ?? 'Conversation');
+          setOtherName(fromOther?.from_name ?? navState?.recipientName ?? 'Conversation');
         }
-        setOtherRole(profile?.role ?? null);
+        setOtherRole(profile?.role ?? navState?.recipientRole ?? null);
 
         // Resolve the clientId being discussed: route state → thread's
         // client_id → if the other party IS a client, the client themselves.
@@ -175,7 +182,7 @@ export default function TrainerMessageThreadScreen() {
         <div className="shrink-0">
           <ScreenHeader
             variant="sub"
-            title={isLoading ? '...' : otherName || 'Conversation'}
+            title={otherName || (isLoading ? '...' : 'Conversation')}
             subtitle={roleLabel(otherRole)}
             onBack={() => navigate('/trainer/messages')}
             avatar={<ProfileMenu />}

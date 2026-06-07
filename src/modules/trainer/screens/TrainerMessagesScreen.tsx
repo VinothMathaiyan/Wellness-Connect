@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, PenSquare, X } from 'lucide-react';
+import { MessageSquare, PenSquare, ShieldCheck, X } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
-import { getMessageThreads, getTrainerClients, type TrainerClient } from '../../../services/supabaseService';
+import { getMessageThreads, getTrainerClients, getAssessorId, type TrainerClient } from '../../../services/supabaseService';
 import ScreenHeader from '@/components/ScreenHeader';
 import { formatDate } from '@/utils/dateUtils';
 
@@ -58,20 +58,26 @@ export default function TrainerMessagesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Compose ("New Message") flow — pick an active client to start a conversation.
+  // Compose ("New Message") flow — pick a recipient: an active+cleared client,
+  // or the Assessment Team (general team message, clientId null).
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [clients, setClients] = useState<TrainerClient[]>([]);
+  const [assessorId, setAssessorId] = useState<string | null>(null);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientsError, setClientsError] = useState('');
 
   async function openCompose() {
     setIsComposeOpen(true);
-    if (!userId || clients.length > 0) return;
+    if (!userId || (clients.length > 0 || assessorId)) return;
     setClientsLoading(true);
     setClientsError('');
     try {
-      const data = await getTrainerClients(userId);
+      const [data, assessor] = await Promise.all([
+        getTrainerClients(userId),
+        getAssessorId(),
+      ]);
       setClients(data);
+      setAssessorId(assessor);
     } catch (err: unknown) {
       setClientsError(err instanceof Error ? err.message : 'Failed to load clients.');
     } finally {
@@ -79,9 +85,19 @@ export default function TrainerMessagesScreen() {
     }
   }
 
-  function startConversation(clientId: string) {
+  function startConversation(clientId: string, recipientName: string) {
     setIsComposeOpen(false);
-    navigate(`/trainer/messages/${clientId}`, { state: { clientId } });
+    navigate(`/trainer/messages/${clientId}`, {
+      state: { clientId, recipientName, recipientRole: 'client' },
+    });
+  }
+
+  // Message the Assessment Team — general team message (no client subject).
+  function startTeamConversation(teamId: string, recipientName: string) {
+    setIsComposeOpen(false);
+    navigate(`/trainer/messages/${teamId}`, {
+      state: { clientId: null, recipientName, recipientRole: 'assessor' },
+    });
   }
 
   useEffect(() => {
@@ -352,8 +368,84 @@ export default function TrainerMessagesScreen() {
                 </div>
               )}
 
+              {!clientsLoading && !clientsError && (
+                <>
+                  {/* Group: Assessment Team (general team message — clientId null) */}
+                  <p
+                    style={{
+                      padding: '12px 20px 6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6b7280',
+                    }}
+                  >
+                    Assessment Team
+                  </p>
+                  {assessorId ? (
+                    <div
+                      onClick={() => startTeamConversation(assessorId, 'Assessment Team')}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                      style={{
+                        padding: '14px 20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        borderBottom: '1px solid #f3f4f6',
+                        cursor: 'pointer',
+                        backgroundColor: '#ffffff',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '9999px',
+                          backgroundColor: '#166534',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <ShieldCheck size={20} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827' }}>
+                          Assessment Team
+                        </p>
+                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                          Wellness assessors
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p style={{ color: '#9ca3af', fontSize: '13px', padding: '4px 20px 12px' }}>
+                      Assessment team is unavailable right now.
+                    </p>
+                  )}
+
+                  {/* Group: My Clients (active + assessment-cleared) */}
+                  <p
+                    style={{
+                      padding: '12px 20px 6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6b7280',
+                    }}
+                  >
+                    My Clients
+                  </p>
+                </>
+              )}
+
               {!clientsLoading && !clientsError && clients.length === 0 && (
-                <p style={{ color: '#6b7280', fontSize: '14px', textAlign: 'center', padding: '32px 20px' }}>
+                <p style={{ color: '#9ca3af', fontSize: '13px', padding: '4px 20px 12px' }}>
                   No active clients to message yet.
                 </p>
               )}
@@ -362,7 +454,7 @@ export default function TrainerMessagesScreen() {
                 clients.map(client => (
                   <div
                     key={client.id}
-                    onClick={() => startConversation(client.id)}
+                    onClick={() => startConversation(client.id, client.full_name)}
                     onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
                     style={{

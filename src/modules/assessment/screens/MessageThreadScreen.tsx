@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { ChevronLeft, Send } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '@/components/ProfileMenu';
@@ -20,11 +20,17 @@ function formatTime(isoString: string): string {
 
 export default function MessageThreadScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { userId: assessorId } = useWellness();
   const { userId: otherUserId } = useParams<{ userId: string }>();
 
+  // Recipient name passed from the picker so a brand-new thread (no reply yet)
+  // shows the right header immediately instead of "Conversation".
+  const navState =
+    (location.state as { recipientName?: string; recipientRole?: string } | null) ?? null;
+
   const [messages, setMessages] = useState<AssessmentMessage[]>([]);
-  const [otherName, setOtherName] = useState('');
+  const [otherName, setOtherName] = useState(navState?.recipientName ?? '');
   const [clientId, setClientId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -67,8 +73,8 @@ export default function MessageThreadScreen() {
           if (fromOther) {
             setOtherName(fromOther.from_name);
           } else {
-            // All messages are from me — name not available from messages
-            setOtherName('Conversation');
+            // All messages are from me — fall back to the picker-provided name.
+            setOtherName(navState?.recipientName ?? 'Conversation');
           }
           // Pick clientId from first available
           const withClient = msgs.find(m => m.client_id !== null);
@@ -159,7 +165,7 @@ export default function MessageThreadScreen() {
         <div className="shrink-0">
           <ScreenHeader
             variant="sub"
-            title={isLoading ? '...' : otherName || 'Conversation'}
+            title={otherName || (isLoading ? '...' : 'Conversation')}
             subtitle="Assessment conversation"
             onBack={() => navigate('/assessment/messages')}
             avatar={<ProfileMenu />}

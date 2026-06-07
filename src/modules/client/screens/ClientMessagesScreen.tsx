@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, PenSquare, ShieldCheck, X } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ClientBottomNav from '../components/ClientBottomNav';
 import ProfileMenu from '../../../components/ProfileMenu';
 import ScreenHeader from '@/components/ScreenHeader';
 import { useWellness } from '../../../context/WellnessContext';
-import { getMessageThreads } from '../../../services/supabaseService';
+import {
+  getMessageThreads,
+  getClientTrainers,
+  getAssessorId,
+  type MessageRecipientOption,
+} from '../../../services/supabaseService';
 import { formatDate } from '@/utils/dateUtils';
 
 interface MessageThread {
@@ -58,6 +63,44 @@ export default function ClientMessagesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Compose ("New message") flow — pick a recipient scoped to this client:
+  // (a) their ACTIVE-linked trainer(s); (b) the Assessment Team.
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [trainers, setTrainers] = useState<MessageRecipientOption[]>([]);
+  const [assessorId, setAssessorId] = useState<string | null>(null);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
+  const [recipientsError, setRecipientsError] = useState('');
+
+  async function openCompose() {
+    setIsComposeOpen(true);
+    if (!userId || (trainers.length > 0 || assessorId)) return;
+    setRecipientsLoading(true);
+    setRecipientsError('');
+    try {
+      const [trainerList, assessor] = await Promise.all([
+        getClientTrainers(userId),
+        getAssessorId(),
+      ]);
+      setTrainers(trainerList);
+      setAssessorId(assessor);
+    } catch (err: unknown) {
+      setRecipientsError(err instanceof Error ? err.message : 'Failed to load recipients.');
+    } finally {
+      setRecipientsLoading(false);
+    }
+  }
+
+  function startConversation(
+    recipientId: string,
+    recipientName: string,
+    recipientRole: string,
+  ) {
+    setIsComposeOpen(false);
+    navigate(`/client/messages/${recipientId}`, {
+      state: { recipientName, recipientRole },
+    });
+  }
+
   useEffect(() => {
     if (!userId) return;
 
@@ -97,7 +140,20 @@ export default function ClientMessagesScreen() {
           variant="sub"
           title="Messages"
           subtitle={unreadTotal > 0 && !isLoading ? `${unreadTotal} unread` : undefined}
-          avatar={<ProfileMenu />}
+          avatar={
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openCompose}
+                className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold bg-gray-100 text-gray-700 active:scale-95 transition-transform"
+                aria-label="New message"
+              >
+                <PenSquare size={16} />
+                New
+              </button>
+              <ProfileMenu />
+            </div>
+          }
         />
 
         <div className="px-4 mt-4 space-y-2">
@@ -194,13 +250,268 @@ export default function ClientMessagesScreen() {
               >
                 <MessageSquare size={28} style={{ color: '#0d9488' }} />
               </div>
-              <p className="text-gray-500 text-sm px-8">
-                No messages yet — contact your trainer or assessment team from the Alerts screen
+              <p className="text-gray-500 text-sm mb-5 px-8">
+                No messages yet — start a conversation with your trainer or the assessment team
               </p>
+              <button
+                type="button"
+                onClick={openCompose}
+                className="flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white active:scale-[0.98] transition-transform"
+                style={{ backgroundColor: '#0d9488' }}
+              >
+                <PenSquare size={16} />
+                New Message
+              </button>
             </div>
           )}
         </div>
       </div>
+
+      {/* Compose modal — pick a recipient (linked trainer or assessment team) */}
+      {isComposeOpen && (
+        <div
+          onClick={() => setIsComposeOpen(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '90%',
+              maxWidth: '400px',
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              padding: '0',
+              zIndex: 1001,
+              maxHeight: '70vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#111827' }}>New Message</h2>
+              <button
+                type="button"
+                onClick={() => setIsComposeOpen(false)}
+                aria-label="Close"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '4px',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Recipient list (scrollable) */}
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {recipientsLoading &&
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="animate-pulse"
+                    style={{
+                      padding: '14px 20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      borderBottom: '1px solid #f3f4f6',
+                    }}
+                  >
+                    <div className="rounded-full bg-gray-200" style={{ width: '40px', height: '40px' }} />
+                    <div className="h-4 bg-gray-200 rounded" style={{ width: '40%' }} />
+                  </div>
+                ))}
+
+              {!recipientsLoading && recipientsError && (
+                <div
+                  style={{
+                    margin: '16px 20px',
+                    padding: '12px',
+                    borderRadius: '12px',
+                    fontSize: '14px',
+                    border: '1px solid #fecaca',
+                    backgroundColor: '#fef2f2',
+                    color: '#dc2626',
+                  }}
+                >
+                  {recipientsError}
+                </div>
+              )}
+
+              {!recipientsLoading && !recipientsError && (
+                <>
+                  {/* Group: My Trainer(s) */}
+                  <p
+                    style={{
+                      padding: '12px 20px 6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6b7280',
+                    }}
+                  >
+                    My Trainer{trainers.length === 1 ? '' : 's'}
+                  </p>
+                  {trainers.length === 0 && (
+                    <p style={{ color: '#9ca3af', fontSize: '13px', padding: '4px 20px 12px' }}>
+                      No linked trainer yet.
+                    </p>
+                  )}
+                  {trainers.map(trainer => (
+                    <div
+                      key={trainer.id}
+                      onClick={() => startConversation(trainer.id, trainer.full_name, 'trainer')}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                      style={{
+                        padding: '14px 20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        borderBottom: '1px solid #f3f4f6',
+                        cursor: 'pointer',
+                        backgroundColor: '#ffffff',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '9999px',
+                          backgroundColor: '#0d9488',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {getInitials(trainer.full_name)}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: 700,
+                            color: '#111827',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {trainer.full_name}
+                        </p>
+                        {trainer.city && (
+                          <p
+                            style={{
+                              fontSize: '12px',
+                              color: '#6b7280',
+                              marginTop: '2px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {trainer.city}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Group: Assessment Team */}
+                  <p
+                    style={{
+                      padding: '12px 20px 6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6b7280',
+                    }}
+                  >
+                    Assessment Team
+                  </p>
+                  {assessorId ? (
+                    <div
+                      onClick={() => startConversation(assessorId, 'Assessment Team', 'assessor')}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                      style={{
+                        padding: '14px 20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        borderBottom: '1px solid #f3f4f6',
+                        cursor: 'pointer',
+                        backgroundColor: '#ffffff',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '9999px',
+                          backgroundColor: '#166534',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <ShieldCheck size={20} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827' }}>
+                          Assessment Team
+                        </p>
+                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                          Wellness assessors
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p style={{ color: '#9ca3af', fontSize: '13px', padding: '4px 20px 12px' }}>
+                      Assessment team is unavailable right now.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <ClientBottomNav unreadMessagesCount={unreadTotal} />
     </MobileShell>

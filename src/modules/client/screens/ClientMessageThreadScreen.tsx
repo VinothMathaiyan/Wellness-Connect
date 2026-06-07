@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { ChevronLeft, Send } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ClientBottomNav from '../components/ClientBottomNav';
@@ -28,12 +28,18 @@ function roleLabel(role: string | null): string {
 
 export default function ClientMessageThreadScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { userId } = useWellness();
   const { userId: otherUserId } = useParams<{ userId: string }>();
 
+  // Recipient name/role passed from the picker so a brand-new thread (no reply
+  // yet) shows the right header immediately instead of "Conversation".
+  const navState =
+    (location.state as { recipientName?: string; recipientRole?: string } | null) ?? null;
+
   const [messages, setMessages] = useState<AssessmentMessage[]>([]);
-  const [otherName, setOtherName] = useState('');
-  const [otherRole, setOtherRole] = useState<string | null>(null);
+  const [otherName, setOtherName] = useState(navState?.recipientName ?? '');
+  const [otherRole, setOtherRole] = useState<string | null>(navState?.recipientRole ?? null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -73,11 +79,11 @@ export default function ClientMessageThreadScreen() {
         if (profile?.full_name) {
           setOtherName(profile.full_name);
         } else {
-          // Fall back to name from messages if profile lookup is empty
+          // Fall back to name from messages, then the picker-provided name.
           const fromOther = threadRes.data.find(m => m.from_user_id === otherUserId);
-          setOtherName(fromOther?.from_name ?? 'Conversation');
+          setOtherName(fromOther?.from_name ?? navState?.recipientName ?? 'Conversation');
         }
-        setOtherRole(profile?.role ?? null);
+        setOtherRole(profile?.role ?? navState?.recipientRole ?? null);
       } catch (err: unknown) {
         if (isMounted) {
           setError(err instanceof Error ? err.message : 'Failed to load thread.');
@@ -159,7 +165,7 @@ export default function ClientMessageThreadScreen() {
         <div className="shrink-0">
           <ScreenHeader
             variant="sub"
-            title={isLoading ? '...' : otherName || 'Conversation'}
+            title={otherName || (isLoading ? '...' : 'Conversation')}
             subtitle={roleLabel(otherRole)}
             onBack={() => navigate('/client/messages')}
             avatar={<ProfileMenu />}
