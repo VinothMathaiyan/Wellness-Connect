@@ -3735,38 +3735,6 @@ export async function updateCallbackStatus(
 }
 
 /**
- * Send a message from client to trainer.
- * Inserts into both messages and notifications tables atomically.
- */
-export const sendMessage = async (
-  clientId: string,
-  trainerId: string,
-  body: string,
-): Promise<void> => {
-  const trimmed = body.trim();
-  if (trimmed.length < 1 || trimmed.length > 300) {
-    throw new Error('Message must be 1–300 characters.');
-  }
-
-  const [msgResult, notifResult] = await Promise.all([
-    supabase.from('messages').insert({
-      from_user_id: clientId,
-      to_user_id: trainerId,
-      body: trimmed,
-    }),
-    supabase.from('notifications').insert({
-      type: 'message',
-      from_user_id: clientId,
-      to_user_id: trainerId,
-      message: trimmed.substring(0, 100),
-    }),
-  ]);
-
-  if (msgResult.error) throw msgResult.error;
-  if (notifResult.error) throw notifResult.error;
-};
-
-/**
  * Fetch all notifications addressed to this trainer, newest first.
  * Joins the sender's profile for display name, city, and avatar.
  */
