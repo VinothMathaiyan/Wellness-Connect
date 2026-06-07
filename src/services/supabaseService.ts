@@ -1014,7 +1014,7 @@ async function sendProgramAssignedNotification(
       type: 'program_assigned',
       from_user_id: trainerId,
       to_user_id: clientId,
-      message: `Your trainer has assigned a new program: ${programName}. Please review and approve it.`,
+      message: `Your trainer has assigned you a new program: ${programName}.`,
       is_read: false,
     });
 
@@ -1095,7 +1095,7 @@ export const createWorkoutProgram = async (
     const { data: updatedPlan, error: planUpdateError } = await supabase
       .from('workout_plans')
       .update({
-        status: 'pending_review',
+        status: 'active',
         trainer_note: data.trainer_note ?? null,
       })
       .eq('id', existingPlan.id)
@@ -1148,7 +1148,7 @@ export const createWorkoutProgram = async (
       template_id: template.id,
       trainer_id: trainerId,
       client_id: clientId,
-      status: 'pending_review',
+      status: 'active',
       trainer_note: data.trainer_note ?? null,
     })
     .select('id')
@@ -3922,15 +3922,15 @@ export async function getSessionExercises(
   clientId: string
 ): Promise<SessionExercise[]> {
   try {
-    // Step A — find active workout plan for client.
-    // pending_review is included until the Phase 4B client approval flow
-    // exists — until then, a trainer-assigned program should be usable
-    // immediately (exercises visible, sessions completable).
+    // Step A — find the client's active workout plan.
+    // 'active' is the single live status: trainer-created programs are active
+    // immediately (no client approval step), so exercises are visible and
+    // sessions completable as soon as the trainer assigns the program.
     const { data: plan, error: planError } = await supabase
       .from('workout_plans')
       .select('id, template_id')
       .eq('client_id', clientId)
-      .in('status', ['active', 'approved'])
+      .in('status', ['active'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -3984,14 +3984,13 @@ export async function getActiveWorkoutPlanId(
   clientId: string
 ): Promise<string | null> {
   try {
-    // pending_review included for parity with getSessionExercises — so
-    // markSessionComplete can resolve plan_id before client approval flow
-    // (Phase 4B) exists.
+    // 'active' is the single live status (parity with getSessionExercises) — so
+    // markSessionComplete resolves plan_id for any assigned program.
     const { data, error } = await supabase
       .from('workout_plans')
       .select('id')
       .eq('client_id', clientId)
-      .in('status', ['active', 'approved'])
+      .in('status', ['active'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();

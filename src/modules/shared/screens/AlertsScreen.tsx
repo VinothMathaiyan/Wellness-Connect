@@ -101,7 +101,6 @@ import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
 import {
   getClientNotifications,
-  getLatestPendingPlan,
   getRiskAlerts,
   markAlertRead,
   markClientNotificationRead,
@@ -343,17 +342,9 @@ export default function AlertsScreen() {
     }
 
     if (notification.type === 'program_assigned') {
-      try {
-        const pendingPlanId = await getLatestPendingPlan(userId);
-        if (pendingPlanId) {
-          navigate(`/client/program-approval/${pendingPlanId}`);
-        } else {
-          navigate('/client/dashboard');
-        }
-      } catch {
-        console.error('Latest pending plan lookup failed for', userId);
-        navigate('/client/dashboard');
-      }
+      // Programs are active on creation — no approval step. Send the client to
+      // their dashboard, where the active program is shown.
+      navigate('/client/dashboard');
     } else if (notification.type === 'session_cancelled') {
       navigate('/client/sessions');
     } else if (notification.type === 'session_scheduled') {

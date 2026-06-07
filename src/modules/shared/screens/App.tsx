@@ -16,7 +16,6 @@ import NutritionLogFlow from '../../client/screens/NutritionLogFlow';
 import ProgressScreen from '../../client/screens/ProgressScreen';
 import SessionDetailScreen from '../../client/screens/SessionDetailScreen';
 import UpcomingSessionsScreen from '../../client/screens/UpcomingSessionsScreen';
-import ProgramApprovalScreen from '../../client/screens/ProgramApprovalScreen';
 import WeeklyReportScreen from '../../client/screens/WeeklyReportScreen';
 import AlertsScreen from './AlertsScreen';
 import TrainersScreen from '../../client/screens/TrainersScreen';
@@ -192,7 +191,6 @@ function AppRoutes() {
       <Route path="/client/nutrition" element={<NutritionLogFlow />} />
       <Route path="/client/session/:sessionId" element={<SessionDetailScreen />} />
       <Route path="/client/sessions" element={<UpcomingSessionsScreen />} />
-      <Route path="/client/program-approval/:planId" element={<ProgramApprovalScreen />} />
       <Route path="/client/trainers" element={<TrainersScreen />} />
       <Route path="/client/alerts" element={<AlertsScreen />} />
       <Route path="/client/progress" element={<ProgressScreen />} />

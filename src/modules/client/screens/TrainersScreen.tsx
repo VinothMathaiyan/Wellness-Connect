@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import type { TrainerProfile, User } from '../../../types';
 import TrainerDetailSubScreen from './TrainerDetailSubScreen';
-import TrainerGoalApprovalScreen from './TrainerGoalApprovalScreen';
 import { TrainerCard } from '../components/TrainerCard';
 import TrainerRecommendationCard from '../components/TrainerRecommendationCard';
 import ProfileMenu from '../../../components/ProfileMenu';
@@ -129,7 +128,6 @@ export default function TrainersScreen() {
 
   // Sub-screen states
   const [selectedTrainerDetail, setSelectedTrainerDetail] = useState<User | null>(null);
-  const [showGoalApproval,      setShowGoalApproval]      = useState(false);
 
   // Split trainers: active connection vs discover list
   const activeConnections = useMemo(
@@ -186,10 +184,11 @@ export default function TrainersScreen() {
     photo_url:        t.photo_url ?? null,
   });
 
-  const handleViewPlan = useCallback((trainer: User) => {
-    setSelectedTrainerDetail(trainer);
-    setShowGoalApproval(true);
-  }, []);
+  // Programs are active on creation — no approval step. "View Plan" takes the
+  // client to their dashboard, where the active program is shown.
+  const handleViewPlan = useCallback((_trainer: User) => {
+    navigate('/client/dashboard');
+  }, [navigate]);
 
   // Format "3 days ago" for Requested tab
   const timeAgo = (isoDate: string) => {
@@ -663,22 +662,10 @@ export default function TrainersScreen() {
 
       {/* Overlays */}
       <AnimatePresence>
-        {selectedTrainerDetail && !showGoalApproval && (
+        {selectedTrainerDetail && (
           <TrainerDetailSubScreen
             trainer={selectedTrainerDetail}
             onBack={() => setSelectedTrainerDetail(null)}
-          />
-        )}
-        {selectedTrainerDetail && showGoalApproval && (
-          <TrainerGoalApprovalScreen
-            clientId={selectedTrainerDetail.id}
-            onBack={() => setShowGoalApproval(false)}
-            onDone={() => {
-              setShowGoalApproval(false);
-              setSelectedTrainerDetail(null);
-              setActiveTab('my');
-              ((t) => console.log(t))(selectedTrainerDetail);
-            }}
           />
         )}
       </AnimatePresence>
