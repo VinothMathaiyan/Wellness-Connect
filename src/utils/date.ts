@@ -17,6 +17,19 @@ export function todayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+/**
+ * Today as a YYYY-MM-DD string in IST (Asia/Kolkata, UTC+5:30).
+ *
+ * Unlike todayISO() — which derives the calendar date from UTC — this returns
+ * the date as it reads on an IST wall clock. Used for date-input `min` values
+ * on scheduling screens so that, during the 00:00-05:30 IST window (when the
+ * UTC date is still "yesterday"), the picker cannot offer an IST-past day.
+ */
+export function todayISO_IST(): string {
+  // en-CA formats as YYYY-MM-DD; timeZone pins it to IST regardless of browser zone.
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+
 /** Convert any date-ish value to a YYYY-MM-DD string. */
 export function toISODate(value: Date | string | number): string {
   return new Date(value).toISOString().split('T')[0];

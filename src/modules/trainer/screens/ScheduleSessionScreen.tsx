@@ -21,7 +21,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import ScreenHeader from '@/components/ScreenHeader';
 import ProfileMenu from '../../../components/ProfileMenu';
 import { formatDate } from '@/utils/dateUtils';
-import { todayISO } from '@/utils/date';
+import { todayISO_IST } from '@/utils/date';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -135,7 +135,19 @@ export default function ScheduleSessionScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const today = todayISO();
+  // IST "today" for the date input's `min` (and the today check below). Computed
+  // in IST so the picker can't offer an IST-past day in the 00:00–05:30 window.
+  const today = todayISO_IST();
+
+  // Current IST time as 'HH:MM' — used as a soft `min` on the time input when the
+  // selected date is today, so the picker doesn't surface already-past slots.
+  const nowTimeIST = new Date().toLocaleTimeString('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const timeMin = selectedDate === today ? nowTimeIST : undefined;
 
   const handleSchedule = async () => {
     if (!selectedClientId || !selectedDate || isSubmitting) return;
@@ -151,14 +163,6 @@ export default function ScheduleSessionScreen() {
       return;
     }
 
-    setDateError('');
-    setRecurringCountError('');
-    setSubmitError(null);
-    setIsSubmitting(true);
-
-    // Map UI frequency value to DB column value
-    const dbFrequency = FREQUENCIES.find(f => f.value === recurringFrequency)?.dbValue ?? null;
-
     // Convert trainer-entered IST time to UTC before saving.
     // selectedDate = 'YYYY-MM-DD', selectedTime = 'HH:MM'
     // Appending +05:30 tells the Date constructor the input is IST;
@@ -166,6 +170,23 @@ export default function ScheduleSessionScreen() {
     const scheduledAtISO = new Date(
       `${selectedDate}T${selectedTime}:00+05:30`
     ).toISOString();
+
+    // Authoritative past-date/time guard. Compares absolute instants
+    // (epoch ms vs Date.now()), so it is timezone-safe regardless of the
+    // browser's local zone. For recurring sessions only the start instant is
+    // checked — calculateRecurringDates derives later dates forward from it.
+    if (new Date(scheduledAtISO).getTime() <= Date.now()) {
+      setDateError('Please choose a date and time in the future.');
+      return;
+    }
+
+    setDateError('');
+    setRecurringCountError('');
+    setSubmitError(null);
+    setIsSubmitting(true);
+
+    // Map UI frequency value to DB column value
+    const dbFrequency = FREQUENCIES.find(f => f.value === recurringFrequency)?.dbValue ?? null;
 
     const options: ScheduleSessionOptions = {
       scheduledAt:          scheduledAtISO,
@@ -252,6 +273,7 @@ export default function ScheduleSessionScreen() {
               <input
                 type="time"
                 value={selectedTime}
+                min={timeMin}
                 onChange={e => setSelectedTime(e.target.value)}
                 style={DATE_TIME_INPUT_STYLE}
                 className="flex-1 focus:outline-none focus:ring-2 focus:ring-teal-500"
