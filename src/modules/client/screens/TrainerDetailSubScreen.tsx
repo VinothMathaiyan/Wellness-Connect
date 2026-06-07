@@ -18,7 +18,7 @@ import {
     RefreshCw,
     Loader2,
 } from 'lucide-react';
-import { getTrainerProfile, requestCallback, sendMessage, requestTrainerLink } from '../../../services/supabaseService';
+import { getTrainerProfile, requestCallback, sendAssessmentMessage, requestTrainerLink } from '../../../services/supabaseService';
 import { useWellness } from '../../../context/WellnessContext';
 import ScreenHeader from '@/components/ScreenHeader';
 import ProfileMenu from '../../../components/ProfileMenu';
@@ -119,7 +119,15 @@ export default function TrainerDetailSubScreen({ trainer, onBack }: TrainerDetai
             // Ensure a trainer-client link exists first. Whether it was newly
             // created or already existed (alreadyExists), proceed with the send.
             await requestTrainerLink(userId, trainer.id);
-            await sendMessage(userId, trainer.id, messageText.trim());
+            // Route into the unified messaging system (assessment_messages) that
+            // every inbox/thread reads — the old `messages` table is read nowhere.
+            // Tag the thread to this client (clientId = own userId), matching the
+            // client→assessor pattern in AlertsScreen.
+            const res = await sendAssessmentMessage(userId, trainer.id, messageText.trim(), userId);
+            if (!res.success) {
+                setMessageError(res.error || 'Could not send. Please try again.');
+                return;
+            }
             setShowMessageModal(false);
             setMessageText('');
             setMessageSent(true);
