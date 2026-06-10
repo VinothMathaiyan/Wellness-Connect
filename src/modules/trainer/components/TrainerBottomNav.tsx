@@ -27,7 +27,7 @@ export default function TrainerBottomNav({
 
   return (
     <>
-      <SideNav role="trainer" badges={{ unreadNotificationsCount, pendingInvitesCount, unreadMessagesCount }} />
+      <SideNav role="trainer" badges={{ riskAlertCount, notifCount }} />
       <div className="lg:hidden" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
         <nav
         className="w-full bg-white border-t border-gray-100 px-2"

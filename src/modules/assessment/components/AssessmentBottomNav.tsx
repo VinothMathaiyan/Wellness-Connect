@@ -25,7 +25,7 @@ export default function AssessmentBottomNav({
 
   return (
     <>
-      <SideNav role="assessment" badges={{ unreadNotificationsCount }} />
+      <SideNav role="assessment" badges={{ escalationCount, alertCount }} />
       <div className="lg:hidden" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
         <nav
         className="w-full bg-white border-t border-gray-100 px-2"
