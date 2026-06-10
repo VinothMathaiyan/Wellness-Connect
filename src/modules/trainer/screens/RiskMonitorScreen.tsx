@@ -306,6 +306,7 @@ export default function RiskMonitorScreen() {
               {redClients.length > 0 && (
                 <div>
                   <SectionHeader label="Immediate Attention" colorClass="text-red-600" hexColor="#dc2626" />
+                  <div className="lg:grid lg:grid-cols-2 lg:gap-x-3 lg:items-start">
                   {redClients.map(client => (
                     <ClientRiskRow
                       key={client.id}
@@ -313,6 +314,7 @@ export default function RiskMonitorScreen() {
                       onTap={() => handleAlertTap(client)}
                     />
                   ))}
+                  </div>
                 </div>
               )}
 
@@ -320,6 +322,7 @@ export default function RiskMonitorScreen() {
               {amberClients.length > 0 && (
                 <div>
                   <SectionHeader label="Monitor Closely" colorClass="text-amber-600" hexColor="#d97706" />
+                  <div className="lg:grid lg:grid-cols-2 lg:gap-x-3 lg:items-start">
                   {amberClients.map(client => (
                     <ClientRiskRow
                       key={client.id}
@@ -331,6 +334,7 @@ export default function RiskMonitorScreen() {
                       }
                     />
                   ))}
+                  </div>
                 </div>
               )}
 
@@ -338,6 +342,7 @@ export default function RiskMonitorScreen() {
               {greenClients.length > 0 && (
                 <div>
                   <SectionHeader label="Low Risk" colorClass="text-emerald-600" hexColor="#059669" />
+                  <div className="lg:grid lg:grid-cols-2 lg:gap-x-3 lg:items-start">
                   {greenClients.map(client => (
                     <ClientRiskRow
                       key={client.id}
@@ -349,6 +354,7 @@ export default function RiskMonitorScreen() {
                       }
                     />
                   ))}
+                  </div>
                 </div>
               )}
             </>

@@ -283,7 +283,7 @@ export default function EscalationsScreen() {
 
         ) : displayedList.length > 0 ? (
 
-          <div className="space-y-3">
+          <div className="space-y-3 lg:max-w-4xl">
             {displayedList.map(esc => {
               const isExpanded   = expandedId === esc.id;
               const statusMeta   = STATUS_META[esc.status];

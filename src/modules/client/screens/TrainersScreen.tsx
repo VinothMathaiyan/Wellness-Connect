@@ -477,7 +477,7 @@ export default function TrainersScreen() {
                   <p className="mb-3" style={{ fontSize: '12px', color: '#6B7280' }}>
                     Selected specifically for your health profile by our assessment team
                   </p>
-                  <div className="space-y-3">
+                  <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start">
                     {manualRecs.map((rec) => (
                       <div key={rec.trainer_id} className="relative">
                         <div
@@ -511,7 +511,7 @@ export default function TrainersScreen() {
                   <p className="mb-3" style={{ fontSize: '12px', color: '#6B7280' }}>
                     Matched based on your goals, preferences and health profile
                   </p>
-                  <div className="space-y-3">
+                  <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start">
                     {engineRecs.map((rec) => (
                       <div key={rec.trainer_id} className="relative">
                         {/* Match score pill */}
@@ -555,7 +555,7 @@ export default function TrainersScreen() {
                     <div className="border-t border-gray-200 mb-3" />
                   )}
                   <h2 className="text-[16px] font-bold text-gray-900 mb-3">All Trainers</h2>
-                  <div className="space-y-3">
+                  <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start">
                     {allOtherTrainers.map((t) => (
                       <TrainerRecommendationCard
                         key={t.id}
@@ -677,5 +677,6 @@ export default function TrainersScreen() {
     </MobileShell>
   );
 }
+
 
 

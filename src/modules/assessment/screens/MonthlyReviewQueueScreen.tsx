@@ -623,7 +623,9 @@ export default function MonthlyReviewQueueScreen() {
           {!isLoading && !error && tab === 'due' && (
             <>
               {dueClients.length > 0 ? (
-                dueClients.map(client => renderDueCard(client))
+                <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
+                  {dueClients.map(client => renderDueCard(client))}
+                </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <div
@@ -643,7 +645,9 @@ export default function MonthlyReviewQueueScreen() {
           {!isLoading && !error && tab === 'reviewed' && (
             <>
               {reviewedClients.length > 0 ? (
-                reviewedClients.map(client => renderReviewedCard(client))
+                <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
+                  {reviewedClients.map(client => renderReviewedCard(client))}
+                </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <div

@@ -220,7 +220,7 @@ export default function NewClientQueueScreen() {
             ))}
           </div>
         ) : displayedList.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
             {displayedList.map(client => {
               const colors = getStatusColor(client.status);
               const summary = profileMap[client.client_id];

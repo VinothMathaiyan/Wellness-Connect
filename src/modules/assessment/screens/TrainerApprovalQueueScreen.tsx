@@ -369,7 +369,7 @@ export default function TrainerApprovalQueueScreen() {
 
         ) : displayedList.length > 0 ? (
 
-          <div className="space-y-3">
+          <div className="space-y-3 lg:max-w-4xl">
             {displayedList.map(card => {
               const isExpanded  = expandedId === card.id;
               const statusMeta  = STATUS_META[card.status];

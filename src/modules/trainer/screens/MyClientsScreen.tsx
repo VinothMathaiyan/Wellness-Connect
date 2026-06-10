@@ -357,7 +357,7 @@ export default function MyClientsScreen() {
                 <h2 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
                   Requests ({pendingRequests.length})
                 </h2>
-                <div className="space-y-2">
+                <div className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
                   {pendingRequests.map((req) => {
                     const clientName = req.client?.full_name ?? 'Unknown Client';
                     const initials = getInitials(clientName);
@@ -441,7 +441,7 @@ export default function MyClientsScreen() {
                 <h2 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
                   Active Clients ({visibleClients.length})
                 </h2>
-                <div className="space-y-2">
+                <div className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
                   {visibleClients.map((client, idx) => (
 
                     <motion.button
@@ -618,4 +618,5 @@ export default function MyClientsScreen() {
     </MobileShell>
   );
 }
+
 

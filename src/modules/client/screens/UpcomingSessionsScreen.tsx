@@ -301,7 +301,7 @@ export default function UpcomingSessionsScreen() {
             if (groupSessions.length === 0) return null;
 
             return (
-              <div key={groupKey} className="mt-5 mx-4">
+              <div key={groupKey} className="mt-5 mx-4 lg:max-w-3xl">
                 {/* Group label with date of first session */}
                 <div className="flex items-baseline justify-between mb-2 px-1">
                   <p
