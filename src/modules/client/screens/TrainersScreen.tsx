@@ -39,6 +39,7 @@ import {
   getTrainerCategories,
 } from '../../../services/supabaseService';
 import type { ClientRecommendation } from '../../../services/supabaseService';
+import ClientBottomNav from '../components/ClientBottomNav';
 
 export default function TrainersScreen() {
   const navigate = useNavigate();
@@ -671,29 +672,9 @@ export default function TrainersScreen() {
       </AnimatePresence>
 
       {/* BOTTOM NAVIGATION BAR */}
-      <nav className="absolute bottom-0 left-0 right-0 h-[56px] bg-white border-t-[0.5px] border-[#E5E7EB] flex items-center justify-around px-[10px] z-[50]">
-        <NavButton label="Home"     icon={Home}     onClick={() => navigate('/client/dashboard')} />
-        <NavButton label="Trainers" icon={Users}    active={true} onClick={() => navigate('/client/trainers')} />
-        <NavButton label="Progress" icon={BarChart3} onClick={() => navigate('/client/progress')} />
-        <NavButton label="Messages" icon={MessageSquare} onClick={() => navigate('/client/messages')} />
-        <NavButton label="Alerts"   icon={Bell}     badgeContent={unreadAlertsCount} onClick={() => navigate('/client/alerts')} />
-      </nav>
+      <ClientBottomNav unreadAlertsCount={unreadAlertsCount} />
     </div>
   );
 }
 
-// Reused NavButton from HomeScreen UI source of truth
-const NavButton = ({ label, icon: Icon, active = false, onClick, badgeContent }: { label: string; icon: React.ElementType; active?: boolean; onClick?: () => void; badgeContent?: number }) => (
-  <button
-    onClick={onClick}
-    className="flex flex-col items-center justify-center gap-[2px] transition-all"
-  >
-    <div className="relative">
-      <Icon size={20} strokeWidth={active ? 2.5 : 2} color={active ? '#1D9E75' : '#6B7280'} />
-      {badgeContent && badgeContent > 0 && (
-        <div className="absolute -top-[1.5px] -right-[1.5px] w-[6px] h-[6px] bg-[#E24B4A] rounded-full" />
-      )}
-    </div>
-    <span className={`text-[10px] font-medium ${active ? 'text-[#1D9E75]' : 'text-[#6B7280]'}`}>{label}</span>
-  </button>
-);
+

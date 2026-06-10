@@ -34,6 +34,7 @@ import ScreenHeader from '@/components/ScreenHeader';
 
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
+import ClientBottomNav from '../components/ClientBottomNav';
 
 export default function ProgressScreen() {
   const navigate = useNavigate();
@@ -188,29 +189,9 @@ export default function ProgressScreen() {
             </div>
 
             {/* BOTTOM NAVIGATION BAR */}
-            <nav className="absolute bottom-0 left-0 right-0 h-[56px] bg-white border-t-[0.5px] border-[#E5E7EB] flex items-center justify-around px-[10px] z-[50]">
-                <NavButton label="Home" icon={Home} onClick={() => navigate('/client/dashboard')} />
-                <NavButton label="Trainers" icon={Users} onClick={() => navigate('/client/trainers')} />
-                <NavButton label="Progress" icon={BarChart3} active={true} />
-                <NavButton label="Messages" icon={MessageSquare} onClick={() => navigate('/client/messages')} />
-                <NavButton label="Alerts" icon={Bell} onClick={() => navigate('/client/alerts')} badgeContent={unreadAlertsCount} />
-            </nav>
+            <ClientBottomNav unreadAlertsCount={unreadAlertsCount} />
         </MobileShell>
     );
 }
 
-// Reused NavButton from HomeScreen UI source of truth
-const NavButton = ({ label, icon: Icon, active = false, onClick, badgeContent }: { label: string; icon: any; active?: boolean; onClick?: () => void; badgeContent?: number }) => (
-    <button
-        onClick={onClick}
-        className="flex flex-col items-center justify-center gap-[2px] transition-all"
-    >
-        <div className="relative">
-            <Icon size={20} strokeWidth={active ? 2.5 : 2} color={active ? '#1D9E75' : '#6B7280'} />
-            {badgeContent && badgeContent > 0 && (
-                <div className="absolute -top-[1.5px] -right-[1.5px] w-[6px] h-[6px] bg-[#E24B4A] rounded-full" />
-            )}
-        </div>
-        <span className={`text-[10px] font-medium ${active ? 'text-[#1D9E75]' : 'text-[#6B7280]'}`}>{label}</span>
-    </button>
-);
+

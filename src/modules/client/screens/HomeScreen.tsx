@@ -22,24 +22,7 @@ function getGreeting(): string {
 
 const getScoreColor = (s: number) => s >= 70 ? '#1D9E75' : s >= 40 ? '#EF9F27' : '#E24B4A';
 
-/* ── NavButton ───────────────────────────────────────────── */
-const NavButton = ({ label, icon: Icon, active = false, onClick, badge }: {
-  label: string;
-  icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; className?: string }>;
-  active?: boolean;
-  onClick?: () => void;
-  badge?: number;
-}) => (
-  <button onClick={onClick} className="flex flex-col items-center justify-center gap-[2px] transition-all min-w-[56px]">
-    <div className="relative">
-      <Icon size={20} strokeWidth={active ? 2.5 : 2} color={active ? '#1D9E75' : '#6B7280'} />
-      {badge && badge > 0 && (
-        <div className="absolute -top-[1.5px] -right-[1.5px] w-[6px] h-[6px] bg-[#E24B4A] rounded-full" />
-      )}
-    </div>
-    <span className={`text-[10px] font-medium ${active ? 'text-[#1D9E75]' : 'text-[#6B7280]'}`}>{label}</span>
-  </button>
-);
+
 
 /* ── NutritionCard ─────────────────────────── */
 const NutritionCard = ({
@@ -227,6 +210,7 @@ import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWor
 import { supabase } from '../../../lib/supabaseClient';
 import { getUserProfile } from '../../../services/supabaseService';
 import { type ProgramWeek, WEEKLY_REPORT_MIN_DAYS } from '../../../utils/program';
+import ClientBottomNav from '../components/ClientBottomNav';
 export default function HomeScreen() {
   const navigate = useNavigate();
   const { appState, userId, workoutProgress } = useWellness();
@@ -569,14 +553,8 @@ export default function HomeScreen() {
           </section>
         </div>
 
-        {/* Bottom Navigation — fixed inside device frame */}
-        <nav className="absolute bottom-0 left-0 right-0 h-[60px] bg-white border-t border-[#E5E7EB] flex items-center justify-around px-[10px] z-50">
-          <NavButton label="Home" icon={Home} active={true} onClick={() => console.log('Action Triggered: Nav Home')} />
-          <NavButton label="Trainers" icon={Users} onClick={() => { console.log('Action Triggered: Nav Trainers'); navigate('/client/trainers'); }} />
-          <NavButton label="Progress" icon={BarChart3} onClick={() => { console.log('Action Triggered: Nav Progress'); navigate('/client/progress'); }} />
-          <NavButton label="Messages" icon={MessageSquare} onClick={() => { console.log('Action Triggered: Nav Messages'); navigate('/client/messages'); }} />
-          <NavButton label="Alerts" icon={Bell} badge={unreadAlertsCount} onClick={() => { console.log('Action Triggered: Nav Alerts'); navigate('/client/alerts'); }} />
-        </nav>
+        {/* Bottom Navigation */}
+        <ClientBottomNav unreadAlertsCount={unreadAlertsCount} />
 
     </MobileShell>
   );

@@ -1,60 +1,10 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  Users,
-  ShieldAlert,
-  MessageSquare,
-  Bell,
-} from 'lucide-react';
+import { navConfig } from '../../../components/navConfig';
 
 interface TrainerBottomNavProps {
   riskAlertCount?: number;
   notifCount?: number;
 }
-
-interface TabConfig {
-  label: string;
-  icon: typeof LayoutDashboard;
-  route: string;
-  matchPrefix: string;
-  exact?: boolean;
-  extraPrefixes?: string[];
-}
-
-const tabs: TabConfig[] = [
-  {
-    label: 'Home',
-    icon: LayoutDashboard,
-    route: '/trainer/dashboard',
-    matchPrefix: '/trainer/dashboard',
-    exact: true,
-  },
-  {
-    label: 'Clients',
-    icon: Users,
-    route: '/trainer/clients',
-    matchPrefix: '/trainer/client',
-    extraPrefixes: ['/trainer/daily-summary'],
-  },
-  {
-    label: 'Risk',
-    icon: ShieldAlert,
-    route: '/trainer/risk-monitor',
-    matchPrefix: '/trainer/risk',
-  },
-  {
-    label: 'Messages',
-    icon: MessageSquare,
-    route: '/trainer/messages',
-    matchPrefix: '/trainer/messages',
-  },
-  {
-    label: 'Alerts',
-    icon: Bell,
-    route: '/trainer/notifications',
-    matchPrefix: '/trainer/notifications',
-  },
-];
 
 export default function TrainerBottomNav({
   riskAlertCount = 0,
@@ -63,7 +13,9 @@ export default function TrainerBottomNav({
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isActive = (tab: TabConfig): boolean => {
+  const tabs = navConfig.trainer;
+
+  const isActive = (tab: typeof tabs[0]): boolean => {
     if (tab.exact) {
       return location.pathname === tab.matchPrefix;
     }

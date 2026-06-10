@@ -28,13 +28,7 @@ interface DailyCheckInDraft {
   trainer_note: string;
 }
 
-interface NavButtonProps {
-  label: string;
-  icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string }>;
-  active?: boolean;
-  onClick?: () => void;
-  badge?: number;
-}
+
 
 const EMOJI_MOOD = [
   { value: 1, label: 'Terrible', emoji: '😫' },
@@ -68,17 +62,7 @@ const SLEEP_QUALITY_ICONS = [
   { value: 5, label: 'Refreshed' },
 ];
 
-const NavButton = ({ label, icon: Icon, active = false, onClick, badge }: NavButtonProps) => (
-  <button onClick={onClick} className="flex flex-col items-center justify-center gap-[2px] transition-all min-w-[56px]">
-    <div className="relative">
-      <Icon size={20} strokeWidth={active ? 2.5 : 2} color={active ? '#1D9E75' : '#6B7280'} />
-      {badge && badge > 0 && (
-        <div className="absolute -top-[1.5px] -right-[1.5px] w-[6px] h-[6px] bg-[#E24B4A] rounded-full" />
-      )}
-    </div>
-    <span className={`text-[10px] font-medium ${active ? 'text-[#1D9E75]' : 'text-[#6B7280]'}`}>{label}</span>
-  </button>
-);
+import ClientBottomNav from '../components/ClientBottomNav';
 
 export default function DailyCheckInScreen({ existingLog }: Props) {
   const navigate = useNavigate();
@@ -234,13 +218,7 @@ export default function DailyCheckInScreen({ existingLog }: Props) {
          </div>
       }
       bottomNavigation={
-        <nav className="h-[60px] w-full bg-white border-t border-gray-100 flex items-center justify-around px-[10px] z-[100]">
-          <NavButton label="Home" icon={Home} active={false} onClick={() => navigate('/client/dashboard')} />
-          <NavButton label="Trainers" icon={Users} onClick={() => console.log('Nav: Trainers')} />
-          <NavButton label="Progress" icon={BarChart3} onClick={() => console.log('Nav: Progress')} />
-          <NavButton label="Messages" icon={MessageSquare} onClick={() => navigate('/client/messages')} />
-          <NavButton label="Alerts" icon={Bell} onClick={() => console.log('Nav: Alerts')} />
-        </nav>
+        <ClientBottomNav />
       }
       useStandardPadding={false}
     >

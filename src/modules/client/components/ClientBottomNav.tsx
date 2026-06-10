@@ -1,26 +1,10 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Users, BarChart3, MessageSquare, Bell } from 'lucide-react';
+import { navConfig } from '../../../components/navConfig';
 
 interface ClientBottomNavProps {
   unreadAlertsCount?: number;
   unreadMessagesCount?: number;
 }
-
-interface TabConfig {
-  label: string;
-  icon: typeof Home;
-  route: string;
-  matchPrefix: string;
-  exact?: boolean;
-}
-
-const tabs: TabConfig[] = [
-  { label: 'Home', icon: Home, route: '/client/dashboard', matchPrefix: '/client/dashboard', exact: true },
-  { label: 'Trainers', icon: Users, route: '/client/trainers', matchPrefix: '/client/trainers' },
-  { label: 'Progress', icon: BarChart3, route: '/client/progress', matchPrefix: '/client/progress' },
-  { label: 'Messages', icon: MessageSquare, route: '/client/messages', matchPrefix: '/client/messages' },
-  { label: 'Alerts', icon: Bell, route: '/client/alerts', matchPrefix: '/client/alerts' },
-];
 
 /**
  * Shared client bottom navigation. Uses the fixed + centered layout pattern
@@ -34,7 +18,9 @@ export default function ClientBottomNav({
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isActive = (tab: TabConfig): boolean =>
+  const tabs = navConfig.client;
+
+  const isActive = (tab: typeof tabs[0]): boolean =>
     tab.exact
       ? location.pathname === tab.matchPrefix
       : location.pathname.startsWith(tab.matchPrefix);
