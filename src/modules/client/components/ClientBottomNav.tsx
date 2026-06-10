@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { navConfig } from '../../../components/navConfig';
+import SideNav from '../../../components/SideNav';
 
 interface ClientBottomNavProps {
   unreadAlertsCount?: number;
@@ -26,8 +27,10 @@ export default function ClientBottomNav({
       : location.pathname.startsWith(tab.matchPrefix);
 
   return (
-    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
-      <nav
+    <>
+      <SideNav role="client" badges={{ unreadAlertsCount, unreadMessagesCount }} />
+      <div className="lg:hidden" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
+        <nav
         className="w-full bg-white border-t border-[#E5E7EB] px-[10px]"
         style={{ maxWidth: '448px', height: '60px', paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
@@ -73,6 +76,7 @@ export default function ClientBottomNav({
           })}
         </div>
       </nav>
-    </div>
+      </div>
+    </>
   );
 }

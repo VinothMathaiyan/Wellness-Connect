@@ -8,6 +8,7 @@ import {
   getAssessorId,
   sendAssessmentMessage,
 } from '../../../services/supabaseService';
+import MobileShell from '../../../components/MobileShell';
 
 /**
  * TrainerPendingScreen — the only screen a not-yet-approved trainer can see.
@@ -141,7 +142,7 @@ export default function TrainerPendingScreen() {
   const isRejected = !isTrainerApprovalLoading && trainerApprovalStatus === 'rejected';
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F2F8F7]">
+    <MobileShell>
       {/* Header */}
       <header className="px-5 py-5 text-center">
         <h1 className="text-primary font-bold text-xl tracking-tight" style={{ color: '#1D9E75' }}>
@@ -315,6 +316,6 @@ export default function TrainerPendingScreen() {
           </div>
         </div>
       </div>
-    </div>
+    </MobileShell>
   );
 }

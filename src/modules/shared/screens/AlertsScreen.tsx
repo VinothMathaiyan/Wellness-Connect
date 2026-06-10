@@ -109,6 +109,7 @@ import {
   getAssessorId,
 } from '../../../services/supabaseService';
 import ClientBottomNav from '../../client/components/ClientBottomNav';
+import MobileShell from '../../../components/MobileShell';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -394,7 +395,7 @@ export default function AlertsScreen() {
   );
 
     return (
-        <div className="max-w-md mx-auto w-full min-h-screen relative shadow-xl bg-gray-50 flex flex-col">
+        <MobileShell>
 
             {/* ZONE 1 — TOP BAR — tab destination: title-only header, no back arrow */}
             <ScreenHeader
@@ -563,7 +564,7 @@ export default function AlertsScreen() {
 
             {/* BOTTOM NAVIGATION BAR */}
             <ClientBottomNav unreadAlertsCount={unreadCount} />
-        </div>
+        </MobileShell>
     );
 }
 

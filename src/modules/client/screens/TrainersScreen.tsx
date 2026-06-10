@@ -40,6 +40,7 @@ import {
 } from '../../../services/supabaseService';
 import type { ClientRecommendation } from '../../../services/supabaseService';
 import ClientBottomNav from '../components/ClientBottomNav';
+import MobileShell from '../../../components/MobileShell';
 
 export default function TrainersScreen() {
   const navigate = useNavigate();
@@ -202,7 +203,7 @@ export default function TrainersScreen() {
 
 
   return (
-    <div className="max-w-md mx-auto w-full min-h-screen bg-gray-50 flex flex-col relative shadow-xl overflow-hidden">
+    <MobileShell>
       <ScreenHeader
         variant="sub"
         title="Trainers & Experts"
@@ -673,7 +674,7 @@ export default function TrainersScreen() {
 
       {/* BOTTOM NAVIGATION BAR */}
       <ClientBottomNav unreadAlertsCount={unreadAlertsCount} />
-    </div>
+    </MobileShell>
   );
 }
 

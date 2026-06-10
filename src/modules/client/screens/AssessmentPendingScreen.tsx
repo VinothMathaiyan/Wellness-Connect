@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { CheckCircle2, ClipboardList, RefreshCw, Loader2, PartyPopper } from 'lucide-react';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
+import MobileShell from '../../../components/MobileShell';
 
 /**
  * AssessmentPendingScreen — the only screen a not-yet-cleared client can see.
@@ -95,7 +96,7 @@ export default function AssessmentPendingScreen() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F2F8F7]">
+    <MobileShell>
       {/* Header */}
       <header className="px-5 py-5 text-center">
         <h1 className="text-primary font-bold text-xl tracking-tight" style={{ color: '#1D9E75' }}>
@@ -201,6 +202,6 @@ export default function AssessmentPendingScreen() {
           </div>
         </div>
       </div>
-    </div>
+    </MobileShell>
   );
 }

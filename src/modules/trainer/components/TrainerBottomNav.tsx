@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { navConfig } from '../../../components/navConfig';
+import SideNav from '../../../components/SideNav';
 
 interface TrainerBottomNavProps {
   riskAlertCount?: number;
@@ -25,8 +26,10 @@ export default function TrainerBottomNav({
   };
 
   return (
-    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
-      <nav
+    <>
+      <SideNav role="trainer" badges={{ unreadNotificationsCount, pendingInvitesCount, unreadMessagesCount }} />
+      <div className="lg:hidden" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
+        <nav
         className="w-full bg-white border-t border-gray-100 px-2"
         style={{ maxWidth: '448px', height: '64px', paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
@@ -106,6 +109,7 @@ export default function TrainerBottomNav({
         })}
       </div>
       </nav>
-    </div>
+      </div>
+    </>
   );
 }
