@@ -215,12 +215,12 @@ export default function TrainerDashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <div className="px-5 pt-5 pb-8 space-y-5">
+            <div className="px-5 pt-5 pb-8 space-y-5 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
 
               {/* ─── 2. Client Alert Triage Banner ─────────────────────────────────────── */}
               {urgentCount > 0 ? (
                 <div
-                  className="flex items-start gap-3 shadow-sm"
+                  className="flex items-start gap-3 shadow-sm lg:col-span-2"
                   style={{ backgroundColor: '#FEF3C7', borderRadius: '12px', padding: '12px 16px', border: '1px solid #FDE68A' }}
                 >
                   <AlertTriangle size={18} style={{ color: '#D97706', flexShrink: 0, marginTop: '1px' }} />
@@ -240,7 +240,7 @@ export default function TrainerDashboard() {
               ) : (
                 <button
                   onClick={() => navigate('/trainer/risk-monitor')}
-                  className="flex items-start gap-3 shadow-sm w-full text-left active:opacity-80 transition-opacity"
+                  className="flex items-start gap-3 shadow-sm w-full text-left active:opacity-80 transition-opacity lg:col-span-2"
                   style={{ backgroundColor: '#F0FDF4', borderRadius: '12px', padding: '12px 16px', border: '1px solid #BBF7D0' }}
                 >
                   <CheckCircle size={18} style={{ color: '#16A34A', flexShrink: 0, marginTop: '1px' }} />
@@ -254,6 +254,9 @@ export default function TrainerDashboard() {
                   </div>
                 </button>
               )}
+
+              {/* Left column at lg: — operational cards. Plain stacking div below lg (mobile unchanged). */}
+              <div className="space-y-5">
 
               {/* ─── 3. KPI Cards ──────────────────────────────────────────────────────── */}
               <div className="grid grid-cols-2 gap-3">
@@ -340,12 +343,17 @@ export default function TrainerDashboard() {
                 </div>
               )}
 
+              </div>
+
+              {/* Right column at lg: — weekly overview. Plain stacking div below lg (mobile unchanged). */}
+              <div className="space-y-5">
+
               {/* ─── 6. This Week's Check-ins ──────────────────────────────────────────── */}
               <div>
                 <h3 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
                   This Week's Check-ins
                 </h3>
-                <div className="-mx-5 px-5 overflow-x-auto hide-scrollbar">
+                <div className="-mx-5 px-5 overflow-x-auto hide-scrollbar lg:mx-0 lg:px-0">
                   <div className="flex gap-2 min-w-max pb-1">
                     {weekDays.map((day) => {
                       const dayCheckins = weeklyCheckins.filter(c => c.log_date === day.dateStr);
@@ -478,6 +486,8 @@ export default function TrainerDashboard() {
                     Review your clients' readiness trends to adjust training intensity for the week ahead.
                   </p>
                 </div>
+              </div>
+
               </div>
 
             </div>

@@ -415,7 +415,8 @@ export default function HomeScreen() {
               <h2 className="text-[22px] font-bold text-[#1D9E75]">{firstName}</h2>
             </div>
 
-            {/* Score Card */}
+            {/* Score Card — width-capped on desktop so it doesn't stretch edge to edge */}
+            <div className="lg:max-w-2xl">
             {homeDataLoading ? (
               <div className="rounded-[14px] p-[14px_16px] flex items-center justify-center bg-[#E5E7EB] shadow-[0_2px_8px_rgba(0,0,0,0.06)]" style={{ minHeight: 68 }}>
                 <span className="text-[13px] text-[#9CA3AF] font-medium">Loading…</span>
@@ -459,6 +460,7 @@ export default function HomeScreen() {
                 <span className="text-[16px] text-[#9CA3AF]">›</span>
               </button>
             )}
+            </div>
 
             <button onClick={() => todayRef.current?.scrollIntoView({ behavior: 'smooth' })}
               className="mt-[12px] text-[13px] font-medium text-[#1D9E75] active:opacity-60 transition-opacity">
@@ -487,6 +489,10 @@ export default function HomeScreen() {
               <span className="text-[11px] text-[#9CA3AF] font-medium">{formatDateShort()} · {habitsDone} of {habitsTotal} tracked</span>
             </div>
 
+            {/* Card grid wrapper — plain div below lg (mobile unchanged), 2-col grid on desktop.
+                Cards keep their own mb-[10px] for vertical rhythm in both layouts. */}
+            <div className="lg:grid lg:grid-cols-2 lg:gap-x-4 lg:items-start">
+
             {/* Nutrition Card */}
             <NutritionCard
               logged={mealsLogged}
@@ -494,7 +500,8 @@ export default function HomeScreen() {
               onClick={() => { console.log('Action Triggered: Log your Meal'); navigate('/client/nutrition'); }}
             />
 
-            {/* Training Card */}
+            {/* Training Card + its view-all link grouped so they share a grid cell at lg: */}
+            <div>
             <TrainingCard
               session={todaySession ?? undefined}
               onClick={() => {
@@ -519,6 +526,7 @@ export default function HomeScreen() {
                 View all upcoming sessions ›
               </div>
             )}
+            </div>
 
             {/* Daily Tracking Card */}
             <div onClick={() => { console.log('Action Triggered: Track Today'); navigate('/client/check-in'); }}
@@ -550,6 +558,8 @@ export default function HomeScreen() {
               loggedDays={weekLoggedDays}
               onClick={() => { console.log('Action Triggered: View Report'); navigate('/client/report/current'); }}
             />
+
+            </div>
           </section>
         </div>
 

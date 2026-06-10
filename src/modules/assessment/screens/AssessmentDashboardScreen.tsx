@@ -200,8 +200,8 @@ export default function AssessmentDashboardScreen() {
             )
           )}
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Stats Grid — 2x2 on mobile, single KPI row on desktop */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <button
               onClick={() => navigate('/assessment/clients/queue')}
               className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-start active:scale-95 transition-transform"
@@ -273,7 +273,7 @@ export default function AssessmentDashboardScreen() {
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3">
               {isLoading ? (
                 // Skeletons
                 Array(3).fill(0).map((_, i) => (
@@ -309,7 +309,7 @@ export default function AssessmentDashboardScreen() {
                   );
                 })
               ) : (
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center lg:col-span-2">
                   <p className="text-gray-500 text-sm">No recent activity</p>
                 </div>
               )}
