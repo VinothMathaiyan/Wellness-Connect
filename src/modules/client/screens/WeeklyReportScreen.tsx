@@ -248,11 +248,14 @@ export default function WeeklyReportScreen() {
                 </span>
             </header>
 
-            <main className="flex-1 overflow-y-auto px-4 pb-[100px] scrollbar-hide">
+            {/* Desktop (lg:+): two-column grid — summary/breakdown/metrics left,
+                reflection/nudge/logs right. Explicit row/col placement keeps the
+                mobile DOM order untouched; below lg the layout is unchanged. */}
+            <main className="flex-1 overflow-y-auto px-4 pb-[100px] scrollbar-hide lg:grid lg:grid-cols-2 lg:gap-x-6 lg:items-start lg:content-start lg:max-w-5xl lg:mx-auto lg:w-full">
 
                 {/* LOADING STATE */}
                 {isLoading && (
-                  <section className="mt-8 flex flex-col items-center text-center px-4">
+                  <section className="mt-8 flex flex-col items-center text-center px-4 lg:col-span-2">
                     <div className="w-8 h-8 border-2 border-[#E5E7EB] border-t-[#1D9E75] rounded-full animate-spin mb-3" />
                     <p className="text-[13px] text-[#6B7280]">Loading your weekly report…</p>
                   </section>
@@ -260,7 +263,7 @@ export default function WeeklyReportScreen() {
 
                 {/* ERROR STATE */}
                 {!isLoading && error && (
-                  <section className="mt-8 flex flex-col items-center text-center px-4">
+                  <section className="mt-8 flex flex-col items-center text-center px-4 lg:col-span-2">
                     <div className="text-[48px] mb-3">⚠️</div>
                     <h3 className="text-[16px] font-semibold text-[#111827] mb-2">Couldn't load report</h3>
                     <p className="text-[13px] text-[#6B7280] leading-relaxed max-w-[260px]">
@@ -271,7 +274,7 @@ export default function WeeklyReportScreen() {
 
                 {/* NO DATA STATE */}
                 {!isLoading && !error && !hasData && (
-                  <section className="mt-8 flex flex-col items-center text-center px-4">
+                  <section className="mt-8 flex flex-col items-center text-center px-4 lg:col-span-2">
                     <div className="text-[48px] mb-3">📋</div>
                     <h3 className="text-[16px] font-semibold text-[#111827] mb-2">No data this week</h3>
                     <p className="text-[13px] text-[#6B7280] leading-relaxed max-w-[260px]">
@@ -282,7 +285,7 @@ export default function WeeklyReportScreen() {
 
                 {/* SECTION 1 — Week at a Glance (only when data exists) */}
                 {hasData && report.averages && (
-                <section className="mt-4">
+                <section className="mt-4 lg:col-start-1 lg:row-start-1">
                     <div className="bg-gradient-to-br from-[#EEF2FF] to-[#E0E7FF] rounded-[14px] p-4 flex flex-col items-center">
                         <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.07em] mb-4">WEEK {report.week_number} OVERVIEW</span>
 
@@ -327,7 +330,7 @@ export default function WeeklyReportScreen() {
 
                 {/* SECTION 2 — Daily Breakdown */}
                 {hasData && (
-                <section className="mt-8">
+                <section className="mt-8 lg:col-start-1 lg:row-start-2">
                     <h3 className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-[0.07em] mb-3">DAILY BREAKDOWN</h3>
                     <div className="flex justify-between items-end relative h-[60px]">
                         {report.daily_readiness.map((d, i) => (
@@ -361,7 +364,7 @@ export default function WeeklyReportScreen() {
 
                 {/* SECTION 3 — Metric Trends */}
                 {hasData && report.averages && (
-                <section className="mt-8">
+                <section className="mt-8 lg:col-start-1 lg:row-start-3">
                     <h3 className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-[0.07em] mb-3">THIS WEEK'S METRICS</h3>
                     <div className="space-y-[10px]">
                         <MetricCard
@@ -400,7 +403,7 @@ export default function WeeklyReportScreen() {
 
                 {/* SECTION: Daily Logs */}
                 {!isLoading && !error && (
-                <section className="mt-8">
+                <section className="mt-8 lg:col-start-2 lg:row-start-3">
                     <h3 className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-[0.07em] mb-3">DAILY LOGS</h3>
                     <div className="bg-white border-[0.5px] border-[#E5E7EB] rounded-[12px] p-[14px]">
                         {weeklyLogs.length === 0 ? (
@@ -421,7 +424,7 @@ export default function WeeklyReportScreen() {
 
                 {/* SECTION 4 — Trainer's Week Note (hidden until DB-wired) */}
                 {report.trainer_week_note && (
-                    <section className="mt-8">
+                    <section className="mt-8 lg:col-start-2 lg:row-start-4">
                         <h3 className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-[0.07em] mb-3">FROM YOUR TRAINER</h3>
                         <div className="bg-[#E1F5EE] rounded-[12px] p-[14px]">
                             <p className="text-[13px] text-[#111827] leading-relaxed">
@@ -432,7 +435,7 @@ export default function WeeklyReportScreen() {
                 )}
 
                 {/* SECTION 5 — Your Weekly Reflection */}
-                <section className="mt-8">
+                <section className="mt-8 lg:col-start-2 lg:row-start-1 lg:mt-4">
                     <h3 className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-[0.07em] mb-3">YOUR REFLECTION</h3>
                     <div className="bg-white border-[0.5px] border-[#E5E7EB] rounded-[12px] p-[14px]">
                         <h4 className="text-[14px] font-semibold text-[#111827] mb-1">How does this week feel overall?</h4>
@@ -462,7 +465,7 @@ export default function WeeklyReportScreen() {
 
                 {/* SECTION 6 — Next Week Nudge card (only when data exists) */}
                 {hasData && report.averages && (
-                <section className="mt-8 mb-4">
+                <section className="mt-8 mb-4 lg:col-start-2 lg:row-start-2">
                     <div className="bg-[#F0FDF4] border-[0.5px] border-[#BBF7D0] rounded-[12px] p-[14px] flex items-start gap-4">
                         <div className="w-[32px] h-[32px] shrink-0 bg-white rounded-full flex items-center justify-center text-[18px]">
                             🎯
@@ -484,6 +487,7 @@ export default function WeeklyReportScreen() {
 
             {/* STICKY BOTTOM BUTTON */}
             <div className="absolute bottom-0 left-0 right-0 p-3 px-4 bg-white shadow-[0_-2px_8px_rgba(0,0,0,0.06)] z-[100]">
+                <div className="lg:max-w-3xl lg:mx-auto">
                 <button
                     disabled={isSaving}
                     onClick={async () => {
@@ -506,6 +510,7 @@ export default function WeeklyReportScreen() {
                 >
                     {isSaving ? 'Saving…' : reflection.length > 0 ? "Save reflection & close" : "Close report"}
                 </button>
+                </div>
             </div>
 
             {/* Tooltip Overlay */}

@@ -433,7 +433,8 @@ export default function AcceptDeclineScreen() {
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-8">
+        {/* Desktop (lg:+): width cap only — content and CTA order untouched (referenced in tester guides) */}
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-8 lg:max-w-3xl lg:mx-auto lg:w-full">
           {isResolvingClient ? (
             /* Loading skeleton — matches the block style used in MyClientsScreen */
             <div className="space-y-3">

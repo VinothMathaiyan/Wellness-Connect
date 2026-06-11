@@ -799,11 +799,14 @@ export default function ClientDetailScreen() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="px-4 pt-4 pb-6 space-y-4"
+            // Desktop (lg:+): two-column grid — client info/scores/program left,
+            // risk/sessions right. Explicit row/col placement keeps mobile DOM
+            // order untouched; below lg the layout is unchanged.
+            className="px-4 pt-4 pb-6 space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start lg:max-w-5xl lg:mx-auto"
           >
 
             {/* ── 1. Client Profile Header ─────────────────────────────────────────── */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 lg:col-start-1 lg:row-start-1">
               <div className="flex items-start gap-3 mb-3">
                 {client.photoUrl ? (
                   <img
@@ -844,7 +847,7 @@ export default function ClientDetailScreen() {
             {/* ── 2. Risk Flag Banner ───────────────────────────────────────────────── */}
             {client.riskLevel === 'red' && (
               <div
-                className="w-full rounded-2xl p-4 mb-1 cursor-pointer"
+                className="w-full rounded-2xl p-4 mb-1 cursor-pointer lg:col-start-2 lg:row-start-1 lg:mb-0"
                 style={{ backgroundColor: '#ef4444' }}
                 onClick={() => navigate(`/trainer/risk-alert/${clientId}`)}
               >
@@ -864,7 +867,7 @@ export default function ClientDetailScreen() {
 
             {client.riskLevel === 'amber' && (
               <div
-                className="w-full rounded-2xl p-4 mb-1 cursor-pointer"
+                className="w-full rounded-2xl p-4 mb-1 cursor-pointer lg:col-start-2 lg:row-start-1 lg:mb-0"
                 style={{ backgroundColor: '#fbbf24' }}
                 onClick={() => navigate(`/trainer/risk-alert/${clientId}`)}
               >
@@ -884,7 +887,7 @@ export default function ClientDetailScreen() {
 
             {client.riskLevel === 'none' && (
               <div
-                className="flex items-center gap-3"
+                className="flex items-center gap-3 lg:col-start-2 lg:row-start-1"
                 style={{ backgroundColor: '#F0FDF4', borderRadius: 12, padding: '12px 16px' }}
               >
                 <CheckCircle size={18} style={{ color: '#166534', flexShrink: 0 }} />
@@ -895,7 +898,7 @@ export default function ClientDetailScreen() {
             )}
 
             {client.riskLevel === 'green' && (
-              <div className="flex justify-start">
+              <div className="flex justify-start lg:col-start-2 lg:row-start-1">
                 <span className="text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full flex items-center gap-1.5">
                   <CheckCircle size={13} /> On Track
                 </span>
@@ -903,7 +906,7 @@ export default function ClientDetailScreen() {
             )}
 
             {/* ── 3. Readiness + Adherence ─────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 lg:col-start-1 lg:row-start-2">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
                 <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider mb-2">Readiness</p>
                 <div className="flex items-end justify-between gap-2">
@@ -1031,7 +1034,7 @@ export default function ClientDetailScreen() {
             {/* ── 3b. View Full Progress ────────────────────────────────────────────── */}
             <button
               onClick={() => navigate(`/trainer/client-progress/${clientId}`)}
-              className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between active:scale-[0.99] transition-transform text-left"
+              className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between active:scale-[0.99] transition-transform text-left lg:col-start-1 lg:row-start-3"
             >
               <div className="flex items-center gap-3">
                 <div
@@ -1061,7 +1064,7 @@ export default function ClientDetailScreen() {
             </button>
 
             {/* ── 4. Last Check-in Summary ──────────────────────────────────────────── */}
-            <div>
+            <div className="lg:col-start-1 lg:row-start-4">
               <SectionHeader title="Last Check-In" />
               {client.lastCheckin === null ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
@@ -1093,7 +1096,7 @@ export default function ClientDetailScreen() {
             </div>
 
             {/* ── 6. Session History ────────────────────────────────────────────────── */}
-            <div>
+            <div className="lg:col-start-2 lg:row-start-2 lg:row-span-4">
               <button
                 type="button"
                 onClick={() => setSessionsExpanded(prev => !prev)}
@@ -1194,7 +1197,7 @@ export default function ClientDetailScreen() {
             </div>
 
             {/* ── 6. Training Program Quick View ───────────────────────────────────── */}
-            <div>
+            <div className="lg:col-start-1 lg:row-start-5">
               <SectionHeader title="Current Program" />
               {client.program === null ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">

@@ -172,7 +172,7 @@ export default function CheckinReviewScreen() {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3 lg:max-w-3xl lg:mx-auto lg:w-full">
 
           {isLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

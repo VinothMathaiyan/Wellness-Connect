@@ -238,7 +238,7 @@ export default function SessionDetailScreen() {
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-6 pb-24">
+      <div className="flex-1 overflow-y-auto p-5 space-y-6 pb-24 lg:max-w-3xl lg:mx-auto lg:w-full">
         {/* Cancelled banner — shown above everything when session is cancelled */}
         {isCancelled && (
           <div style={{

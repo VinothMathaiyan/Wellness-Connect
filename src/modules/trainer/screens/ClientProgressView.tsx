@@ -242,7 +242,10 @@ export default function ClientProgressView() {
             </button>
           </div>
         ) : (
-          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          /* p-4 / flex-col / gap-5 match the previous inline styles exactly below lg.
+             Desktop (lg:+): two-column grid — KPI | trend chart, metrics | check-ins,
+             program flows below left. Mobile order/DOM unchanged. */
+          <div className="p-4 flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:max-w-5xl lg:mx-auto lg:w-full">
 
             {/* ── Section 1: KPI Grid ─────────────────────────────────────────────── */}
             <div>
