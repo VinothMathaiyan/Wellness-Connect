@@ -276,7 +276,7 @@ export default function NutritionLogFlow() {
         <h1 className="flex-1 text-center text-[16px] font-bold text-[#111827] -ml-9">Log a Meal</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 lg:max-w-2xl lg:mx-auto lg:w-full">
         {/* Meal type picker */}
         <div>
           <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest mb-3">Which meal?</p>
@@ -400,7 +400,7 @@ export default function NutritionLogFlow() {
           <h1 className="flex-1 text-center text-[16px] font-bold text-[#111827] -ml-9">Review Meal</h1>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 lg:max-w-2xl lg:mx-auto lg:w-full">
           {/* Image preview */}
           {previewUrl && (
             <img src={previewUrl} alt="meal" className="w-full rounded-2xl object-cover" style={{ height: 120 }} />
@@ -532,7 +532,8 @@ export default function NutritionLogFlow() {
         </div>
 
         {/* CTAs */}
-        <div className="px-4 pb-5 pt-3 shrink-0 border-t border-[#F3F4F6] bg-white space-y-2">
+        <div className="px-4 pb-5 pt-3 shrink-0 border-t border-[#F3F4F6] bg-white">
+          <div className="space-y-2 lg:max-w-2xl lg:mx-auto">
           <button onClick={handleLogMeal} disabled={isSaving || items.length === 0}
             className="w-full h-[52px] rounded-xl text-white font-bold text-[15px] flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 transition-all"
             style={{ backgroundColor: TEAL, boxShadow: `0 8px 20px ${TEAL}44` }}>
@@ -551,6 +552,7 @@ export default function NutritionLogFlow() {
             className="w-full h-[46px] rounded-xl border-2 border-[#E5E7EB] text-[#6B7280] font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-[#F3F4F6] disabled:opacity-50 transition-colors">
             <RefreshCw size={15} /> Retake Photo
           </button>
+          </div>
         </div>
       </div>
     );
@@ -575,7 +577,7 @@ export default function NutritionLogFlow() {
           <span className="font-bold text-[#111827]">{savedSummary.name}</span> · {savedSummary.calories} kcal
         </p>
       )}
-      <div className="w-full space-y-2">
+      <div className="w-full space-y-2 lg:max-w-md">
         <button onClick={handleLogAnother}
           className="w-full h-[52px] rounded-xl text-white font-bold text-[15px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
           style={{ backgroundColor: TEAL, boxShadow: `0 8px 20px ${TEAL}44` }}>

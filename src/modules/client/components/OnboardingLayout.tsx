@@ -14,12 +14,12 @@ interface OnboardingLayoutProps {
  * Standardized mobile layout for Onboarding and Assessment screens.
  * Provides unified spacing, scroll behavior, and safe-area footer positioning.
  */
-export default function OnboardingLayout({ 
-    children, 
-    header, 
+export default function OnboardingLayout({
+    children,
+    header,
     footer,
     bottomNavigation,
-    useStandardPadding = true 
+    useStandardPadding = true
 }: OnboardingLayoutProps) {
     return (
         <MobileShell className="bg-[#F9FAFB]">
@@ -30,14 +30,19 @@ export default function OnboardingLayout({
 
             {/* Scrollable Content Layer */}
             {/* Matches HealthProfileScreen spacing rhythm: px-6, pt-2 space-y-10 */}
-            <div className={`flex-1 overflow-y-auto scrollbar-hide ${useStandardPadding ? 'px-6 pt-2 pb-32 space-y-10' : ''}`}>
-                {children}
+            {/* Desktop (lg:+): cap form content at a readable width, centered — below lg unchanged */}
+            <div className="flex-1 overflow-y-auto scrollbar-hide">
+                <div className={`lg:max-w-2xl lg:mx-auto ${useStandardPadding ? 'px-6 pt-2 pb-32 space-y-10' : ''}`}>
+                    {children}
+                </div>
             </div>
 
             {/* Sticky Footer Layer */}
             {/* Standardizes bottom safe-area spacing and horizontal margins */}
             <div className="bg-white border-t border-gray-100 px-6 pt-4 pb-8 sm:pb-10 shrink-0 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
-                {footer}
+                <div className="lg:max-w-2xl lg:mx-auto">
+                    {footer}
+                </div>
             </div>
 
             {bottomNavigation && (

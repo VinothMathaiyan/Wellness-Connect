@@ -225,7 +225,7 @@ export default function ScheduleSessionScreen() {
       />
 
       <div className="flex-1 overflow-y-auto pb-36">
-        <div className="px-4 pt-4 pb-6 space-y-3">
+        <div className="px-4 pt-4 pb-6 space-y-3 lg:max-w-2xl lg:mx-auto">
 
           {/* 2. Client Selector */}
           <div className="bg-white rounded-2xl shadow-sm p-4">

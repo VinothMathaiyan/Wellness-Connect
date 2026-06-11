@@ -691,7 +691,7 @@ export default function ClientAssessmentFormScreen() {
             />
           </div>
         ) : (
-          <div className="px-5 pt-4 space-y-6">
+          <div className="px-5 pt-4 space-y-6 lg:max-w-2xl lg:mx-auto">
 
             {!hasClientProfile && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
