@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MessageSquare, PenSquare, ShieldCheck, X } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ClientBottomNav from '../components/ClientBottomNav';
+import ClientMessageThreadView from '../components/ClientMessageThreadView';
 import ProfileMenu from '../../../components/ProfileMenu';
 import ScreenHeader from '@/components/ScreenHeader';
 import { useWellness } from '../../../context/WellnessContext';
@@ -66,6 +67,34 @@ export default function ClientMessagesScreen() {
   // Compose ("New message") flow — pick a recipient scoped to this client:
   // (a) their ACTIVE-linked trainer(s); (b) the Assessment Team.
   const [isComposeOpen, setIsComposeOpen] = useState(false);
+
+  // lg: master-detail — the thread shown inline beside the list. Mobile keeps
+  // push navigation to /client/messages/:userId and never sets this.
+  const [selectedThread, setSelectedThread] = useState<{
+    id: string;
+    name?: string;
+    role?: string;
+  } | null>(null);
+
+  const isDesktop = () =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
+
+  function openThread(id: string, name?: string, role?: string) {
+    if (isDesktop()) {
+      // Inline selection: show thread beside the list. markMessagesRead runs
+      // inside the thread view; mirror it locally so the row badge clears.
+      setSelectedThread({ id, name, role });
+      setThreads(prev =>
+        prev.map(t => (t.other_user_id === id ? { ...t, unread_count: 0 } : t)),
+      );
+      return;
+    }
+    // Mobile: exactly the existing push-navigation behavior — nav state is only
+    // passed from the compose picker (which supplies a role), as today.
+    navigate(`/client/messages/${id}`, {
+      state: role ? { recipientName: name, recipientRole: role } : undefined,
+    });
+  }
   const [trainers, setTrainers] = useState<MessageRecipientOption[]>([]);
   const [assessorId, setAssessorId] = useState<string | null>(null);
   const [recipientsLoading, setRecipientsLoading] = useState(false);
@@ -96,9 +125,7 @@ export default function ClientMessagesScreen() {
     recipientRole: string,
   ) {
     setIsComposeOpen(false);
-    navigate(`/client/messages/${recipientId}`, {
-      state: { recipientName, recipientRole },
-    });
+    openThread(recipientId, recipientName, recipientRole);
   }
 
   useEffect(() => {
@@ -133,8 +160,9 @@ export default function ClientMessagesScreen() {
   const unreadTotal = threads.reduce((sum, t) => sum + t.unread_count, 0);
 
   return (
-    <MobileShell className="bg-[#F2F8F7]">
-      <div className="flex-1 overflow-y-auto pb-24">
+    <MobileShell className="bg-[#F2F8F7] lg:flex-row">
+      {/* Inbox column — full width on mobile, fixed-width master column at lg: */}
+      <div className="flex-1 overflow-y-auto pb-24 lg:flex-none lg:w-[400px] lg:h-screen lg:border-r lg:border-[#E5E7EB]">
         {/* Header */}
         <ScreenHeader
           variant="sub"
@@ -193,7 +221,7 @@ export default function ClientMessagesScreen() {
                 <button
                   key={thread.other_user_id}
                   type="button"
-                  onClick={() => navigate(`/client/messages/${thread.other_user_id}`)}
+                  onClick={() => openThread(thread.other_user_id, thread.other_user_name)}
                   className="w-full rounded-2xl p-4 border border-gray-100 shadow-sm flex items-center gap-3 active:scale-[0.98] transition-transform text-left"
                   style={{ backgroundColor: hasUnread ? '#f0fdfa' : '#ffffff' }}
                 >
@@ -265,6 +293,28 @@ export default function ClientMessagesScreen() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Detail column — desktop only. Mobile keeps push navigation. */}
+      <div className="hidden lg:flex lg:flex-1 lg:flex-col lg:h-screen">
+        {selectedThread ? (
+          <ClientMessageThreadView
+            key={selectedThread.id}
+            otherUserId={selectedThread.id}
+            initialName={selectedThread.name}
+            initialRole={selectedThread.role}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+              style={{ backgroundColor: '#f0fdfa' }}
+            >
+              <MessageSquare size={28} style={{ color: '#0d9488' }} />
+            </div>
+            <p className="text-gray-500 text-sm">Select a conversation to read and reply</p>
+          </div>
+        )}
       </div>
 
       {/* Compose modal — pick a recipient (linked trainer or assessment team) */}

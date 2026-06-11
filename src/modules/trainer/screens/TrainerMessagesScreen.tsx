@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MessageSquare, PenSquare, ShieldCheck, X } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
+import TrainerMessageThreadView from '../components/TrainerMessageThreadView';
 import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
 import { getMessageThreads, getTrainerClients, getAssessorId, type TrainerClient } from '../../../services/supabaseService';
@@ -62,6 +63,37 @@ export default function TrainerMessagesScreen() {
   // or the Assessment Team (general team message, clientId null).
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [clients, setClients] = useState<TrainerClient[]>([]);
+
+  // lg: master-detail — the thread shown inline beside the list. Mobile keeps
+  // push navigation to /trainer/messages/:userId and never sets this.
+  const [selectedThread, setSelectedThread] = useState<{
+    id: string;
+    clientId: string | null;
+    name?: string;
+    role?: string;
+  } | null>(null);
+
+  const isDesktop = () =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
+
+  function openThread(id: string, clientId: string | null, name?: string, role?: string) {
+    if (isDesktop()) {
+      // Inline selection: show thread beside the list. markMessagesRead runs
+      // inside the thread view; mirror it locally so the row badge clears.
+      setSelectedThread({ id, clientId, name, role });
+      setThreads(prev =>
+        prev.map(t => (t.other_user_id === id ? { ...t, unread_count: 0 } : t)),
+      );
+      return;
+    }
+    // Mobile: exactly the existing push-navigation behavior — rows pass only
+    // clientId; the compose picker additionally passes name/role.
+    navigate(`/trainer/messages/${id}`, {
+      state: role
+        ? { clientId, recipientName: name, recipientRole: role }
+        : { clientId },
+    });
+  }
   const [assessorId, setAssessorId] = useState<string | null>(null);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientsError, setClientsError] = useState('');
@@ -87,17 +119,13 @@ export default function TrainerMessagesScreen() {
 
   function startConversation(clientId: string, recipientName: string) {
     setIsComposeOpen(false);
-    navigate(`/trainer/messages/${clientId}`, {
-      state: { clientId, recipientName, recipientRole: 'client' },
-    });
+    openThread(clientId, clientId, recipientName, 'client');
   }
 
   // Message the Assessment Team — general team message (no client subject).
   function startTeamConversation(teamId: string, recipientName: string) {
     setIsComposeOpen(false);
-    navigate(`/trainer/messages/${teamId}`, {
-      state: { clientId: null, recipientName, recipientRole: 'assessor' },
-    });
+    openThread(teamId, null, recipientName, 'assessor');
   }
 
   useEffect(() => {
@@ -132,8 +160,9 @@ export default function TrainerMessagesScreen() {
   const unreadTotal = threads.reduce((sum, t) => sum + t.unread_count, 0);
 
   return (
-    <MobileShell className="bg-[#F2F8F7]">
-      <div className="flex-1 overflow-y-auto pb-24">
+    <MobileShell className="bg-[#F2F8F7] lg:flex-row">
+      {/* Inbox column — full width on mobile, fixed-width master column at lg: */}
+      <div className="flex-1 overflow-y-auto pb-24 lg:flex-none lg:w-[400px] lg:h-screen lg:border-r lg:border-[#E5E7EB]">
         {/* Header */}
         <ScreenHeader
           variant="sub"
@@ -193,9 +222,7 @@ export default function TrainerMessagesScreen() {
                   key={thread.other_user_id}
                   type="button"
                   onClick={() =>
-                    navigate(`/trainer/messages/${thread.other_user_id}`, {
-                      state: { clientId: thread.client_id },
-                    })
+                    openThread(thread.other_user_id, thread.client_id, thread.other_user_name)
                   }
                   className="w-full rounded-2xl p-4 border border-gray-100 shadow-sm flex items-center gap-3 active:scale-[0.98] transition-transform text-left"
                   style={{ backgroundColor: hasUnread ? '#f0fdfa' : '#ffffff' }}
@@ -268,6 +295,29 @@ export default function TrainerMessagesScreen() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Detail column — desktop only. Mobile keeps push navigation. */}
+      <div className="hidden lg:flex lg:flex-1 lg:flex-col lg:h-screen">
+        {selectedThread ? (
+          <TrainerMessageThreadView
+            key={selectedThread.id}
+            otherUserId={selectedThread.id}
+            initialClientId={selectedThread.clientId}
+            initialName={selectedThread.name}
+            initialRole={selectedThread.role}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+              style={{ backgroundColor: '#f0fdfa' }}
+            >
+              <MessageSquare size={28} style={{ color: '#0d9488' }} />
+            </div>
+            <p className="text-gray-500 text-sm">Select a conversation to read and reply</p>
+          </div>
+        )}
       </div>
 
       {/* Compose modal (centered overlay) — pick an active client to start a conversation */}
