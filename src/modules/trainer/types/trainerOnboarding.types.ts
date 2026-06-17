@@ -25,11 +25,18 @@ export interface TrainerOnboardingData {
   bio: string;
   // Step 2 — Expertise & Matching
   specialisations: string[];
+  focusAreas: string[];
   sessionTypes: string[];
+  sessionIntensity: string;
+  coachingStyles: string[];
   languages: string[];
   otherLanguage: string;
+  specialCertifications: string[];
+  medicalCertified: boolean;
+  rehabCertified: boolean;
   city: string;
-  // Step 3 — Availability
+  // Step 3 — Availability & Capacity
+  maxClients: number;
   availabilitySlots: AvailabilitySlot[];
   // Step 1 — Profile & Trust (certification upload, merged from former step 4)
   certificationDocument: UploadedFile | null;

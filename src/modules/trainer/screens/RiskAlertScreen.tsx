@@ -27,6 +27,8 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
   missed_workout: 'Missed Workout Sessions',
   hydration:      'Hydration Levels Low',
   general:        'General Wellness Flag',
+  low_readiness:  'Low Readiness',
+  high_pain:      'High Pain',
 };
 
 function severityToRiskLevel(severity: 'low' | 'medium' | 'high'): RiskLevel {
@@ -240,7 +242,7 @@ export default function RiskAlertScreen() {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-4 lg:max-w-3xl lg:mx-auto lg:w-full">
 
           {/* ── 2. Alert Level Badge ────────────────────────────────────────────── */}
           <div>

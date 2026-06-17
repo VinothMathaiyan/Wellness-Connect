@@ -2,12 +2,21 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, AlertTriangle, Users } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { getNewClientQueue, type Assessment } from '../../../services/supabaseService';
 import { supabase } from '../../../lib/supabaseClient';
 
 type FilterTab = 'pending' | 'in_progress' | 'completed';
+
+/** Per-client snapshot of the health profile, shown as badges on each queue card. */
+interface ClientProfileSummary {
+  fitness_level: string | null;
+  conditionCount: number;
+  incomplete: boolean;
+}
 
 export default function NewClientQueueScreen() {
   const navigate = useNavigate();
@@ -16,6 +25,7 @@ export default function NewClientQueueScreen() {
   const [activeTab, setActiveTab] = useState<FilterTab>('pending');
   const [queue, setQueue] = useState<Assessment[]>([]);
   const [completed, setCompleted] = useState<Assessment[]>([]);
+  const [profileMap, setProfileMap] = useState<Record<string, ClientProfileSummary>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -32,17 +42,19 @@ export default function NewClientQueueScreen() {
         const queueRes = await getNewClientQueue(userId!);
         if (queueRes.error) throw new Error(queueRes.error);
         
-        // Fetch completed
+        // Fetch completed — shared across the assessment team (any assessor).
+        // Inner-join the client profile + role filter so only role='client'
+        // assessments show, consistent with the live queue.
         const { data: completedData, error: completedError } = await supabase
           .from('assessments')
           .select(`
             id, client_id, assessor_id, status, assessment_date,
             fitness_level, health_notes, trainer_recommendation,
             recommended_trainer_id, clearance_status, created_at,
-            client:profiles!assessments_client_id_fkey ( full_name )
+            client:profiles!assessments_client_id_fkey!inner ( full_name, role )
           `)
-          .eq('assessor_id', userId!)
           .eq('status', 'completed')
+          .eq('client.role', 'client')
           .order('created_at', { ascending: false });
 
         if (completedError) throw new Error(completedError.message);
@@ -50,15 +62,63 @@ export default function NewClientQueueScreen() {
         if (!isMounted) return;
 
         setQueue(queueRes.data);
-        
-        const mappedCompleted = (completedData || []).map((row: any) => ({
-          ...row,
-          client_name: Array.isArray(row.client)
-            ? (row.client[0]?.full_name ?? 'Unknown')
-            : (row.client?.full_name ?? 'Unknown'),
-        }));
-        
+
+        const mappedCompleted = (completedData || [])
+          // Belt-and-suspenders: keep only client-role rows even if the
+          // embedded role filter is ever relaxed.
+          .filter((row: any) => {
+            const client = Array.isArray(row.client) ? row.client[0] : row.client;
+            return client?.role === 'client';
+          })
+          .map((row: any) => ({
+            ...row,
+            client_name: Array.isArray(row.client)
+              ? (row.client[0]?.full_name ?? 'Unknown')
+              : (row.client?.full_name ?? 'Unknown'),
+          }));
+
         setCompleted(mappedCompleted as Assessment[]);
+
+        // Fetch each client's health profile to render status badges on cards.
+        const clientIds = Array.from(
+          new Set([
+            ...queueRes.data.map(q => q.client_id),
+            ...mappedCompleted.map((c: Assessment) => c.client_id),
+          ]),
+        );
+
+        if (clientIds.length > 0) {
+          const { data: profileRows } = await supabase
+            .from('client_profiles')
+            .select('user_id, dob, gender, fitness_level, medical_conditions')
+            .in('user_id', clientIds);
+
+          if (isMounted) {
+            const map: Record<string, ClientProfileSummary> = {};
+            for (const row of (profileRows ?? []) as Array<{
+              user_id: string;
+              dob: string | null;
+              gender: string | null;
+              fitness_level: string | null;
+              medical_conditions: string[] | null;
+            }>) {
+              map[row.user_id] = {
+                fitness_level: row.fitness_level ?? null,
+                conditionCount: Array.isArray(row.medical_conditions)
+                  ? row.medical_conditions.length
+                  : 0,
+                incomplete: !row.dob || !row.gender,
+              };
+            }
+            // Clients with no client_profiles row at all are incomplete too.
+            for (const id of clientIds) {
+              if (!map[id]) {
+                map[id] = { fitness_level: null, conditionCount: 0, incomplete: true };
+              }
+            }
+            setProfileMap(map);
+          }
+        }
 
       } catch (err: any) {
         if (isMounted) setError(err.message || 'Failed to load queue.');
@@ -76,7 +136,10 @@ export default function NewClientQueueScreen() {
 
   const displayedList = useMemo(() => {
     if (activeTab === 'completed') return completed;
-    return queue.filter(item => item.status === activeTab);
+    // Pending tab surfaces the full live queue (pending + in_progress);
+    // the In Progress tab narrows to in_progress only.
+    if (activeTab === 'in_progress') return queue.filter(item => item.status === 'in_progress');
+    return queue;
   }, [activeTab, queue, completed]);
 
   const getStatusColor = (status: string) => {
@@ -106,22 +169,13 @@ export default function NewClientQueueScreen() {
   return (
     <MobileShell className="bg-[#F2F8F7]">
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 pt-10 pb-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700 active:scale-95 transition-transform"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 leading-tight">Client Queue</h1>
-            <p className="text-sm font-medium text-gray-500">
-              {queue.filter(q => q.status === 'pending').length} awaiting assessment
-            </p>
-          </div>
-        </div>
-        
+      <ScreenHeader
+        variant="sub"
+        title="Client Queue"
+        subtitle={`${queue.filter(q => q.status === 'pending').length} awaiting assessment`}
+        onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
+      >
         {/* Filter Tabs */}
         <div className="flex bg-gray-100 p-1 rounded-xl mt-5">
           <button
@@ -143,7 +197,7 @@ export default function NewClientQueueScreen() {
             Completed
           </button>
         </div>
-      </div>
+      </ScreenHeader>
 
       <div className="flex-1 overflow-y-auto p-5 pb-24">
         {error && (
@@ -166,9 +220,10 @@ export default function NewClientQueueScreen() {
             ))}
           </div>
         ) : displayedList.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
             {displayedList.map(client => {
               const colors = getStatusColor(client.status);
+              const summary = profileMap[client.client_id];
               const clientInitials = client.client_name?.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
               
               return (
@@ -183,10 +238,25 @@ export default function NewClientQueueScreen() {
                   <div className="flex-1">
                     <p className="font-bold text-gray-900 text-[15px]">{client.client_name}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{calculateDaysAgo(client.created_at)}</p>
-                    <div className="mt-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: colors.bg, color: colors.text }}>
                          {client.status.replace('_', ' ').toUpperCase()}
                        </span>
+                       {summary?.fitness_level && (
+                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold capitalize" style={{ backgroundColor: '#f0fdfa', color: '#0d9488' }}>
+                           {summary.fitness_level}
+                         </span>
+                       )}
+                       {summary && summary.conditionCount > 0 && (
+                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
+                           {summary.conditionCount} condition{summary.conditionCount > 1 ? 's' : ''}
+                         </span>
+                       )}
+                       {summary?.incomplete && (
+                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: '#fffbeb', color: '#d97706' }}>
+                           Profile incomplete
+                         </span>
+                       )}
                     </div>
                   </div>
                   <ChevronRight size={20} className="text-gray-400 shrink-0" />

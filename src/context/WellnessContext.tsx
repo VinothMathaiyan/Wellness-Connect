@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
+import { getTrainerApprovalStatus, saveWeeklyReflection, mondayOfWeek, type TrainerApprovalStatus } from '../services/supabaseService';
 import type {
   WellnessAppState,
   DailyLog,
@@ -30,6 +31,16 @@ interface WellnessContextType {
   userId: string | null;
   userRole: 'client' | 'trainer' | 'assessor' | null;
   isAuthLoading: boolean;
+
+  // Assessment gate: null = loading, true = cleared (or non-client), false = pending review.
+  isClientCleared: boolean | null;
+  recheckClearance: () => Promise<void>;
+
+  // Trainer approval gate. trainerApprovalStatus: null = no approval row yet
+  // (mid-onboarding) or loading; isTrainerApprovalLoading distinguishes the two.
+  trainerApprovalStatus: TrainerApprovalStatus | null;
+  isTrainerApprovalLoading: boolean;
+  recheckTrainerApproval: () => Promise<void>;
 
   setAppState: React.Dispatch<React.SetStateAction<WellnessAppState>>;
   setUserRole: React.Dispatch<React.SetStateAction<'client' | 'trainer' | 'assessor' | null>>;
@@ -83,6 +94,13 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [userId, setUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'client' | 'trainer' | 'assessor' | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  // Assessment gate clearance — see isClientCleared in the context type.
+  const [isClientCleared, setIsClientCleared] = useState<boolean | null>(null);
+
+  // Trainer approval gate — see trainerApprovalStatus in the context type.
+  const [trainerApprovalStatus, setTrainerApprovalStatus] = useState<TrainerApprovalStatus | null>(null);
+  const [isTrainerApprovalLoading, setIsTrainerApprovalLoading] = useState(true);
 
   useEffect(() => {
     // Resolve the role: prefer user_metadata.role (fast, no network), but fall
@@ -143,6 +161,85 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // ── Assessment gate clearance ───────────────────────────────────────────────
+  // A client is "cleared" once the assessment team sets clearance_status to
+  // 'cleared' or 'conditional'. Trainers / assessors are always treated as
+  // cleared. A client with no assessment row yet is treated as not cleared.
+  const fetchClearance = async (
+    uid: string,
+    role: 'client' | 'trainer' | 'assessor',
+  ): Promise<boolean> => {
+    if (role !== 'client') return true;
+    const { data } = await supabase
+      .from('assessments')
+      .select('clearance_status')
+      .eq('client_id', uid)
+      .maybeSingle();
+    return data?.clearance_status === 'cleared' || data?.clearance_status === 'conditional';
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    // Reset to loading whenever the signed-in user / role changes.
+    setIsClientCleared(null);
+
+    if (!userId || !userRole) return;
+
+    fetchClearance(userId, userRole)
+      .then(cleared => { if (!cancelled) setIsClientCleared(cleared); })
+      .catch(err => {
+        console.error('WellnessContext clearance check:', err);
+        // Fail closed for clients so an unverified account isn't let through.
+        if (!cancelled) setIsClientCleared(userRole !== 'client');
+      });
+
+    return () => { cancelled = true; };
+  }, [userId, userRole]);
+
+  // Re-run the clearance lookup on demand (e.g. the pending screen's poll or
+  // "Check status" tap, or when an assessment_complete notification arrives).
+  const recheckClearance = async (): Promise<void> => {
+    if (!userId || !userRole) return;
+    try {
+      const cleared = await fetchClearance(userId, userRole);
+      setIsClientCleared(cleared);
+    } catch (err) {
+      console.error('WellnessContext recheckClearance:', err);
+    }
+  };
+
+  // ── Trainer approval gate ───────────────────────────────────────────────────
+  // Mirrors the clearance gate: fetch on user/role change; expose a poll-friendly
+  // recheck so the pending screen can keep the guard in sync after approval.
+  useEffect(() => {
+    let cancelled = false;
+    setTrainerApprovalStatus(null);
+
+    if (!userId || !userRole) return;
+    if (userRole !== 'trainer') {
+      setIsTrainerApprovalLoading(false);
+      return;
+    }
+
+    setIsTrainerApprovalLoading(true);
+    getTrainerApprovalStatus(userId)
+      .then(({ status }) => { if (!cancelled) setTrainerApprovalStatus(status); })
+      .catch(err => console.error('WellnessContext trainer approval:', err))
+      .finally(() => { if (!cancelled) setIsTrainerApprovalLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [userId, userRole]);
+
+  const recheckTrainerApproval = async (): Promise<void> => {
+    if (!userId || userRole !== 'trainer') return;
+    try {
+      const { status } = await getTrainerApprovalStatus(userId);
+      setTrainerApprovalStatus(status);
+    } catch (err) {
+      console.error('WellnessContext recheckTrainerApproval:', err);
+    }
+  };
 
   const handleSignUpSuccess = (data: Partial<WellnessAppState>) => {
     setAppState(prev => ({ ...prev, ...data }));
@@ -213,8 +310,13 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
     setWorkoutProgress({ score: payload.adherenceScore, notes: payload.clientNotes });
   };
 
-  const handleWeeklyReportSave = (reflection: string) => {
-    console.log('Saved reflection:', reflection);
+  const handleWeeklyReportSave = async (reflection: string) => {
+    if (!userId) return;
+    try {
+      await saveWeeklyReflection(userId, mondayOfWeek(), reflection);
+    } catch (err) {
+      console.error('handleWeeklyReportSave:', err);
+    }
   };
 
   const handleMarkAlertRead = (id: string) => {
@@ -271,6 +373,11 @@ export const WellnessProvider: React.FC<{ children: ReactNode }> = ({ children }
         userId,
         userRole,
         isAuthLoading,
+        isClientCleared,
+        recheckClearance,
+        trainerApprovalStatus,
+        isTrainerApprovalLoading,
+        recheckTrainerApproval,
         setAppState,
         setUserRole,
         setActiveSession,

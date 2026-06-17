@@ -1,8 +1,10 @@
 import { useRef, useState, useEffect, type ComponentType } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Users, BarChart3, MessageSquare, Bell, BarChart2, Phone, MapPin, Video, LogOut } from 'lucide-react';
-import type { ClientSession, WeeklyReportStatus } from '../../../types';
+import { Home, Users, BarChart3, MessageSquare, Bell, BarChart2, Phone, MapPin, Video } from 'lucide-react';
+import type { ClientSession } from '../../../types';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '../../../components/ScreenHeader';
 import { formatDateLong } from '@/utils/dateUtils';
 
 
@@ -20,24 +22,7 @@ function getGreeting(): string {
 
 const getScoreColor = (s: number) => s >= 70 ? '#1D9E75' : s >= 40 ? '#EF9F27' : '#E24B4A';
 
-/* ── NavButton ───────────────────────────────────────────── */
-const NavButton = ({ label, icon: Icon, active = false, onClick, badge }: {
-  label: string;
-  icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; className?: string }>;
-  active?: boolean;
-  onClick?: () => void;
-  badge?: number;
-}) => (
-  <button onClick={onClick} className="flex flex-col items-center justify-center gap-[2px] transition-all min-w-[56px]">
-    <div className="relative">
-      <Icon size={20} strokeWidth={active ? 2.5 : 2} color={active ? '#1D9E75' : '#6B7280'} />
-      {badge && badge > 0 && (
-        <div className="absolute -top-[1.5px] -right-[1.5px] w-[6px] h-[6px] bg-[#E24B4A] rounded-full" />
-      )}
-    </div>
-    <span className={`text-[10px] font-medium ${active ? 'text-[#1D9E75]' : 'text-[#6B7280]'}`}>{label}</span>
-  </button>
-);
+
 
 /* ── NutritionCard ─────────────────────────── */
 const NutritionCard = ({
@@ -183,14 +168,20 @@ const TrainingCard = ({ session, onClick }: { session?: ClientSession; onClick: 
 };
 
 /* ── WeeklyReportCard ────────────────────────────────────── */
-const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingComplete }: {
-  status: WeeklyReportStatus; weekNumber: number; teaser?: { sleep: string; mood: string; energy: string }; onClick: () => void; isTrackingComplete?: boolean;
+// Enable rule: the Weekly Report unlocks once the client has logged at least
+// WEEKLY_REPORT_MIN_DAYS distinct days this week — it's a check-in, not a final
+// exam, so it shouldn't wait for all 7 days or for today's check-in to be 100%.
+const WeeklyReportCard = ({ weekLabel, loggedDays, teaser, onClick }: {
+  weekLabel: string; loggedDays: number; teaser?: { sleep: string; mood: string; energy: string }; onClick: () => void;
 }) => {
-  if (!isTrackingComplete || status === 'no_data') return (
+  const remaining = Math.max(0, WEEKLY_REPORT_MIN_DAYS - loggedDays);
+  const unlocked = remaining === 0;
+
+  if (!unlocked) return (
     <div className="bg-white rounded-[12px] p-[14px] border border-[#E5E7EB] flex items-center gap-[14px] mb-[10px] opacity-65">
       <div className="w-[48px] h-[48px] shrink-0 bg-[#EEF2FF] rounded-[10px] flex items-center justify-center"><BarChart2 size={24} className="text-[#4F46E5]" /></div>
-      <div className="flex-1"><h4 className="text-[13px] font-semibold text-[#111827]">Weekly Report</h4><p className="text-[12px] text-[#9CA3AF]">{!isTrackingComplete ? "Complete daily tracking to unlock" : "Keep logging daily to unlock your first summary"}</p></div>
-      <div className="px-3 py-0.5 bg-gray-100 rounded-full text-[11px] font-bold text-[#9CA3AF]">Week {weekNumber}</div>
+      <div className="flex-1"><h4 className="text-[13px] font-semibold text-[#111827]">Weekly Report</h4><p className="text-[12px] text-[#9CA3AF]">{remaining} more daily log{remaining === 1 ? '' : 's'} to unlock</p></div>
+      <div className="px-3 py-0.5 bg-gray-100 rounded-full text-[11px] font-bold text-[#9CA3AF]">{weekLabel}</div>
     </div>
   );
   return (
@@ -198,7 +189,7 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingCompl
       <div className="w-[48px] h-[48px] shrink-0 bg-[#EEF2FF] rounded-[10px] flex items-center justify-center"><BarChart2 size={24} className="text-[#4F46E5]" /></div>
       <div className="flex-1">
         <h4 className="text-[13px] font-semibold text-[#111827]">Weekly Report</h4>
-        <p className="text-[12px] text-[#6B7280] mb-1">Week {weekNumber} summary ready</p>
+        <p className="text-[12px] text-[#6B7280] mb-1">This week's summary ready</p>
         {teaser && (
           <div className="flex flex-wrap gap-1">
             <span className="px-2 py-0.5 bg-[#F3F4F6] text-[10px] rounded-full">😴 Sleep {teaser.sleep}</span>
@@ -215,13 +206,14 @@ const WeeklyReportCard = ({ status, weekNumber, teaser, onClick, isTrackingCompl
 /* ── HomeScreen (Main Export) ────────────────────────────── */
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
-import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWorkoutPlan, getClientTodayMealCount, getClientTodayCheckinStatus, getClientCurrentWeek, getClientPlanInfo } from '../../../services/supabaseService';
+import { getClientReadiness, getTodaySession, getClientUnreadCount, hasActiveWorkoutPlan, getClientTodayMealCount, getClientTodayCheckinStatus, getClientCurrentWeek, getClientPlanInfo, getWeeklyLogs } from '../../../services/supabaseService';
 import { supabase } from '../../../lib/supabaseClient';
 import { getUserProfile } from '../../../services/supabaseService';
+import { type ProgramWeek, WEEKLY_REPORT_MIN_DAYS } from '../../../utils/program';
+import ClientBottomNav from '../components/ClientBottomNav';
 export default function HomeScreen() {
   const navigate = useNavigate();
-  const { appState, userId, workoutProgress, logout } = useWellness();
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const { appState, userId, workoutProgress } = useWellness();
 
   // ── Live Supabase state ────────────────────────────────────────────────────
   const [readinessScore,    setReadinessScore]    = useState<number | null>(null);
@@ -238,8 +230,11 @@ export default function HomeScreen() {
   const [checkinStatus, setCheckinStatus] = useState<{ hasCheckin: boolean; done: number; total: number }>({ hasCheckin: false, done: 0, total: 7 });
 
   // ── Live current week from active plan ────────────────────────────────────
-  const [currentWeekLive, setCurrentWeekLive] = useState<number | null>(null);
+  const [currentWeekLive, setCurrentWeekLive] = useState<ProgramWeek | null>(null);
   const [totalWeeksLive, setTotalWeeksLive] = useState<number | null>(null);
+  const [scheduledAtLive, setScheduledAtLive] = useState<string | null>(null);
+  // Distinct days logged in the current week — drives the Weekly Report unlock.
+  const [weekLoggedDays, setWeekLoggedDays] = useState(0);
 
   // ── Live user profile name ────────────────────────────────────────────────
   const [profileName, setProfileName] = useState<string>('');
@@ -266,7 +261,8 @@ export default function HomeScreen() {
       getClientTodayCheckinStatus(userId),
       getClientPlanInfo(userId),
       getUserProfile(userId),
-    ]).then(([readiness, session, unreadCount, activePlan, mealData, checkin, planInfo, profile]) => {
+      getWeeklyLogs(userId).catch(() => []),
+    ]).then(([readiness, session, unreadCount, activePlan, mealData, checkin, planInfo, profile, weeklyLogs]) => {
       if (cancelled) return;
       setReadinessScore(readiness);
       setTodaySession(session);
@@ -276,9 +272,12 @@ export default function HomeScreen() {
       setDailyNutritionLive(mealData.nutrition);
       setCheckinStatus(checkin);
       if (planInfo) {
-        setCurrentWeekLive(planInfo.currentWeek);
+        setCurrentWeekLive(planInfo.week);
         setTotalWeeksLive(planInfo.totalWeeks);
+        setScheduledAtLive(planInfo.scheduledAt);
       }
+      // Each row is a distinct log_date in the current Mon-Sun week.
+      setWeekLoggedDays(weeklyLogs.length);
       if (profile?.full_name) setProfileName(profile.full_name);
     }).catch(err => {
       if (cancelled) return;
@@ -329,13 +328,33 @@ export default function HomeScreen() {
   const todayRef = useRef<HTMLDivElement>(null);
 
   const firstName = (displayName || 'User').split(' ')[0];
-  const initial = firstName[0].toUpperCase();
   const habitsDone = checkinStatus.done;
   const habitsTotal = checkinStatus.total;
   const mealsLogged = mealsLoggedLive;
-  const isTrackingComplete = checkinStatus.hasCheckin && habitsDone >= habitsTotal;
-  const currentWeek = currentWeekLive ?? 1;
+  const programWeek = currentWeekLive; // number | 'not_started' | 'starts_future' | null
   const totalWeeks = totalWeeksLive ?? 12;
+
+  const fmtShortDate = (iso: string | null): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  };
+
+  // Hero plan-progress chip labels.
+  const weekBig =
+    typeof programWeek === 'number' ? `Week ${programWeek}`
+    : programWeek === 'starts_future' ? 'Starts'
+    : 'Not started';
+  const weekSmall =
+    typeof programWeek === 'number' ? `of ${totalWeeks}-week plan`
+    : programWeek === 'starts_future' ? (fmtShortDate(scheduledAtLive) || 'soon')
+    : 'Awaiting schedule';
+
+  // Compact label for the Weekly Report badge.
+  const weekBadge =
+    typeof programWeek === 'number' ? `Week ${programWeek}`
+    : programWeek === 'starts_future' ? 'Starts soon'
+    : 'Not started';
 
   // Track adherence for last session
   const lastSessionAdherence = workoutProgress?.score ?? 0;
@@ -343,85 +362,15 @@ export default function HomeScreen() {
     console.log(`Phase 10: Last Session Adherence - ${lastSessionAdherence}%`);
   }
 
-  const handleLogout = async () => {
-    setShowProfileMenu(false);
-    await logout();
-    navigate('/', { replace: true });
-  };
-
   return (
     <MobileShell>
 
         {/* Top Bar */}
-        <header className="h-[52px] w-full flex items-center justify-between px-[20px] bg-white shrink-0 border-b border-[#F3F4F6]">
-          <div className="w-[36px]" />
-          <h1 className="text-[16px] font-bold text-[#111827]">WellnessConnect</h1>
-
-          {/* Avatar — tap to open profile / logout menu */}
-          <div className="relative">
-            <button
-              onClick={() => setShowProfileMenu(prev => !prev)}
-              className="w-[36px] h-[36px] rounded-full bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-bold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors"
-              aria-label="Profile menu"
-            >
-              {initial}
-            </button>
-
-            <AnimatePresence>
-              {showProfileMenu && (
-                <>
-                  {/* Backdrop — closes menu on outside tap */}
-                  <div
-                    onClick={() => setShowProfileMenu(false)}
-                    style={{
-                      position: 'fixed',
-                      inset: 0,
-                      zIndex: 99,
-                      backgroundColor: 'transparent',
-                    }}
-                  />
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                    transition={{ duration: 0.12 }}
-                    style={{
-                      position: 'fixed',
-                      top: '60px',
-                      right: '16px',
-                      zIndex: 100,
-                      backgroundColor: '#ffffff',
-                      borderRadius: '12px',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                      minWidth: '200px',
-                      overflow: 'hidden',
-                      border: '1px solid #E5E7EB',
-                    }}
-                  >
-                    {/* Name row */}
-                    <div className="px-4 py-3 border-b border-gray-100">
-                      <p className="text-[13px] font-semibold text-[#111827] truncate">
-                        {displayName || 'My Account'}
-                      </p>
-                      <p className="text-[11px] text-[#6B7280] mt-0.5">Client</p>
-                    </div>
-
-                    {/* Log out */}
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2.5 px-4 py-3 text-left active:bg-red-50 transition-colors"
-                    >
-                      <LogOut size={15} style={{ color: '#DC2626', flexShrink: 0 }} />
-                      <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>
-                        Log out
-                      </span>
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-          </div>
-        </header>
+        <ScreenHeader
+          variant="sub"
+          title="WellnessConnect"
+          avatar={<ProfileMenu />}
+        />
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide pb-[72px]">
@@ -466,7 +415,8 @@ export default function HomeScreen() {
               <h2 className="text-[22px] font-bold text-[#1D9E75]">{firstName}</h2>
             </div>
 
-            {/* Score Card */}
+            {/* Score Card — width-capped on desktop so it doesn't stretch edge to edge */}
+            <div className="lg:max-w-2xl">
             {homeDataLoading ? (
               <div className="rounded-[14px] p-[14px_16px] flex items-center justify-center bg-[#E5E7EB] shadow-[0_2px_8px_rgba(0,0,0,0.06)]" style={{ minHeight: 68 }}>
                 <span className="text-[13px] text-[#9CA3AF] font-medium">Loading…</span>
@@ -482,9 +432,9 @@ export default function HomeScreen() {
                 {hasPlan ? (
                   <>
                     <div className="w-[1px] h-[40px] bg-white opacity-40" />
-                    <div className="flex-1 flex flex-col items-center">
-                      <span className="text-[22px] font-bold text-white tracking-tight">Week {currentWeek}</span>
-                      <span className="text-[11px] text-white/70 font-medium">of {totalWeeks}-week plan</span>
+                    <div className="flex-1 flex flex-col items-center text-center px-1">
+                      <span className="text-[22px] font-bold text-white tracking-tight leading-tight">{weekBig}</span>
+                      <span className="text-[11px] text-white/70 font-medium leading-tight">{weekSmall}</span>
                     </div>
                   </>
                 ) : (
@@ -510,6 +460,7 @@ export default function HomeScreen() {
                 <span className="text-[16px] text-[#9CA3AF]">›</span>
               </button>
             )}
+            </div>
 
             <button onClick={() => todayRef.current?.scrollIntoView({ behavior: 'smooth' })}
               className="mt-[12px] text-[13px] font-medium text-[#1D9E75] active:opacity-60 transition-opacity">
@@ -538,6 +489,10 @@ export default function HomeScreen() {
               <span className="text-[11px] text-[#9CA3AF] font-medium">{formatDateShort()} · {habitsDone} of {habitsTotal} tracked</span>
             </div>
 
+            {/* Card grid wrapper — plain div below lg (mobile unchanged), 2-col grid on desktop.
+                Cards keep their own mb-[10px] for vertical rhythm in both layouts. */}
+            <div className="lg:grid lg:grid-cols-2 lg:gap-x-4 lg:items-start">
+
             {/* Nutrition Card */}
             <NutritionCard
               logged={mealsLogged}
@@ -545,7 +500,8 @@ export default function HomeScreen() {
               onClick={() => { console.log('Action Triggered: Log your Meal'); navigate('/client/nutrition'); }}
             />
 
-            {/* Training Card */}
+            {/* Training Card + its view-all link grouped so they share a grid cell at lg: */}
+            <div>
             <TrainingCard
               session={todaySession ?? undefined}
               onClick={() => {
@@ -570,6 +526,7 @@ export default function HomeScreen() {
                 View all upcoming sessions ›
               </div>
             )}
+            </div>
 
             {/* Daily Tracking Card */}
             <div onClick={() => { console.log('Action Triggered: Track Today'); navigate('/client/check-in'); }}
@@ -597,23 +554,17 @@ export default function HomeScreen() {
 
             {/* Weekly Report Card */}
             <WeeklyReportCard
-              status={checkinStatus.hasCheckin ? 'ready' : 'no_data'}
-              weekNumber={currentWeek}
-              teaser={checkinStatus.hasCheckin ? undefined : undefined}
-              isTrackingComplete={isTrackingComplete}
+              weekLabel={weekBadge}
+              loggedDays={weekLoggedDays}
               onClick={() => { console.log('Action Triggered: View Report'); navigate('/client/report/current'); }}
             />
+
+            </div>
           </section>
         </div>
 
-        {/* Bottom Navigation — fixed inside device frame */}
-        <nav className="absolute bottom-0 left-0 right-0 h-[60px] bg-white border-t border-[#E5E7EB] flex items-center justify-around px-[10px] z-50">
-          <NavButton label="Home" icon={Home} active={true} onClick={() => console.log('Action Triggered: Nav Home')} />
-          <NavButton label="Trainers" icon={Users} onClick={() => { console.log('Action Triggered: Nav Trainers'); navigate('/client/trainers'); }} />
-          <NavButton label="Progress" icon={BarChart3} onClick={() => { console.log('Action Triggered: Nav Progress'); navigate('/client/progress'); }} />
-          <NavButton label="Messages" icon={MessageSquare} onClick={() => { console.log('Action Triggered: Nav Messages'); navigate('/client/messages'); }} />
-          <NavButton label="Alerts" icon={Bell} badge={unreadAlertsCount} onClick={() => { console.log('Action Triggered: Nav Alerts'); navigate('/client/alerts'); }} />
-        </nav>
+        {/* Bottom Navigation */}
+        <ClientBottomNav unreadAlertsCount={unreadAlertsCount} />
 
     </MobileShell>
   );

@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { ChevronRight, Shield, AlertTriangle } from 'lucide-react';
+import { ChevronRight, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import {
   getTrainerAllRiskAlerts,
   markAlertRead,
@@ -39,6 +40,8 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
   missed_workout: 'Missed workout sessions',
   hydration:      'Hydration levels low',
   general:        'General wellness flag',
+  low_readiness:  'Low readiness reported',
+  high_pain:      'High pain reported',
 };
 
 function severityToRiskLevel(severity: 'low' | 'medium' | 'high'): RiskLevel {
@@ -241,25 +244,13 @@ export default function RiskMonitorScreen() {
     <MobileShell>
       <div className="flex flex-col min-h-full bg-gray-50">
 
-        {/* ── Header ─────────────────────────────────────────────────────────── */}
-        <div className="bg-white px-4 pt-6 pb-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <button
-              onClick={() => navigate(-1)}
-              className="mt-0.5 p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
-              aria-label="Go back"
-            >
-              <AlertTriangle size={20} className="text-gray-500" />
-            </button>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900 leading-tight">Risk Monitor</h1>
-              <p className="text-sm text-gray-500 mt-0.5">All clients · sorted by risk level</p>
-            </div>
-            <div className="ml-auto">
-              <ProfileMenu />
-            </div>
-          </div>
-
+        <ScreenHeader
+          variant="sub"
+          title="Risk Monitor"
+          subtitle="All clients · sorted by risk level"
+          onBack={() => navigate(-1)}
+          avatar={<ProfileMenu />}
+        >
           {/* ── Risk summary strip ──────────────────────────────────────────── */}
           <div className="flex items-center justify-center gap-3 mt-4">
             <span
@@ -281,7 +272,7 @@ export default function RiskMonitorScreen() {
               {isLoading ? '–' : greenClients.length} On Track
             </span>
           </div>
-        </div>
+        </ScreenHeader>
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
@@ -315,6 +306,7 @@ export default function RiskMonitorScreen() {
               {redClients.length > 0 && (
                 <div>
                   <SectionHeader label="Immediate Attention" colorClass="text-red-600" hexColor="#dc2626" />
+                  <div className="lg:grid lg:grid-cols-2 lg:gap-x-3 lg:items-start">
                   {redClients.map(client => (
                     <ClientRiskRow
                       key={client.id}
@@ -322,6 +314,7 @@ export default function RiskMonitorScreen() {
                       onTap={() => handleAlertTap(client)}
                     />
                   ))}
+                  </div>
                 </div>
               )}
 
@@ -329,6 +322,7 @@ export default function RiskMonitorScreen() {
               {amberClients.length > 0 && (
                 <div>
                   <SectionHeader label="Monitor Closely" colorClass="text-amber-600" hexColor="#d97706" />
+                  <div className="lg:grid lg:grid-cols-2 lg:gap-x-3 lg:items-start">
                   {amberClients.map(client => (
                     <ClientRiskRow
                       key={client.id}
@@ -340,6 +334,7 @@ export default function RiskMonitorScreen() {
                       }
                     />
                   ))}
+                  </div>
                 </div>
               )}
 
@@ -347,6 +342,7 @@ export default function RiskMonitorScreen() {
               {greenClients.length > 0 && (
                 <div>
                   <SectionHeader label="Low Risk" colorClass="text-emerald-600" hexColor="#059669" />
+                  <div className="lg:grid lg:grid-cols-2 lg:gap-x-3 lg:items-start">
                   {greenClients.map(client => (
                     <ClientRiskRow
                       key={client.id}
@@ -358,6 +354,7 @@ export default function RiskMonitorScreen() {
                       }
                     />
                   ))}
+                  </div>
                 </div>
               )}
             </>

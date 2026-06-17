@@ -9,6 +9,8 @@ import {
   X,
 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ScreenHeader from '@/components/ScreenHeader';
+import ProfileMenu from '../../../components/ProfileMenu';
 import { useWellness } from '../../../context/WellnessContext';
 import {
   approveProgram,
@@ -161,23 +163,14 @@ export default function ProgramApprovalScreen() {
         className="flex flex-col min-h-full"
         style={{ backgroundColor: '#F9FAFB', color: '#111827' }}
       >
-        <header
-          className="px-4 pt-6 pb-4 flex items-center gap-3 sticky top-0 z-20"
-          style={{
-            backgroundColor: '#FFFFFF',
-            borderBottom: '1px solid #E5E7EB',
-          }}
-        >
-          <button
-            onClick={() => navigate(-1)}
-            className="w-9 h-9 flex items-center justify-center rounded-[8px]"
-            style={{ color: '#4B5563' }}
-            aria-label="Go back"
-          >
-            <ChevronLeft size={22} />
-          </button>
-          <h1 className="text-[18px] font-bold leading-tight">Review Program</h1>
-        </header>
+        <div className="shrink-0 sticky top-0 z-20">
+          <ScreenHeader
+            variant="sub"
+            title="Review Program"
+            onBack={() => navigate(-1)}
+            avatar={<ProfileMenu />}
+          />
+        </div>
 
         <main className="flex-1 overflow-y-auto pb-8">
           {loading && <LoadingSkeleton />}

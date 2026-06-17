@@ -13,6 +13,9 @@ import {
   updateClientLinkStatus,
   getPendingClientRequests,
   getActiveClientCount,
+  getClientAssessmentNotes,
+  getClientProfileById,
+  type ClientAssessmentNotes,
 } from '../../../services/supabaseService';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -140,16 +143,48 @@ function ClientProfilePreview({ client }: { client: PendingClient }) {
   );
 }
 
-function AssessmentSummary({ notes }: { notes: string }) {
+function AssessmentSummary({ notes }: { notes: ClientAssessmentNotes | null; isLoading: boolean }) {
+  if (!notes) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm p-4 mb-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          Assessment Team Notes
+        </p>
+        <p className="text-sm text-gray-400 italic">No assessment on file</p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 mb-3">
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
         Assessment Team Notes
       </p>
-      {notes ? (
-        <p className="text-sm text-gray-500 italic leading-relaxed">{notes}</p>
+
+      {/* Clearance + Fitness badges */}
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {notes.clearance_status && (
+          <span
+            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+            style={{
+              backgroundColor: notes.clearance_status === 'cleared' ? '#d1fae5' : '#fef3c7',
+              color: notes.clearance_status === 'cleared' ? '#065f46' : '#854d0e',
+            }}
+          >
+            {notes.clearance_status === 'cleared' ? '✓ Cleared' : notes.clearance_status}
+          </span>
+        )}
+        {notes.fitness_level && (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+            {notes.fitness_level}
+          </span>
+        )}
+      </div>
+
+      {notes.health_notes ? (
+        <p className="text-sm text-gray-500 italic leading-relaxed">{notes.health_notes}</p>
       ) : (
-        <p className="text-sm text-gray-400 italic">No assessment notes available</p>
+        <p className="text-sm text-gray-400 italic">No additional notes from the assessment team</p>
       )}
     </div>
   );
@@ -259,11 +294,17 @@ export default function AcceptDeclineScreen() {
 
   const [screenState, setScreenState] = useState<ScreenState>('default');
   const [pendingClient, setPendingClient] = useState<PendingClientProfile | null>(null);
-  const [isLoadingClient, setIsLoadingClient] = useState(true);
+  // True until the pending-request resolution effect (list match + direct
+  // getClientProfileById fallback) completes. Gates the render so the mock
+  // dev placeholder never flashes before the real client resolves.
+  const [isResolvingClient, setIsResolvingClient] = useState(true);
   // The real client ID resolved from the pending request (may differ from mock route param)
   const [realClientId, setRealClientId] = useState<string | null>(null);
   // Real active client count fetched from DB
   const [activeClientCount, setActiveClientCount] = useState(0);
+  // Assessment notes fetched from DB
+  const [assessmentNotes, setAssessmentNotes] = useState<ClientAssessmentNotes | null>(null);
+  const [isAssessmentLoading, setIsAssessmentLoading] = useState(true);
 
   useEffect(() => {
     if (!userId) return;
@@ -271,24 +312,54 @@ export default function AcceptDeclineScreen() {
       getPendingClientRequests(userId),
       getActiveClientCount(userId),
     ])
-      .then(([requests, clientCount]) => {
+      .then(async ([requests, clientCount]) => {
         setActiveClientCount(clientCount);
         const typedRequests = requests as unknown as PendingClientRequest[];
-        // Try exact match first; if the route param is the mock "pending-001",
-        // fall back to the first pending request so the screen works end-to-end.
-        const match = typedRequests.find(request => {
-          const client = firstPendingClient(request.client);
-          return request.client_id === routeClientId || client?.id === routeClientId;
-        }) ?? (typedRequests.length > 0 ? typedRequests[0] : null);
+        // Prefer an exact match on the route param (against client_id or the
+        // resolved client's id). Only fall back to the first pending request
+        // when there's no routeClientId to match against.
+        const exactMatch = routeClientId
+          ? typedRequests.find(request => {
+              const client = firstPendingClient(request.client);
+              return request.client_id === routeClientId || client?.id === routeClientId;
+            })
+          : undefined;
+        const match =
+          exactMatch ?? (!routeClientId && typedRequests.length > 0 ? typedRequests[0] : null);
         if (match) {
           const client = firstPendingClient(match.client);
           setPendingClient(client);
           setRealClientId(match.client_id ?? client?.id ?? null);
+          return;
+        }
+        // No match in the pending list — if we have a route param, fetch that
+        // client's profile directly so we still show real identity, not mock.
+        if (routeClientId) {
+          const profile = await getClientProfileById(routeClientId);
+          if (profile) {
+            setPendingClient(profile);
+            setRealClientId(profile.id);
+          }
         }
       })
       .catch(err => console.error('Pending load:', err))
-      .finally(() => setIsLoadingClient(false));
+      .finally(() => setIsResolvingClient(false));
   }, [userId, routeClientId]);
+
+  // Fetch assessment notes using the RESOLVED client id, not the raw route param
+  // (the param may be a placeholder/link id that won't match the assessments table).
+  useEffect(() => {
+    const idForNotes = realClientId ?? routeClientId;
+    if (!idForNotes) {
+      setIsAssessmentLoading(false);
+      return;
+    }
+    setIsAssessmentLoading(true);
+    getClientAssessmentNotes(idForNotes)
+      .then(notes => setAssessmentNotes(notes))
+      .catch(err => console.error('Assessment notes load:', err))
+      .finally(() => setIsAssessmentLoading(false));
+  }, [realClientId, routeClientId]);
 
   // Use the resolved real client ID for DB operations, falling back to route param
   const effectiveClientId = realClientId ?? routeClientId;
@@ -315,16 +386,27 @@ export default function AcceptDeclineScreen() {
     }
   };
 
-  // Build display object — merge real data over mock fallback
+  // Build display object from the REAL client when one is resolved. Core
+  // identity (name, city, phone, goals) must never fall back to mock data.
+  // profiles has no health-conditions column, so healthConditions stays empty
+  // and goals maps from specialties — both expected, not a bug. The mock object
+  // is only used wholesale when no client id resolved at all (dev safety).
   const display: PendingClient = pendingClient ? {
-    ...mockPendingClient,
-    id:          pendingClient.id           ?? mockPendingClient.id,
-    name:        pendingClient.full_name    ?? mockPendingClient.name,
-    initials:    getInitials(pendingClient.full_name ?? '') || mockPendingClient.initials,
-    city:        pendingClient.city         ?? mockPendingClient.city,
-    phoneNumber: pendingClient.phone_number ?? '',
-    goals:       pendingClient.specialties  ?? mockPendingClient.goals,
+    ...mockPendingClient,            // non-identity placeholders only (fitnessLevel, max)
+    id:               pendingClient.id,
+    name:             pendingClient.full_name ?? 'Unknown Client',
+    initials:         getInitials(pendingClient.full_name ?? '') || '?',
+    city:             pendingClient.city ?? '',
+    phoneNumber:      pendingClient.phone_number ?? '',
+    healthConditions: [],
+    goals:            pendingClient.specialties ?? [],
   } : mockPendingClient;
+
+  // Show the profile when a real client resolved, OR — as a dev last resort —
+  // when no client id was available at all (then `display` is the mock). If a
+  // routeClientId was present but resolved to nothing, show "Client not found".
+  const noIdAvailable = !routeClientId && !realClientId;
+  const showClient = pendingClient !== null || noIdAvailable;
 
   const atCapacity = false; // no defined max — never block accept
 
@@ -351,22 +433,52 @@ export default function AcceptDeclineScreen() {
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-8">
-          <ClientProfilePreview client={display} />
-          <AssessmentSummary notes={display.assessmentNotes} />
-          <ClientLoadIndicator count={activeClientCount} />
+        {/* Desktop (lg:+): width cap only — content and CTA order untouched (referenced in tester guides) */}
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-8 lg:max-w-3xl lg:mx-auto lg:w-full">
+          {isResolvingClient ? (
+            /* Loading skeleton — matches the block style used in MyClientsScreen */
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <div
+                  key={i}
+                  style={{
+                    backgroundColor: '#e5e7eb',
+                    borderRadius: '16px',
+                    height: i === 1 ? '128px' : '88px',
+                    animation: 'pulse 2s infinite',
+                  }}
+                />
+              ))}
+            </div>
+          ) : !showClient ? (
+            /* Resolution finished but no real client for this route param —
+               graceful empty state instead of the mock dev placeholder. */
+            <div className="flex flex-col items-center justify-center text-center py-16">
+              <Users size={40} className="text-gray-300 mb-3" />
+              <p className="text-base font-bold text-gray-900">Client not found</p>
+              <p className="text-sm text-gray-500 mt-1">
+                This request may have been withdrawn or already actioned.
+              </p>
+            </div>
+          ) : (
+            <>
+              <ClientProfilePreview client={display} />
+              <AssessmentSummary notes={assessmentNotes} isLoading={isAssessmentLoading} />
+              <ClientLoadIndicator count={activeClientCount} />
 
-          {/* Action Zone */}
-          <div className="mt-2">
-            <ActionZone
-              atCapacity={atCapacity}
-              screenState={screenState}
-              onAccept={handleAccept}
-              onStartDecline={() => setScreenState('decline-form')}
-              onConfirmDecline={handleDecline}
-              onCancelDecline={() => setScreenState('default')}
-            />
-          </div>
+              {/* Action Zone */}
+              <div className="mt-2">
+                <ActionZone
+                  atCapacity={atCapacity}
+                  screenState={screenState}
+                  onAccept={handleAccept}
+                  onStartDecline={() => setScreenState('decline-form')}
+                  onConfirmDecline={handleDecline}
+                  onCancelDecline={() => setScreenState('default')}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 

@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import type { ElementType } from 'react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
@@ -141,26 +143,17 @@ export default function AssessmentNotificationsScreen() {
     <MobileShell className="bg-[#F2F8F7]">
 
       {/* ── Header ── */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 pt-10 pb-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700 active:scale-95 transition-transform"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 leading-tight">
-              Notifications
-            </h1>
-            {unreadCount > 0 && (
-              <p className="text-sm font-medium" style={{ color: '#0d9488' }}>
-                {unreadCount} unread
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
+      <ScreenHeader
+        variant="sub"
+        title="Notifications"
+        subtitle={
+          unreadCount > 0 ? (
+            <span style={{ color: '#0d9488' }}>{unreadCount} unread</span>
+          ) : undefined
+        }
+        onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
+      />
 
       {/* ── Scrollable body ── */}
       <div className="flex-1 overflow-y-auto p-5 pb-24">

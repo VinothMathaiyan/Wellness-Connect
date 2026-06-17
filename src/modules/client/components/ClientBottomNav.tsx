@@ -1,26 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Users, BarChart3, MessageSquare, Bell } from 'lucide-react';
+import { navConfig } from '../../../components/navConfig';
+import SideNav from '../../../components/SideNav';
 
 interface ClientBottomNavProps {
   unreadAlertsCount?: number;
   unreadMessagesCount?: number;
 }
-
-interface TabConfig {
-  label: string;
-  icon: typeof Home;
-  route: string;
-  matchPrefix: string;
-  exact?: boolean;
-}
-
-const tabs: TabConfig[] = [
-  { label: 'Home', icon: Home, route: '/client/dashboard', matchPrefix: '/client/dashboard', exact: true },
-  { label: 'Trainers', icon: Users, route: '/client/trainers', matchPrefix: '/client/trainers' },
-  { label: 'Progress', icon: BarChart3, route: '/client/progress', matchPrefix: '/client/progress' },
-  { label: 'Messages', icon: MessageSquare, route: '/client/messages', matchPrefix: '/client/messages' },
-  { label: 'Alerts', icon: Bell, route: '/client/alerts', matchPrefix: '/client/alerts' },
-];
 
 /**
  * Shared client bottom navigation. Uses the fixed + centered layout pattern
@@ -34,14 +19,18 @@ export default function ClientBottomNav({
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isActive = (tab: TabConfig): boolean =>
+  const tabs = navConfig.client;
+
+  const isActive = (tab: typeof tabs[0]): boolean =>
     tab.exact
       ? location.pathname === tab.matchPrefix
       : location.pathname.startsWith(tab.matchPrefix);
 
   return (
-    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
-      <nav
+    <>
+      <SideNav role="client" badges={{ unreadAlertsCount, unreadMessagesCount }} />
+      <div className="lg:hidden" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
+        <nav
         className="w-full bg-white border-t border-[#E5E7EB] px-[10px]"
         style={{ maxWidth: '448px', height: '60px', paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
@@ -87,6 +76,7 @@ export default function ClientBottomNav({
           })}
         </div>
       </nav>
-    </div>
+      </div>
+    </>
   );
 }

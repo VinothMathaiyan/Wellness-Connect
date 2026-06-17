@@ -202,6 +202,29 @@ export default function TrainerAvailabilityStep({
           </p>
         </div>
 
+        {/* ── Client Capacity ──────────────────────────────────────────── */}
+        <div className="space-y-2">
+          <label className="text-[13px] font-medium text-text-primary">
+            Maximum number of clients you can take?
+          </label>
+          <p className="text-[12px] text-text-secondary leading-relaxed">
+            Helps us avoid over-assigning clients to you. Between 1 and 50.
+          </p>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={50}
+            value={data.maxClients}
+            onChange={e => {
+              const raw = parseInt(e.target.value, 10);
+              const next = isNaN(raw) ? 1 : Math.min(50, Math.max(1, raw));
+              updateData({ maxClients: next });
+            }}
+            className="w-full rounded-xl border border-gray-300 bg-input-bg p-3.5 text-[14px] text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+          />
+        </div>
+
         {/* ── Quick Setup ─────────────────────────────────────────────── */}
         <div className="space-y-3">
           <h3 className="label-caps !text-[11px] text-text-secondary">

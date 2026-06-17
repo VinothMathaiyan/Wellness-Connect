@@ -1,10 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, PenSquare, Search, X } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
+import MessageThreadView from '../components/MessageThreadView';
 import { useWellness } from '../../../context/WellnessContext';
-import { getMessageThreads } from '../../../services/supabaseService';
+import {
+  getMessageThreads,
+  getAllTrainers,
+  getAllClients,
+  type MessageRecipientOption,
+} from '../../../services/supabaseService';
 import { formatDate } from '@/utils/dateUtils';
 
 interface MessageThread {
@@ -57,6 +65,81 @@ export default function MessagesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Compose ("New message") flow — assessor scope is open by design: address
+  // any trainer or any client. Grouped Trainers / Clients.
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [trainerOptions, setTrainerOptions] = useState<MessageRecipientOption[]>([]);
+  const [clientOptions, setClientOptions] = useState<MessageRecipientOption[]>([]);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
+  const [recipientsError, setRecipientsError] = useState('');
+  // Client-side filter for the recipient picker — no server round-trip.
+  const [recipientSearch, setRecipientSearch] = useState('');
+
+  async function openCompose() {
+    setIsComposeOpen(true);
+    setRecipientSearch('');
+    if (trainerOptions.length > 0 || clientOptions.length > 0) return;
+    setRecipientsLoading(true);
+    setRecipientsError('');
+    try {
+      const [allTrainers, allClients] = await Promise.all([
+        getAllTrainers(),
+        getAllClients(),
+      ]);
+      setTrainerOptions(allTrainers);
+      setClientOptions(allClients);
+    } catch (err: unknown) {
+      setRecipientsError(err instanceof Error ? err.message : 'Failed to load recipients.');
+    } finally {
+      setRecipientsLoading(false);
+    }
+  }
+
+  // lg: master-detail — the thread shown inline beside the list. Mobile keeps
+  // push navigation to /assessment/messages/:userId and never sets this.
+  const [selectedThread, setSelectedThread] = useState<{
+    id: string;
+    name?: string;
+  } | null>(null);
+
+  const isDesktop = () =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
+
+  function openThread(id: string, name?: string, role?: string) {
+    if (isDesktop()) {
+      // Inline selection: show thread beside the list. markMessagesRead runs
+      // inside the thread view; mirror it locally so the row badge clears.
+      setSelectedThread({ id, name });
+      setThreads(prev =>
+        prev.map(t => (t.other_user_id === id ? { ...t, unread_count: 0 } : t)),
+      );
+      return;
+    }
+    // Mobile: exactly the existing push-navigation behavior — nav state is only
+    // passed from the compose picker (which supplies a role), as today.
+    navigate(`/assessment/messages/${id}`, {
+      state: role ? { recipientName: name, recipientRole: role } : undefined,
+    });
+  }
+
+  function startConversation(
+    recipientId: string,
+    recipientName: string,
+    recipientRole: string,
+  ) {
+    setIsComposeOpen(false);
+    openThread(recipientId, recipientName, recipientRole);
+  }
+
+  // Filter both groups client-side, case-insensitive. Empty box → full lists.
+  const recipientQuery = recipientSearch.trim().toLowerCase();
+  const filteredTrainers = recipientQuery
+    ? trainerOptions.filter(p => p.full_name.toLowerCase().includes(recipientQuery))
+    : trainerOptions;
+  const filteredClients = recipientQuery
+    ? clientOptions.filter(p => p.full_name.toLowerCase().includes(recipientQuery))
+    : clientOptions;
+
   useEffect(() => {
     if (!userId) return;
 
@@ -89,20 +172,29 @@ export default function MessagesScreen() {
   const unreadTotal = threads.reduce((sum, t) => sum + t.unread_count, 0);
 
   return (
-    <MobileShell className="bg-[#F2F8F7]">
-      <div className="flex-1 overflow-y-auto pb-24">
+    <MobileShell className="bg-[#F2F8F7] lg:flex-row">
+      {/* Inbox column — full width on mobile, fixed-width master column at lg: */}
+      <div className="flex-1 overflow-y-auto pb-24 lg:flex-none lg:w-[400px] lg:h-screen lg:border-r lg:border-[#E5E7EB]">
         {/* Header */}
-        <div
-          className="px-5 pt-10 pb-5 rounded-b-3xl shadow-sm text-white"
-          style={{ background: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)' }}
-        >
-          <h1 className="text-2xl font-bold mb-1">Messages</h1>
-          {unreadTotal > 0 && !isLoading && (
-            <p className="text-white/80 text-sm font-medium">
-              {unreadTotal} unread
-            </p>
-          )}
-        </div>
+        <ScreenHeader
+          variant="sub"
+          title="Messages"
+          subtitle={unreadTotal > 0 && !isLoading ? `${unreadTotal} unread` : undefined}
+          avatar={
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openCompose}
+                className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold bg-gray-100 text-gray-700 active:scale-95 transition-transform"
+                aria-label="New message"
+              >
+                <PenSquare size={16} />
+                New
+              </button>
+              <ProfileMenu />
+            </div>
+          }
+        />
 
         <div className="px-4 mt-4 space-y-2">
           {/* Error */}
@@ -141,7 +233,7 @@ export default function MessagesScreen() {
                 <button
                   key={thread.other_user_id}
                   type="button"
-                  onClick={() => navigate(`/assessment/messages/${thread.other_user_id}`)}
+                  onClick={() => openThread(thread.other_user_id, thread.other_user_name)}
                   className="w-full rounded-2xl p-4 border border-gray-100 shadow-sm flex items-center gap-3 active:scale-[0.98] transition-transform text-left"
                   style={{ backgroundColor: hasUnread ? '#f0fdfa' : '#ffffff' }}
                 >
@@ -198,13 +290,311 @@ export default function MessagesScreen() {
               >
                 <MessageSquare size={28} style={{ color: '#0d9488' }} />
               </div>
-              <p className="text-gray-500 text-sm">No messages yet</p>
+              <p className="text-gray-500 text-sm mb-5">No messages yet</p>
+              <button
+                type="button"
+                onClick={openCompose}
+                className="flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white active:scale-[0.98] transition-transform"
+                style={{ backgroundColor: '#0d9488' }}
+              >
+                <PenSquare size={16} />
+                New Message
+              </button>
             </div>
           )}
         </div>
       </div>
 
+      {/* Detail column — desktop only. Mobile keeps push navigation. */}
+      <div className="hidden lg:flex lg:flex-1 lg:flex-col lg:h-screen">
+        {selectedThread ? (
+          <MessageThreadView
+            key={selectedThread.id}
+            otherUserId={selectedThread.id}
+            initialName={selectedThread.name}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+              style={{ backgroundColor: '#f0fdfa' }}
+            >
+              <MessageSquare size={28} style={{ color: '#0d9488' }} />
+            </div>
+            <p className="text-gray-500 text-sm">Select a conversation to read and reply</p>
+          </div>
+        )}
+      </div>
+
+      {/* Compose modal — pick any trainer or client (open assessor scope) */}
+      {isComposeOpen && (
+        <div
+          onClick={() => setIsComposeOpen(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '90%',
+              maxWidth: '400px',
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              padding: '0',
+              zIndex: 1001,
+              maxHeight: '70vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#111827' }}>New Message</h2>
+              <button
+                type="button"
+                onClick={() => setIsComposeOpen(false)}
+                aria-label="Close"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '4px',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Search box — filters both groups client-side */}
+            {!recipientsLoading && !recipientsError && (
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid #f3f4f6' }}>
+                <div style={{ position: 'relative' }}>
+                  <Search
+                    size={16}
+                    style={{
+                      position: 'absolute',
+                      left: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: '#9ca3af',
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={recipientSearch}
+                    onChange={e => setRecipientSearch(e.target.value)}
+                    placeholder="Search by name..."
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px 10px 36px',
+                      borderRadius: '10px',
+                      border: '1px solid #e5e7eb',
+                      backgroundColor: '#f9fafb',
+                      fontSize: '14px',
+                      color: '#111827',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Recipient list (scrollable) */}
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {recipientsLoading &&
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="animate-pulse"
+                    style={{
+                      padding: '14px 20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      borderBottom: '1px solid #f3f4f6',
+                    }}
+                  >
+                    <div className="rounded-full bg-gray-200" style={{ width: '40px', height: '40px' }} />
+                    <div className="h-4 bg-gray-200 rounded" style={{ width: '40%' }} />
+                  </div>
+                ))}
+
+              {!recipientsLoading && recipientsError && (
+                <div
+                  style={{
+                    margin: '16px 20px',
+                    padding: '12px',
+                    borderRadius: '12px',
+                    fontSize: '14px',
+                    border: '1px solid #fecaca',
+                    backgroundColor: '#fef2f2',
+                    color: '#dc2626',
+                  }}
+                >
+                  {recipientsError}
+                </div>
+              )}
+
+              {!recipientsLoading && !recipientsError && (
+                <>
+                  {/* Group: Trainers */}
+                  <p
+                    style={{
+                      padding: '12px 20px 6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6b7280',
+                    }}
+                  >
+                    Trainers
+                  </p>
+                  {filteredTrainers.length === 0 && (
+                    <p style={{ color: '#9ca3af', fontSize: '13px', padding: '4px 20px 12px' }}>
+                      No trainers found.
+                    </p>
+                  )}
+                  {filteredTrainers.map(person => (
+                    <RecipientRow
+                      key={person.id}
+                      person={person}
+                      role="trainer"
+                      onSelect={startConversation}
+                    />
+                  ))}
+
+                  {/* Group: Clients */}
+                  <p
+                    style={{
+                      padding: '12px 20px 6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6b7280',
+                    }}
+                  >
+                    Clients
+                  </p>
+                  {filteredClients.length === 0 && (
+                    <p style={{ color: '#9ca3af', fontSize: '13px', padding: '4px 20px 12px' }}>
+                      No clients found.
+                    </p>
+                  )}
+                  {filteredClients.map(person => (
+                    <RecipientRow
+                      key={person.id}
+                      person={person}
+                      role="client"
+                      onSelect={startConversation}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <AssessmentBottomNav alertCount={unreadTotal} />
     </MobileShell>
+  );
+}
+
+function RecipientRow({
+  person,
+  role,
+  onSelect,
+}: {
+  person: MessageRecipientOption;
+  role: string;
+  onSelect: (id: string, name: string, role: string) => void;
+}) {
+  return (
+    <div
+      onClick={() => onSelect(person.id, person.full_name, role)}
+      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+      onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
+      style={{
+        padding: '14px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        borderBottom: '1px solid #f3f4f6',
+        cursor: 'pointer',
+        backgroundColor: '#ffffff',
+      }}
+    >
+      <div
+        style={{
+          width: '40px',
+          height: '40px',
+          borderRadius: '9999px',
+          backgroundColor: '#0d9488',
+          color: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '14px',
+          fontWeight: 700,
+          flexShrink: 0,
+        }}
+      >
+        {getInitials(person.full_name)}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p
+          style={{
+            fontSize: '14px',
+            fontWeight: 700,
+            color: '#111827',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {person.full_name}
+        </p>
+        {person.city && (
+          <p
+            style={{
+              fontSize: '12px',
+              color: '#6b7280',
+              marginTop: '2px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {person.city}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }

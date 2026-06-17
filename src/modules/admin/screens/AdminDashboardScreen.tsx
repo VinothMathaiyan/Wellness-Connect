@@ -189,7 +189,8 @@ export default function AdminDashboardScreen() {
 
   return (
     <div className="min-h-screen px-4 py-8" style={{ backgroundColor: '#F3F4F6' }}>
-      <div className="mx-auto" style={{ maxWidth: '600px' }}>
+      {/* max-w-[600px] matches the previous inline maxWidth below lg; lg:+ widens the card */}
+      <div className="mx-auto max-w-[600px] lg:max-w-3xl">
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>

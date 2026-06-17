@@ -2,36 +2,31 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, Loader2, AlertTriangle, Users } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '@/components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
 import {
+  approveTrainer,
+  flattenTrainerApprovalProfile,
   getPendingTrainerApprovals,
-  submitTrainerApproval,
+  rejectTrainer,
+  TRAINER_APPROVAL_PROFILE_SELECT,
   type TrainerApproval,
+  type TrainerApprovalDetail,
 } from '../../../services/supabaseService';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type FilterTab = 'pending' | 'approved' | 'rejected';
 
-/** TrainerApproval extended with the extra profile fields the direct query returns. */
-interface ApprovalCard extends TrainerApproval {
-  city: string | null;
-  specialties: string[] | null;
-}
+/** Full approval row + flattened trainer profile detail used by every tab. */
+type ApprovalCard = TrainerApprovalDetail;
 
 /** Shape of a row returned by the approved/rejected direct query (before mapping). */
 type ReviewedRow = Omit<TrainerApproval, 'trainer_name'> & {
-  trainer: {
-    full_name: string;
-    city: string | null;
-    specialties: string[] | null;
-  } | Array<{
-    full_name: string;
-    city: string | null;
-    specialties: string[] | null;
-  }> | null;
+  trainer: Record<string, unknown> | Array<Record<string, unknown>> | null;
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -75,6 +70,118 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
+// ── Detail panel sub-components ────────────────────────────────────────────────
+
+/** Single label / value row. Renders nothing when the value is empty. */
+function DetailRow({ label, value }: { label: string; value: string | number | null | undefined }) {
+  if (value === null || value === undefined || value === '') return null;
+  return (
+    <div className="flex items-start justify-between gap-4 py-1.5">
+      <span className="text-xs text-gray-500 shrink-0">{label}</span>
+      <span className="text-sm font-medium text-gray-800 text-right">{value}</span>
+    </div>
+  );
+}
+
+/** Chip list row. Renders nothing when the list is empty. */
+function ChipRow({ label, values }: { label: string; values: string[] | null | undefined }) {
+  const list = (values ?? []).filter(Boolean);
+  if (list.length === 0) return null;
+  return (
+    <div className="py-1.5 space-y-1.5">
+      <span className="text-xs text-gray-500">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {list.map((v, i) => (
+          <span
+            key={i}
+            className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+            style={{ backgroundColor: '#f3f4f6', color: '#4b5563' }}
+          >
+            {v}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Read-only detail panel showing everything the assessor needs to decide. */
+function TrainerDetailPanel({ card }: { card: ApprovalCard }) {
+  const certBadges: { label: string; on: boolean }[] = [
+    { label: 'Rehab certified', on: card.rehab_certified === true },
+    { label: 'Medical certified', on: card.medical_certified === true },
+  ];
+
+  return (
+    <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+      {/* Photo + contact */}
+      <div className="flex items-center gap-3">
+        {card.photo_url ? (
+          <img
+            src={card.photo_url}
+            alt={card.trainer_name}
+            className="w-14 h-14 rounded-full object-cover shrink-0"
+          />
+        ) : (
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center font-bold shrink-0"
+            style={{ backgroundColor: '#e0f2fe', color: '#0284c7' }}
+          >
+            {getInitials(card.trainer_name)}
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="font-bold text-gray-900 text-sm truncate">{card.trainer_name}</p>
+          {card.phone_number && (
+            <p className="text-xs text-gray-500 mt-0.5">{card.phone_number}</p>
+          )}
+          {card.city && <p className="text-xs text-gray-500">{card.city}</p>}
+        </div>
+      </div>
+
+      {/* Certification flags */}
+      <div className="flex flex-wrap gap-1.5">
+        {certBadges.map(b => (
+          <span
+            key={b.label}
+            className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+            style={
+              b.on
+                ? { backgroundColor: '#dcfce7', color: '#16a34a' }
+                : { backgroundColor: '#f3f4f6', color: '#9ca3af' }
+            }
+          >
+            {b.on ? '✓ ' : '✕ '}{b.label}
+          </span>
+        ))}
+      </div>
+
+      {/* Bio */}
+      {card.bio && (
+        <div className="py-1.5">
+          <span className="text-xs text-gray-500">Bio</span>
+          <p className="text-sm text-gray-700 mt-1 leading-relaxed break-words">{card.bio}</p>
+        </div>
+      )}
+
+      {/* Single-value rows */}
+      <div className="divide-y divide-gray-100">
+        <DetailRow label="Experience" value={card.experience_years != null ? `${card.experience_years} yrs` : null} />
+        <DetailRow label="Session intensity" value={card.session_intensity} />
+        <DetailRow label="Max clients" value={card.max_clients} />
+      </div>
+
+      {/* Chip rows */}
+      <ChipRow label="Specialties" values={card.specialties} />
+      <ChipRow label="Certifications" values={card.certifications} />
+      <ChipRow label="Languages" values={card.languages} />
+      <ChipRow label="Coaching styles" values={card.coaching_styles} />
+      <ChipRow label="Focus areas" values={card.focus_areas} />
+      <ChipRow label="Session types" values={card.session_types} />
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TrainerApprovalQueueScreen() {
@@ -112,7 +219,7 @@ export default function TrainerApprovalQueueScreen() {
             .from('trainer_approvals')
             .select(`
               id, trainer_id, assessor_id, status, review_notes, reviewed_at, created_at,
-              trainer:profiles!trainer_approvals_trainer_id_fkey ( full_name, city, specialties )
+              trainer:profiles!trainer_approvals_trainer_id_fkey ( ${TRAINER_APPROVAL_PROFILE_SELECT} )
             `)
             .in('status', ['approved', 'rejected'])
             .order('reviewed_at', { ascending: false }),
@@ -123,26 +230,15 @@ export default function TrainerApprovalQueueScreen() {
         if (pendingRes.error) throw new Error(pendingRes.error);
         if (reviewedRes.error) throw new Error(reviewedRes.error.message);
 
-        // Pending — getPendingTrainerApprovals only joins full_name; pad missing fields
-        const pendingCards: ApprovalCard[] = pendingRes.data.map(p => ({
-          ...p,
-          city: null,
-          specialties: null,
-        }));
+        // Pending — already flattened to TrainerApprovalDetail by the service.
+        const pendingCards: ApprovalCard[] = pendingRes.data;
 
-        // Approved / Rejected — direct query includes city + specialties
+        // Approved / Rejected — flatten the joined profile the same way so every
+        // tab carries the full detail set for the expandable panel.
         const reviewedRows = (reviewedRes.data ?? []) as unknown as ReviewedRow[];
-        const reviewedCards: ApprovalCard[] = reviewedRows.map(row => {
-          const t = Array.isArray(row.trainer) ? row.trainer[0] : row.trainer;
-          return {
-            ...row,
-            trainer_name: t?.full_name ?? 'Unknown',
-            city: t?.city ?? null,
-            specialties: t != null && Array.isArray(t.specialties)
-              ? (t.specialties as string[])
-              : null,
-          };
-        });
+        const reviewedCards: ApprovalCard[] = reviewedRows.map(row =>
+          flattenTrainerApprovalProfile(row as Parameters<typeof flattenTrainerApprovalProfile>[0]),
+        );
 
         setApprovals([...pendingCards, ...reviewedCards]);
       } catch (err: unknown) {
@@ -185,15 +281,21 @@ export default function TrainerApprovalQueueScreen() {
   const handleAction = async (trainerId: string, action: 'approved' | 'rejected') => {
     if (!userId) return;
     if (action === 'rejected' && !notes.trim()) {
-      setActionError('Notes are required when rejecting.');
+      // The trainer's resubmission flow surfaces these notes verbatim, so a
+      // rejection without a reason would leave the trainer with no guidance.
+      setActionError('Please provide a reason for rejection.');
       return;
     }
     setActionTarget(action);
     setActionLoading(true);
     setActionError('');
     try {
-      const result = await submitTrainerApproval(userId, trainerId, action, notes.trim());
-      if (!result.success) throw new Error(result.error ?? 'Action failed.');
+      if (action === 'approved') {
+        // assessor_id is derived server-side from auth.uid() inside the RPC.
+        await approveTrainer(trainerId);
+      } else {
+        await rejectTrainer(trainerId, notes.trim());
+      }
       setExpandedId(null);
       setNotes('');
       setTriggerFetch(t => t + 1);
@@ -211,22 +313,13 @@ export default function TrainerApprovalQueueScreen() {
     <MobileShell className="bg-[#F2F8F7]">
 
       {/* ── Header ── */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 pt-10 pb-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700 active:scale-95 transition-transform"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 leading-tight">Trainer Approvals</h1>
-            <p className="text-sm font-medium text-gray-500">
-              {isLoading ? '—' : `${pendingCount} pending review`}
-            </p>
-          </div>
-        </div>
-
+      <ScreenHeader
+        variant="sub"
+        title="Trainer Approvals"
+        subtitle={isLoading ? '—' : `${pendingCount} pending review`}
+        onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
+      >
         {/* Filter tabs */}
         <div className="flex bg-gray-100 p-1 rounded-xl mt-4">
           {TABS.map(tab => (
@@ -242,7 +335,7 @@ export default function TrainerApprovalQueueScreen() {
             </button>
           ))}
         </div>
-      </div>
+      </ScreenHeader>
 
       {/* ── Scrollable body ── */}
       <div className="flex-1 overflow-y-auto p-5 pb-24">
@@ -276,7 +369,7 @@ export default function TrainerApprovalQueueScreen() {
 
         ) : displayedList.length > 0 ? (
 
-          <div className="space-y-3">
+          <div className="space-y-3 lg:max-w-4xl">
             {displayedList.map(card => {
               const isExpanded  = expandedId === card.id;
               const statusMeta  = STATUS_META[card.status];
@@ -349,6 +442,9 @@ export default function TrainerApprovalQueueScreen() {
                   {/* ── Expanded panel ── */}
                   {isExpanded && (
                     <div className="border-t border-gray-100 p-4 space-y-3">
+
+                      {/* Full trainer detail — visible for every status */}
+                      <TrainerDetailPanel card={card} />
 
                       {/* Reviewed cards: show stored review notes read-only */}
                       {card.status !== 'pending' && card.review_notes && (

@@ -93,7 +93,12 @@ export const saveTrainerOnboarding = async (
     // data.city               → city (text)
     // data.availabilitySlots  → availability (jsonb)     — convert slot array
 
-    const certifications = parseCertifications(data.certificationName);
+    // Merge the primary certification(s) from Step 1 with the special
+    // certification chips (Q7) into one deduped certifications array.
+    const certifications = Array.from(new Set([
+      ...parseCertifications(data.certificationName),
+      ...(data.specialCertifications ?? []),
+    ]));
 
     const experienceYears =
       data.yearsOfExperience.trim() !== ''
@@ -102,16 +107,39 @@ export const saveTrainerOnboarding = async (
 
     const availability = buildAvailabilityJson(data.availabilitySlots);
 
+    // Languages: replace the "Other" sentinel with the typed-in value.
+    const languages = (data.languages ?? [])
+      .flatMap(l => (l === 'Other'
+        ? (data.otherLanguage.trim() ? [data.otherLanguage.trim()] : [])
+        : [l]));
+
+    // Normalise the single-select intensity label to a short DB token.
+    const intensityLC = data.sessionIntensity.toLowerCase();
+    const sessionIntensity = intensityLC.startsWith('low')
+      ? 'low'
+      : intensityLC.startsWith('high')
+        ? 'high'
+        : 'medium';
+
     const { error } = await supabase
       .from('profiles')
       .update({
-        city:             data.city ?? '',
-        specialties:      data.specialisations ?? [],
+        city:              data.city ?? '',
+        specialties:       data.specialisations ?? [],
         certifications,
-        avatar_url:       data.photoUrl ?? null,  // avatar_url is the primary column
-        bio:              data.bio.trim() || null,
-        experience_years: experienceYears,
+        avatar_url:        data.photoUrl ?? null,  // avatar_url is the primary column
+        bio:               data.bio.trim() || null,
+        experience_years:  experienceYears,
         availability,
+        // ── Recommendation-engine fields ──
+        focus_areas:       data.focusAreas ?? [],
+        session_types:     data.sessionTypes ?? [],
+        session_intensity: sessionIntensity,
+        coaching_styles:   data.coachingStyles ?? [],
+        languages,
+        medical_certified: data.medicalCertified ?? false,
+        rehab_certified:   data.rehabCertified ?? false,
+        max_clients:       data.maxClients ?? 20,
       })
       .eq('id', userId);
 

@@ -17,6 +17,8 @@ import {
 import type { TrainingProgram } from '../../../types';
 import { fetchTrainingProgram, submitProgramApproval } from '../../../services/supabaseService';
 import { PlanActionSection } from '../components/PlanActionSection';
+import ScreenHeader from '@/components/ScreenHeader';
+import ProfileMenu from '../../../components/ProfileMenu';
 
 type ScreenState =
     | 'LOADING'
@@ -111,10 +113,14 @@ export default function TrainingGoalApprovalScreen({ clientId, isFirstEntry = fa
 
             {state === 'WAITING' && (
                 <div className="flex-1 flex flex-col bg-white">
-                    <header className="px-4 py-4 border-b border-border-light flex items-center bg-white sticky top-0 z-10 shrink-0">
-                        <button onClick={() => navigate(-1)} className="p-1 -ml-1 text-text-primary relative z-50"><ChevronLeft size={24} /></button>
-                        <h1 className="flex-1 text-center font-semibold text-[18px] mr-6">Review Your Plan</h1>
-                    </header>
+                    <div className="shrink-0 sticky top-0 z-10">
+                        <ScreenHeader
+                            variant="sub"
+                            title="Review Your Plan"
+                            onBack={() => navigate(-1)}
+                            avatar={<ProfileMenu />}
+                        />
+                    </div>
                     <div className="flex-1 flex flex-col items-center justify-center px-8 text-center space-y-6">
                         <div className="w-20 h-20 rounded-full bg-amber-light flex items-center justify-center text-amber">
                             <Clock size={40} strokeWidth={1.5} />
@@ -132,10 +138,14 @@ export default function TrainingGoalApprovalScreen({ clientId, isFirstEntry = fa
 
             {(state === 'ERROR_FORBIDDEN' || state === 'ERROR_NETWORK') && (
                 <div className="flex-1 flex flex-col bg-white">
-                    <header className="px-4 py-4 border-b border-border-light flex items-center bg-white sticky top-0 z-10 shrink-0">
-                        <button onClick={() => navigate(-1)} className="p-1 -ml-1 text-text-primary relative z-50"><ChevronLeft size={24} /></button>
-                        <h1 className="flex-1 text-center font-semibold text-[18px] mr-6">Review Your Plan</h1>
-                    </header>
+                    <div className="shrink-0 sticky top-0 z-10">
+                        <ScreenHeader
+                            variant="sub"
+                            title="Review Your Plan"
+                            onBack={() => navigate(-1)}
+                            avatar={<ProfileMenu />}
+                        />
+                    </div>
                     <div className="flex-1 flex flex-col items-center justify-center px-8 text-center space-y-6">
                         <div className="w-16 h-16 rounded-full bg-red-light flex items-center justify-center text-red">
                             <AlertCircle size={32} />
@@ -155,16 +165,14 @@ export default function TrainingGoalApprovalScreen({ clientId, isFirstEntry = fa
             {(state === 'READY' || state === 'SUBMITTING' || state === 'APPROVED' || state === 'CHANGES_SUBMITTED') && (
                 <>
                     {/* Top Nav */}
-                    <header className="bg-primary px-4 py-4 text-white flex items-center shrink-0 z-40 transition-all duration-300">
-                        {!isFirstEntry || approvalChoice || state === 'CHANGES_SUBMITTED' ? (
-                            <button onClick={() => navigate(-1)} className="p-1 -ml-1 text-white active:scale-90 transition-transform">
-                                <ChevronLeft size={24} />
-                            </button>
-                        ) : (
-                            <div className="w-8" />
-                        )}
-                        <h1 className="flex-1 text-center font-semibold text-[18px] mr-8">Review Your Plan</h1>
-                    </header>
+                    <div className="shrink-0 sticky top-0 z-40">
+                        <ScreenHeader
+                            variant="sub"
+                            title="Review Your Plan"
+                            onBack={(!isFirstEntry || approvalChoice || state === 'CHANGES_SUBMITTED') ? () => navigate(-1) : undefined}
+                            avatar={<ProfileMenu />}
+                        />
+                    </div>
 
                     <div className="flex-1 overflow-y-auto">
                         {program && (

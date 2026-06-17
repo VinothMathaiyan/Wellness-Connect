@@ -95,7 +95,9 @@ export default function DailyCheckinSummaryScreen() {
         </div>
 
         {/* ─── Content ─────────────────────────────────────────────────────────── */}
-        <div style={{ padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* p-[20px] pb-0 / flex-col / gap-3 match the previous inline styles exactly below lg;
+            lg:+ adds a centered width cap only */}
+        <div className="p-5 pb-0 flex flex-col gap-3 lg:max-w-3xl lg:mx-auto lg:w-full">
 
           <h2
             className="uppercase font-bold tracking-wider"

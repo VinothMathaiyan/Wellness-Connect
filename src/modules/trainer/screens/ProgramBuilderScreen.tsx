@@ -308,7 +308,7 @@ export default function ProgramBuilderScreen() {
 
         {/* ── Regress Mode Banner ─────────────────────────────────────────────── */}
         {isRegressMode && (
-          <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2">
+          <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2 lg:max-w-5xl lg:mx-auto lg:w-full">
             <AlertTriangle size={16} className="text-amber-600 shrink-0" />
             <p className="text-sm font-semibold text-amber-800">
               Regress Mode — reducing load based on risk alert
@@ -317,7 +317,12 @@ export default function ProgramBuilderScreen() {
         )}
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3">
+        {/* Desktop (lg:+): two columns — program settings left, exercise plan right.
+            Below lg: single column, unchanged. */}
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3 lg:max-w-5xl lg:mx-auto lg:w-full lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0 lg:items-start">
+
+          {/* Column 1 (lg:+) — program settings */}
+          <div className="space-y-3">
 
           {/* ── Program Name ──────────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm p-4">
@@ -509,6 +514,11 @@ export default function ProgramBuilderScreen() {
               Helps match client to the right program type
             </p>
           </div>
+
+          </div>
+
+          {/* Column 2 (lg:+) — exercise plan, notes, send */}
+          <div className="space-y-3">
 
           {/* ── Exercise Plan ─────────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm p-4">
@@ -792,6 +802,8 @@ export default function ProgramBuilderScreen() {
             <p className="text-xs text-gray-400 text-center mt-2 leading-relaxed px-4">
               The client will be notified and must approve before the program becomes active
             </p>
+          </div>
+
           </div>
 
         </div>
