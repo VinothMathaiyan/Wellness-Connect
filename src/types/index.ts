@@ -83,6 +83,10 @@ export interface HealthProfile {
   conditions?: string[];
   activity_level?: number | null;
   fitness_level?: string | null;
+  // Closed-ended training preferences captured during onboarding
+  // (client_profiles.training_preferences jsonb). Held in app state so the
+  // signup summary can echo back every selection the user made.
+  training_preferences?: TrainingPreferences;
 }
 
 // ─── Assessment Booking (SCR-C03) ─────────────────────────────────────────────
@@ -100,11 +104,12 @@ export interface DailyLog {
   sleep_quality_score: number;    // 1–5         — daily_metrics.sleep_quality_score
   mood_score: number;             // 1–5         — daily_metrics.mood_score
   energy_score: number;           // 1–5         — daily_metrics.energy_score
-  water_glasses: number;          // 0–8         — daily_metrics.water_glasses
+  water_litres: number;           // 0–2.5+      — daily_metrics.water_litres (numeric)
   workout_done: boolean;          //             — daily_metrics.workout_done
   pain_score: number | null;      // 0,2,5,7,10  — daily_metrics.pain_score
-  mobility_score: number;         // 0–10        — daily_metrics.mobility_score
+  mobility_score: number;         // 1–10        — daily_metrics.mobility_score
   readiness_score?: number;       // computed 0–100 — daily_metrics.readiness_score
+  note_for_trainer?: string | null; //           — daily_metrics.note_for_trainer
 }
 
 // ─── Macros (meal_logs.macros_json) ─────────────────────────────────────────
@@ -282,6 +287,20 @@ export interface User {
 }
 
 // ─── Trainer Profile (TrainersScreen recommendations + TrainerDetailSubScreen) ─
+// ─── Client Training Preferences (client_profiles.training_preferences jsonb) ──
+export interface TrainingPreferences {
+  training_styles?: string[];
+  session_mode?: string;
+  preferred_times?: string[];
+  secondary_goals?: string[];
+  goal_priority?: string;
+  // Legacy keys — kept for backward compatibility with earlier saves / matcher
+  session_preference?: string;
+  availability?: string[];
+  main_goal?: string;
+  injury_level?: string;
+}
+
 export interface TrainerProfile {
   id: string;
   full_name: string;
@@ -327,15 +346,28 @@ export interface CheckinReviewData {
   mobilityScore: number | null;
   painScore: number | null;
   energyScore: number | null;
+  noteForTrainer: string | null;
 }
 
 // ─── Trainer view of a client's session (sessions table — ClientDetailScreen) ─
+// Terminal/active states a session can hold in the public.sessions table.
+// status is free-text in the DB (no CHECK); this union documents the values
+// the trainer app reads/writes. cancelled_client/cancelled_trainer/no_show are
+// distinct terminal outcomes; plain 'cancelled' is the legacy generic value.
+export type TrainerSessionStatus =
+  | 'scheduled'
+  | 'completed'
+  | 'cancelled'
+  | 'no_show'
+  | 'cancelled_client'
+  | 'cancelled_trainer';
+
 export interface TrainerClientSession {
   id: string;
   scheduled_at: string;
   session_type: string;       // 'video' | 'in-person' | 'phone'
   duration_minutes: number;
-  status: string;             // 'scheduled' | 'completed' | 'cancelled'
+  status: TrainerSessionStatus;
   meeting_url: string | null;
   location: string | null;    // physical address for in-person sessions
   trainer_note: string | null;
@@ -353,3 +385,26 @@ export interface TrainingProgram {
     specialisations: string[];
   };
 }
+
+// ─── Device Location (onboarding city auto-fill) ──────────────────────────────
+// Coordinates are transient: captured only on an explicit tap, used solely to
+// resolve a city name, and never persisted. Only the resolved `city` string
+// flows into the existing profiles.city column.
+export interface LocationCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
+export interface ResolvedLocation {
+  city: string;
+  state?: string;
+  country?: string;
+}
+
+export type LocationErrorKind =
+  | 'unsupported'
+  | 'permission_denied'
+  | 'timeout'
+  | 'position_unavailable'
+  | 'geocode_failed'
+  | 'empty';

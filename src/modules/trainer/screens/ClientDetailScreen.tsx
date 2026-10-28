@@ -25,12 +25,14 @@ import { useWellness } from '../../../context/WellnessContext';
 import {
   getClientDetail,
   getClientSessions,
-  cancelSession,
+  setSessionStatus,
   updateSessionNote,
   markSessionComplete,
 } from '../../../services/supabaseService';
-import type { TrainerClientSession } from '../../../types';
+import type { TrainerClientSession, TrainerSessionStatus } from '../../../types';
+import ScreenHeader from '@/components/ScreenHeader';
 import { formatDateLong, formatDate } from '@/utils/dateUtils';
+import RiskDotAvatar from '../components/RiskDotAvatar';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -72,6 +74,26 @@ const APPROVAL_BADGE: Record<string, string> = {
   pending_review: 'bg-amber-50 text-amber-700',
   draft:    'bg-gray-100 text-gray-500',
 };
+
+// Terminal "cancelled-like" statuses — all dimmed, note-eligible, reschedulable.
+// (completed is terminal too but rendered as a positive state, not here.)
+const CANCELLED_STATUSES = ['cancelled', 'no_show', 'cancelled_client', 'cancelled_trainer'];
+
+// Past-tense labels shown on a terminal session card.
+const CANCELLED_LABELS: Record<string, string> = {
+  cancelled:         'Cancelled',
+  no_show:           'No-show',
+  cancelled_client:  'Cancelled (client)',
+  cancelled_trainer: 'Cancelled (trainer)',
+};
+
+// The three explicit terminal actions a trainer can take on a scheduled session.
+type TerminalAction = 'no_show' | 'cancelled_client' | 'cancelled_trainer';
+const TERMINAL_ACTIONS: { status: TerminalAction; label: string; color: string }[] = [
+  { status: 'no_show',           label: 'No-show',          color: '#D97706' },
+  { status: 'cancelled_client',  label: 'Cancel (client)',  color: '#DC2626' },
+  { status: 'cancelled_trainer', label: 'Cancel (trainer)', color: '#DC2626' },
+];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -233,6 +255,8 @@ export default function ClientDetailScreen() {
 
   const [sessions, setSessions]         = useState<TrainerClientSession[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  // Which terminal status the trainer is confirming for `confirmingId`.
+  const [pendingStatus, setPendingStatus] = useState<TerminalAction | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancelError, setCancelError]   = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -273,20 +297,34 @@ export default function ClientDetailScreen() {
     getClientSessions(clientId, userId).then(setSessions);
   }, [clientId, userId]);
 
-  const handleCancelConfirm = async (sessionId: string) => {
-    if (!clientId || !userId) return;
-    const trainerId = userId;
-    const cId       = clientId;
+  // Begin/cancel the confirm step for a chosen terminal status.
+  const beginConfirm = (sessionId: string, status: TerminalAction) => {
+    setConfirmingId(sessionId);
+    setPendingStatus(status);
+    setCancelError(null);
+  };
+
+  const dismissConfirm = () => {
+    setConfirmingId(null);
+    setPendingStatus(null);
+    setCancelError(null);
+  };
+
+  // Apply the confirmed terminal status, then optimistically update local state.
+  const handleSetStatus = async (sessionId: string) => {
+    if (!clientId || !userId || !pendingStatus) return;
+    const status = pendingStatus;
     setCancellingId(sessionId);
     setCancelError(null);
     try {
-      await cancelSession(sessionId, trainerId, cId);
+      await setSessionStatus(sessionId, userId, clientId, status);
       setSessions(prev =>
-        prev.map(s => s.id === sessionId ? { ...s, status: 'cancelled' } : s),
+        prev.map(s => s.id === sessionId ? { ...s, status } : s),
       );
       setConfirmingId(null);
+      setPendingStatus(null);
     } catch {
-      setCancelError('Could not cancel. Try again.');
+      setCancelError('Could not update. Try again.');
     } finally {
       setCancellingId(null);
     }
@@ -365,7 +403,7 @@ export default function ClientDetailScreen() {
   const nextUpcomingSession: TrainerClientSession | null = upcomingScheduled[0] ?? null;
   const moreUpcomingCount = Math.max(upcomingScheduled.length - 1, 0);
   const pastCount = sessions.filter(
-    s => s.status === 'completed' || s.status === 'cancelled',
+    s => s.status === 'completed' || CANCELLED_STATUSES.includes(s.status),
   ).length;
 
   const client: ClientView = {
@@ -401,15 +439,15 @@ export default function ClientDetailScreen() {
 
   // ── Inline render helper for a single session card ─────────────────────────
   const renderSession = (session: TrainerClientSession, isLast: boolean) => {
-    const isScheduled   = session.status === 'scheduled';
-    const isCancelled   = session.status === 'cancelled';
-    const isCompleted   = session.status === 'completed';
-    const isConfirming  = confirmingId === session.id;
-    const isCancelling  = cancellingId === session.id;
-    const isCompleting  = completingId === session.id;
-    const isEditingNote = editingNoteSessionId === session.id;
-    const canHaveNote   = isCompleted || isCancelled;
-    const note          = session.trainer_note;
+    const isScheduled    = session.status === 'scheduled';
+    const isCancelledLike = CANCELLED_STATUSES.includes(session.status);
+    const isCompleted    = session.status === 'completed';
+    const isConfirming   = confirmingId === session.id;
+    const isCancelling   = cancellingId === session.id;
+    const isCompleting   = completingId === session.id;
+    const isEditingNote  = editingNoteSessionId === session.id;
+    const canHaveNote    = isCompleted || isCancelledLike;
+    const note           = session.trainer_note;
 
     // ── Time-gate: can only complete on or after session date (from midnight IST) ──
     const sessionDate = new Date(session.scheduled_at);
@@ -420,13 +458,18 @@ export default function ClientDetailScreen() {
     todayStart.setHours(0, 0, 0, 0);
     const canComplete = todayStart >= sessionDay;
 
+    // ── Plan-gate: completing inserts a workout_log with a NOT NULL plan_id, so
+    //    an active plan is required even once the date gate passes. ──
+    const hasActivePlan = !!clientData?.currentPlan?.id;
+    const completable = canComplete && hasActivePlan;
+
     return (
       <div
         key={session.id}
         style={{
           padding: '12px 16px',
           borderBottom: isLast ? 'none' : '1px solid #F9FAFB',
-          opacity: isCancelled ? 0.6 : 1,
+          opacity: isCancelledLike ? 0.6 : 1,
         }}
       >
         {/* Row: date/type info + action */}
@@ -462,81 +505,12 @@ export default function ClientDetailScreen() {
             </p>
           </div>
 
-          {/* Right side — status-dependent action */}
-          {isScheduled && (
-            isConfirming ? (
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  onClick={() => handleCancelConfirm(session.id)}
-                  disabled={isCancelling}
-                  style={{
-                    fontSize: 12,
-                    color: '#ffffff',
-                    backgroundColor: '#DC2626',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '4px 10px',
-                    cursor: isCancelling ? 'default' : 'pointer',
-                    opacity: isCancelling ? 0.6 : 1,
-                  }}
-                >
-                  {isCancelling ? '…' : 'Confirm'}
-                </button>
-                <button
-                  onClick={() => { setConfirmingId(null); setCancelError(null); }}
-                  style={{
-                    fontSize: 12,
-                    color: '#6B7280',
-                    backgroundColor: 'transparent',
-                    border: '1px solid #D1D5DB',
-                    borderRadius: '8px',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Keep
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  onClick={() => canComplete && handleMarkComplete(session.id)}
-                  disabled={isCompleting || !canComplete}
-                  style={{
-                    fontSize: 12,
-                    color: canComplete ? '#ffffff' : '#9CA3AF',
-                    backgroundColor: canComplete ? '#10B981' : '#E5E7EB',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '4px 10px',
-                    cursor: (isCompleting || !canComplete) ? 'default' : 'pointer',
-                    opacity: (isCompleting || !canComplete) ? 0.6 : 1,
-                  }}
-                  title={canComplete ? undefined : `Available from ${formatDate(session.scheduled_at)}`}
-                >
-                  {isCompleting ? '…' : 'Complete'}
-                </button>
-                <button
-                  onClick={() => { setConfirmingId(session.id); setCancelError(null); }}
-                  style={{
-                    fontSize: 12,
-                    color: '#DC2626',
-                    border: '1px solid #DC2626',
-                    borderRadius: '8px',
-                    padding: '4px 10px',
-                    backgroundColor: 'transparent',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            )
-          )}
-
-          {isCancelled && (
+          {/* Right side — terminal status label (scheduled actions render below) */}
+          {isCancelledLike && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <span style={{ fontSize: 12, color: '#9CA3AF' }}>Cancelled</span>
+              <span style={{ fontSize: 12, color: '#9CA3AF' }}>
+                {CANCELLED_LABELS[session.status] ?? 'Cancelled'}
+              </span>
               <span
                 onClick={() => navigate(`/trainer/schedule-session/${clientId}`)}
                 style={{
@@ -557,6 +531,100 @@ export default function ClientDetailScreen() {
             </span>
           )}
         </div>
+
+        {/* Scheduled actions — Complete + three explicit terminal reasons.
+            Confirm-before-acting: a reason tap opens a Confirm/Keep prompt. */}
+        {isScheduled && !isConfirming && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10, marginLeft: 23 }}>
+            <button
+              onClick={() => completable && handleMarkComplete(session.id)}
+              disabled={isCompleting || !completable}
+              style={{
+                fontSize: 12,
+                color: completable ? '#ffffff' : '#9CA3AF',
+                backgroundColor: completable ? '#10B981' : '#E5E7EB',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '4px 10px',
+                cursor: (isCompleting || !completable) ? 'default' : 'pointer',
+                opacity: (isCompleting || !completable) ? 0.6 : 1,
+              }}
+              title={
+                !canComplete
+                  ? `Available from ${formatDate(session.scheduled_at)}`
+                  : !hasActivePlan
+                    ? 'Build a program to enable'
+                    : undefined
+              }
+            >
+              {isCompleting ? '…' : 'Complete'}
+            </button>
+            {/* Date gate passed but no active plan — explain why Complete is disabled */}
+            {canComplete && !hasActivePlan && (
+              <span style={{ fontSize: 11, color: '#9CA3AF', alignSelf: 'center' }}>
+                Build a program to enable
+              </span>
+            )}
+            {TERMINAL_ACTIONS.map(({ status, label, color }) => (
+              <button
+                key={status}
+                onClick={() => beginConfirm(session.id, status)}
+                style={{
+                  fontSize: 12,
+                  color,
+                  border: `1px solid ${color}`,
+                  borderRadius: '8px',
+                  padding: '4px 10px',
+                  backgroundColor: 'transparent',
+                  cursor: 'pointer',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {isScheduled && isConfirming && (
+          <div style={{ marginTop: 10, marginLeft: 23 }}>
+            <p style={{ fontSize: 12, color: '#374151', margin: '0 0 6px' }}>
+              Mark this session as{' '}
+              <strong>{pendingStatus ? CANCELLED_LABELS[pendingStatus] : ''}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => handleSetStatus(session.id)}
+                disabled={isCancelling}
+                style={{
+                  fontSize: 12,
+                  color: '#ffffff',
+                  backgroundColor: '#DC2626',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '4px 10px',
+                  cursor: isCancelling ? 'default' : 'pointer',
+                  opacity: isCancelling ? 0.6 : 1,
+                }}
+              >
+                {isCancelling ? '…' : 'Confirm'}
+              </button>
+              <button
+                onClick={dismissConfirm}
+                style={{
+                  fontSize: 12,
+                  color: '#6B7280',
+                  backgroundColor: 'transparent',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: '8px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                Keep
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Inline errors */}
         {cancelError && isConfirming && (
@@ -702,24 +770,18 @@ export default function ClientDetailScreen() {
     <MobileShell className="bg-[#F2F8F7]">
 
       {/* ─── Sticky Header ─────────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 py-4 flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
-          aria-label="Go back"
-        >
-          <ChevronLeft size={22} className="text-text-primary" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <p className="text-[17px] font-bold text-text-primary leading-tight truncate">{client.name}</p>
-        </div>
-        {client.riskLevel === 'red' && (
-          <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
-        )}
-        {client.riskLevel === 'amber' && (
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-        )}
-      </div>
+      <ScreenHeader
+        variant="sub"
+        title={client.name}
+        onBack={() => navigate(-1)}
+        avatar={
+          <RiskDotAvatar
+            clientId={clientId}
+            clientName={client.name}
+            hasOpenAlerts={client.riskLevel !== 'none'}
+          />
+        }
+      />
 
       {/* ─── Scrollable Content ─────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto pb-32">
@@ -737,11 +799,14 @@ export default function ClientDetailScreen() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="px-4 pt-4 pb-6 space-y-4"
+            // Desktop (lg:+): two-column grid — client info/scores/program left,
+            // risk/sessions right. Explicit row/col placement keeps mobile DOM
+            // order untouched; below lg the layout is unchanged.
+            className="px-4 pt-4 pb-6 space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start lg:max-w-5xl lg:mx-auto"
           >
 
             {/* ── 1. Client Profile Header ─────────────────────────────────────────── */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 lg:col-start-1 lg:row-start-1">
               <div className="flex items-start gap-3 mb-3">
                 {client.photoUrl ? (
                   <img
@@ -782,7 +847,7 @@ export default function ClientDetailScreen() {
             {/* ── 2. Risk Flag Banner ───────────────────────────────────────────────── */}
             {client.riskLevel === 'red' && (
               <div
-                className="w-full rounded-2xl p-4 mb-1 cursor-pointer"
+                className="w-full rounded-2xl p-4 mb-1 cursor-pointer lg:col-start-2 lg:row-start-1 lg:mb-0"
                 style={{ backgroundColor: '#ef4444' }}
                 onClick={() => navigate(`/trainer/risk-alert/${clientId}`)}
               >
@@ -802,7 +867,7 @@ export default function ClientDetailScreen() {
 
             {client.riskLevel === 'amber' && (
               <div
-                className="w-full rounded-2xl p-4 mb-1 cursor-pointer"
+                className="w-full rounded-2xl p-4 mb-1 cursor-pointer lg:col-start-2 lg:row-start-1 lg:mb-0"
                 style={{ backgroundColor: '#fbbf24' }}
                 onClick={() => navigate(`/trainer/risk-alert/${clientId}`)}
               >
@@ -822,7 +887,7 @@ export default function ClientDetailScreen() {
 
             {client.riskLevel === 'none' && (
               <div
-                className="flex items-center gap-3"
+                className="flex items-center gap-3 lg:col-start-2 lg:row-start-1"
                 style={{ backgroundColor: '#F0FDF4', borderRadius: 12, padding: '12px 16px' }}
               >
                 <CheckCircle size={18} style={{ color: '#166534', flexShrink: 0 }} />
@@ -833,7 +898,7 @@ export default function ClientDetailScreen() {
             )}
 
             {client.riskLevel === 'green' && (
-              <div className="flex justify-start">
+              <div className="flex justify-start lg:col-start-2 lg:row-start-1">
                 <span className="text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full flex items-center gap-1.5">
                   <CheckCircle size={13} /> On Track
                 </span>
@@ -841,7 +906,7 @@ export default function ClientDetailScreen() {
             )}
 
             {/* ── 3. Readiness + Adherence ─────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 lg:col-start-1 lg:row-start-2">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
                 <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider mb-2">Readiness</p>
                 <div className="flex items-end justify-between gap-2">
@@ -969,7 +1034,7 @@ export default function ClientDetailScreen() {
             {/* ── 3b. View Full Progress ────────────────────────────────────────────── */}
             <button
               onClick={() => navigate(`/trainer/client-progress/${clientId}`)}
-              className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between active:scale-[0.99] transition-transform text-left"
+              className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center justify-between active:scale-[0.99] transition-transform text-left lg:col-start-1 lg:row-start-3"
             >
               <div className="flex items-center gap-3">
                 <div
@@ -999,7 +1064,7 @@ export default function ClientDetailScreen() {
             </button>
 
             {/* ── 4. Last Check-in Summary ──────────────────────────────────────────── */}
-            <div>
+            <div className="lg:col-start-1 lg:row-start-4">
               <SectionHeader title="Last Check-In" />
               {client.lastCheckin === null ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
@@ -1031,7 +1096,7 @@ export default function ClientDetailScreen() {
             </div>
 
             {/* ── 6. Session History ────────────────────────────────────────────────── */}
-            <div>
+            <div className="lg:col-start-2 lg:row-start-2 lg:row-span-4">
               <button
                 type="button"
                 onClick={() => setSessionsExpanded(prev => !prev)}
@@ -1132,7 +1197,7 @@ export default function ClientDetailScreen() {
             </div>
 
             {/* ── 6. Training Program Quick View ───────────────────────────────────── */}
-            <div>
+            <div className="lg:col-start-1 lg:row-start-5">
               <SectionHeader title="Current Program" />
               {client.program === null ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import { useWellness } from '../../../context/WellnessContext';
 import { getUpcomingSessions } from '../../../services/supabaseService';
 import type { ClientSession } from '../../../types';
@@ -239,22 +240,12 @@ export default function UpcomingSessionsScreen() {
   return (
     <MobileShell className="bg-[#F9FAFB]">
       {/* Header */}
-      <div
-        className="sticky top-0 z-40 flex items-center gap-3 px-4 py-4 border-b border-gray-100"
-        style={{ backgroundColor: '#ffffff' }}
-      >
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
-          aria-label="Go back"
-        >
-          <ChevronLeft size={22} style={{ color: '#111827' }} />
-        </button>
-        <p className="text-[17px] font-bold text-[#111827]">Upcoming Sessions</p>
-        <div className="ml-auto">
-          <ProfileMenu />
-        </div>
-      </div>
+      <ScreenHeader
+        variant="sub"
+        title="Upcoming Sessions"
+        onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
+      />
 
       <div className="flex-1 overflow-y-auto pb-8">
         {/* Loading state */}
@@ -310,7 +301,7 @@ export default function UpcomingSessionsScreen() {
             if (groupSessions.length === 0) return null;
 
             return (
-              <div key={groupKey} className="mt-5 mx-4">
+              <div key={groupKey} className="mt-5 mx-4 lg:max-w-3xl">
                 {/* Group label with date of first session */}
                 <div className="flex items-baseline justify-between mb-2 px-1">
                   <p

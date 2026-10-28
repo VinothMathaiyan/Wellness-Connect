@@ -9,13 +9,13 @@ import RoleSelectionScreen from './RoleSelectionScreen';
 import HealthProfileScreen from '../../client/screens/HealthProfileScreen';
 import AssessmentBookingScreen from '../../client/screens/AssessmentBookingScreen';
 import AccountReadyScreen from '../../client/screens/AccountReadyScreen';
+import AssessmentPendingScreen from '../../client/screens/AssessmentPendingScreen';
 import HomeScreen from '../../client/screens/HomeScreen';
 import DailyCheckInScreen from '../../client/screens/DailyCheckInScreen';
 import NutritionLogFlow from '../../client/screens/NutritionLogFlow';
 import ProgressScreen from '../../client/screens/ProgressScreen';
 import SessionDetailScreen from '../../client/screens/SessionDetailScreen';
 import UpcomingSessionsScreen from '../../client/screens/UpcomingSessionsScreen';
-import ProgramApprovalScreen from '../../client/screens/ProgramApprovalScreen';
 import WeeklyReportScreen from '../../client/screens/WeeklyReportScreen';
 import AlertsScreen from './AlertsScreen';
 import TrainersScreen from '../../client/screens/TrainersScreen';
@@ -25,10 +25,10 @@ import TrainerDashboard from '../../trainer/screens/TrainerDashboard';
 import TrainerOnboardingFlow from '../../trainer/screens/onboarding/TrainerOnboardingFlow';
 import TrainerWelcomeScreen from '../../trainer/screens/TrainerWelcomeScreen';
 import TrainerSetupCompleteScreen from '../../trainer/screens/TrainerSetupCompleteScreen';
+import TrainerPendingScreen from '../../trainer/screens/TrainerPendingScreen';
 import MyClientsScreen from '../../trainer/screens/MyClientsScreen';
 import ClientDetailScreen from '../../trainer/screens/ClientDetailScreen';
 import AcceptDeclineScreen from '../../trainer/screens/AcceptDeclineScreen';
-import SessionLogScreen from '../../trainer/screens/SessionLogScreen';
 import CheckinReviewScreen from '../../trainer/screens/CheckinReviewScreen';
 import ProgramBuilderScreen from '../../trainer/screens/ProgramBuilderScreen';
 import WeeklyPlanScreen from '../../trainer/screens/WeeklyPlanScreen';
@@ -53,7 +53,14 @@ import AdminDashboardScreen from '../../admin/screens/AdminDashboardScreen';
 import DevNav from '../../../components/DevNav';
 
 function AppRoutes() {
-  const { isAuthLoading, userId, userRole } = useWellness();
+  const {
+    isAuthLoading,
+    userId,
+    userRole,
+    isClientCleared,
+    trainerApprovalStatus,
+    isTrainerApprovalLoading,
+  } = useWellness();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -82,17 +89,82 @@ function AppRoutes() {
       navigate('/assessment/dashboard', { replace: true });
       return;
     }
-    if (userRole === 'trainer' && !path.startsWith('/trainer') && !path.startsWith('/onboarding')) {
-      navigate('/trainer/dashboard', { replace: true });
-      return;
-    }
-    if (userRole === 'client' && !path.startsWith('/client') && !path.startsWith('/onboarding')) {
-      navigate('/client/dashboard', { replace: true });
-      return;
-    }
-  }, [userId, userRole, isAuthLoading, location.pathname, navigate]);
+    if (userRole === 'trainer') {
+      // Wait for the approval lookup before deciding.
+      if (isTrainerApprovalLoading) return;
 
-  if (isAuthLoading) {
+      // Pending / rejected trainers are gated to the pending screen, but must
+      // still be able to (re)submit via the onboarding flow.
+      if (trainerApprovalStatus === 'pending' || trainerApprovalStatus === 'rejected') {
+        const gateAllowed =
+          path === '/trainer/pending' ||
+          path === '/trainer/onboarding' ||
+          path === '/trainer/setup-complete' ||
+          path.startsWith('/onboarding');
+        if (!gateAllowed) {
+          navigate('/trainer/pending', { replace: true });
+        }
+        return;
+      }
+
+      // Approved, or no approval row yet (mid-onboarding): existing behavior —
+      // keep trainers within their area.
+      if (!path.startsWith('/trainer') && !path.startsWith('/onboarding')) {
+        navigate('/trainer/dashboard', { replace: true });
+      }
+      return;
+    }
+    if (userRole === 'client') {
+      // Assessment gate — wait for the clearance lookup before deciding.
+      if (isClientCleared === null) return;
+
+      const onOnboarding = path.startsWith('/onboarding');
+
+      if (!isClientCleared) {
+        // Not yet cleared: only the pending screen and the health-profile
+        // (onboarding) flow are reachable. Everything else → pending screen.
+        if (path !== '/client/pending' && !onOnboarding) {
+          navigate('/client/pending', { replace: true });
+        }
+        return;
+      }
+
+      // Cleared: keep them in the client area. The pending screen owns its own
+      // redirect to the dashboard (so its "you're cleared" success can play), so
+      // we don't redirect away from /client/pending here.
+      if (!path.startsWith('/client') && !onOnboarding) {
+        navigate('/client/dashboard', { replace: true });
+        return;
+      }
+    }
+  }, [
+    userId,
+    userRole,
+    isClientCleared,
+    isAuthLoading,
+    isTrainerApprovalLoading,
+    trainerApprovalStatus,
+    location.pathname,
+    navigate,
+  ]);
+
+  // Hold protected client routes behind a spinner until clearance resolves, so
+  // gated content never flashes before the redirect to /client/pending.
+  const awaitingClearance =
+    userRole === 'client' &&
+    isClientCleared === null &&
+    location.pathname.startsWith('/client') &&
+    location.pathname !== '/client/pending';
+
+  // Same pattern for trainer approval: avoid flashing the dashboard before the
+  // approval lookup resolves to pending/rejected.
+  const awaitingTrainerApproval =
+    userRole === 'trainer' &&
+    isTrainerApprovalLoading &&
+    location.pathname.startsWith('/trainer') &&
+    location.pathname !== '/trainer/pending';
+
+  if (isAuthLoading || awaitingClearance || awaitingTrainerApproval) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
         <div className="w-8 h-8 border-2 border-[#1D9E75] border-t-transparent rounded-full animate-spin" />
@@ -102,17 +174,23 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Single unified OTP entry. /signup is canonical; '/' and the legacy
+          /signin path redirect here. There is no separate sign-in screen —
+          new-vs-returning is detected automatically after OTP success
+          (see SignUpScreen.completeSignIn / getProfileForAuth). */}
+      <Route path="/" element={<Navigate to="/signup" replace />} />
+      <Route path="/signin" element={<Navigate to="/signup" replace />} />
       <Route path="/signup" element={<SignUpScreen />} />
       <Route path="/role-selection" element={<RoleSelectionScreen />} />
       <Route path="/onboarding/profile" element={<HealthProfileScreen />} />
       <Route path="/onboarding/assessment" element={<AssessmentBookingScreen />} />
       <Route path="/onboarding/ready" element={<AccountReadyScreen />} />
+      <Route path="/client/pending" element={<AssessmentPendingScreen />} />
       <Route path="/client/dashboard" element={<HomeScreen />} />
       <Route path="/client/check-in" element={<DailyCheckInScreen existingLog={null} />} />
       <Route path="/client/nutrition" element={<NutritionLogFlow />} />
       <Route path="/client/session/:sessionId" element={<SessionDetailScreen />} />
       <Route path="/client/sessions" element={<UpcomingSessionsScreen />} />
-      <Route path="/client/program-approval/:planId" element={<ProgramApprovalScreen />} />
       <Route path="/client/trainers" element={<TrainersScreen />} />
       <Route path="/client/alerts" element={<AlertsScreen />} />
       <Route path="/client/progress" element={<ProgressScreen />} />
@@ -122,11 +200,11 @@ function AppRoutes() {
       <Route path="/trainer/welcome" element={<TrainerWelcomeScreen />} />
       <Route path="/trainer/onboarding" element={<TrainerOnboardingFlow />} />
       <Route path="/trainer/setup-complete" element={<TrainerSetupCompleteScreen />} />
+      <Route path="/trainer/pending" element={<TrainerPendingScreen />} />
       <Route path="/trainer/dashboard" element={<TrainerDashboard />} />
       <Route path="/trainer/clients" element={<MyClientsScreen />} />
       <Route path="/trainer/client/:clientId" element={<ClientDetailScreen />} />
       <Route path="/trainer/client-request/:clientId" element={<AcceptDeclineScreen />} />
-      <Route path="/trainer/session-log/:clientId" element={<SessionLogScreen />} />
       <Route path="/trainer/checkin-review/:clientId" element={<CheckinReviewScreen />} />
       <Route path="/trainer/program-builder/:clientId" element={<ProgramBuilderScreen />} />
       <Route path="/trainer/weekly-plan/:clientId" element={<WeeklyPlanScreen />} />

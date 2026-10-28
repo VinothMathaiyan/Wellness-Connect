@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, Users, ShieldAlert, FileCheck, CalendarClock, AlertTriangle, LogOut } from 'lucide-react';
+import { ChevronRight, Users, ShieldAlert, FileCheck, CalendarClock, AlertTriangle } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '../../../components/ScreenHeader';
 import AssessmentBottomNav from '../components/AssessmentBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import { 
   getAssessorDashboardStats, 
-  getNewClientQueue, 
-  type Assessment 
+  getNewClientQueue,
+  backfillTrainerRecommendations,
+  type Assessment
 } from '../../../services/supabaseService';
 
 function getGreeting(): string {
@@ -19,30 +21,24 @@ function getGreeting(): string {
   return 'Good night';
 }
 
+// Returns true only on localhost or Vercel dev-branch previews — gates the
+// temporary backfill button. Always false in production, so the button never
+// renders there. Known PRODUCTION hostnames this must return false for:
+//   wellness-connect-sigma.vercel.app  and any  *git-main-*  preview URL.
+const isDevEnvironment = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.includes('-dev-') ||              // matches git-dev-* preview URLs
+    host.includes('wellness-connect-git-dev')
+  );
+};
+
 export default function AssessmentDashboardScreen() {
   const navigate = useNavigate();
-  const { userId, appState, logout } = useWellness();
-
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
-
-  // Close the profile menu when clicking/tapping outside of it.
-  useEffect(() => {
-    if (!showProfileMenu) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
-        setShowProfileMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showProfileMenu]);
-
-  const handleLogout = async () => {
-    setShowProfileMenu(false);
-    await logout();
-    navigate('/signup', { replace: true });
-  };
+  const { userId, appState } = useWellness();
 
   const [stats, setStats] = useState({
     newClientCount: 0,
@@ -53,6 +49,25 @@ export default function AssessmentDashboardScreen() {
   const [recentActivity, setRecentActivity] = useState<Assessment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // [DEV/PREVIEW ONLY] Backfill button state — visible on dev branch and localhost. Hidden in production builds.
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handleBackfill = async () => {
+    if (backfillRunning) return;
+    setBackfillRunning(true);
+    setToast(null);
+    try {
+      const { succeeded } = await backfillTrainerRecommendations();
+      setToast({ type: 'success', message: `Backfilled ${succeeded} clients` });
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : 'Backfill failed.' });
+    } finally {
+      setBackfillRunning(false);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -101,12 +116,6 @@ export default function AssessmentDashboardScreen() {
   }, [userId]);
 
   const firstName = appState.full_name?.split(' ')[0] || 'Assessor';
-  const initials = appState.full_name
-    ?.split(' ')
-    .map(n => n[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase() || 'AS';
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -123,74 +132,12 @@ export default function AssessmentDashboardScreen() {
       <div className="flex-1 overflow-y-auto pb-24">
         
         {/* Header Card */}
-        <div 
-          className="px-5 pt-10 pb-6 rounded-b-3xl shadow-sm text-white relative overflow-visible"
-          style={{ background: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)' }}
-        >
-          <div className="flex justify-between items-start relative z-10">
-            <div>
-              <h1 className="text-2xl font-bold mb-1">{getGreeting()}, {firstName} 👋</h1>
-              <p className="text-white/80 text-sm font-medium">Assessment Command Center</p>
-            </div>
-            {/* Avatar — tap to open profile menu */}
-            <div className="relative" ref={profileMenuRef}>
-              <button
-                onClick={() => setShowProfileMenu(prev => !prev)}
-                aria-label="Profile menu"
-                className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm border border-white/30 text-white font-bold text-lg shadow-sm active:opacity-80 transition-opacity"
-              >
-                {initials}
-              </button>
-
-              <AnimatePresence>
-                {showProfileMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                    transition={{ duration: 0.12 }}
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      zIndex: 1000,
-                      marginTop: '8px',
-                      background: '#ffffff',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '12px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                      minWidth: '200px',
-                      padding: '8px 0',
-                    }}
-                  >
-                    {/* Name + role */}
-                    <div style={{ padding: '4px 16px 8px' }}>
-                      <p className="truncate" style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>
-                        {appState.full_name || 'Assessment Team'}
-                      </p>
-                      <p style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Assessor</p>
-                    </div>
-
-                    {/* Divider */}
-                    <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '4px 0' }} />
-
-                    {/* Sign out button */}
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2.5 transition-colors hover:bg-[#fef2f2]"
-                      style={{ padding: '8px 16px', textAlign: 'left' }}
-                    >
-                      <LogOut size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
-                      <span style={{ color: '#ef4444', fontSize: 14, fontWeight: 600 }}>
-                        Sign Out
-                      </span>
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-        </div>
+        <ScreenHeader
+          variant="hero"
+          greeting={`Good morning, ${firstName} 👋`}
+          subtitle="Assessment Command Center"
+          avatar={<ProfileMenu logoutLabel="Sign Out" />}
+        />
 
         <div className="px-5 mt-5 space-y-6">
           
@@ -253,8 +200,8 @@ export default function AssessmentDashboardScreen() {
             )
           )}
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Stats Grid — 2x2 on mobile, single KPI row on desktop */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <button
               onClick={() => navigate('/assessment/clients/queue')}
               className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-start active:scale-95 transition-transform"
@@ -326,7 +273,7 @@ export default function AssessmentDashboardScreen() {
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3">
               {isLoading ? (
                 // Skeletons
                 Array(3).fill(0).map((_, i) => (
@@ -362,19 +309,49 @@ export default function AssessmentDashboardScreen() {
                   );
                 })
               ) : (
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center lg:col-span-2">
                   <p className="text-gray-500 text-sm">No recent activity</p>
                 </div>
               )}
             </div>
           </div>
 
+          {/* [DEV/PREVIEW ONLY] Temporary admin button — visible on localhost and
+              Vercel dev branch previews. Hidden in production (wellness-connect-
+              sigma.vercel.app or any *git-main-* URL). Remove before final production
+              launch. */}
+          {isDevEnvironment() && (
+            <div className="pt-2 pb-1 flex justify-center">
+              <button
+                onClick={handleBackfill}
+                disabled={backfillRunning}
+                className="text-[11px] font-medium text-gray-400 underline underline-offset-2 disabled:opacity-50"
+              >
+                {backfillRunning ? 'Running…' : '[Dev] Backfill Recommendations'}
+              </button>
+            </div>
+          )}
+
         </div>
       </div>
 
-      <AssessmentBottomNav 
-        escalationCount={stats.openEscalationCount} 
-        alertCount={0} 
+      {/* Backfill result toast */}
+      {toast && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 bottom-24 z-[200] px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium max-w-[90%] text-center break-words"
+          style={
+            toast.type === 'success'
+              ? { backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }
+              : { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }
+          }
+        >
+          {toast.message}
+        </div>
+      )}
+
+      <AssessmentBottomNav
+        escalationCount={stats.openEscalationCount}
+        alertCount={0}
       />
     </MobileShell>
   );

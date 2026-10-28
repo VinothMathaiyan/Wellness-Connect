@@ -1,40 +1,46 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, MapPin, Search, Check, Video, Phone } from 'lucide-react';
+import { ChevronLeft, MapPin, Search, Check, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { StepProps } from './TrainerOnboardingFlow';
-import type { SelectionCardOption } from '../../components/SelectionCard';
 import { validateStep2 } from '../../hooks/useTrainerOnboarding';
+import { useLocation, locationErrorMessage } from '../../../../hooks/useLocation';
 import OnboardingLayout from '../../../client/components/OnboardingLayout';
 import Button from '../../../../components/Button';
 import Input from '../../../../components/Input';
 import ProgressBar from '../../../../components/ProgressBar';
 import MultiSelectChips from '../../components/MultiSelectChips';
-import SelectionCard from '../../components/SelectionCard';
 
 const SPECIALISATIONS = [
-  'Strength Training',
-  'Yoga',
-  'Nutrition Coaching',
-  'Ayurveda',
-  'Functional Fitness',
-  'Cardio',
-  'Rehabilitation',
+  'Strength Training', 'Yoga', 'HIIT', 'Cardio', 'Pilates',
+  'Functional Training', 'CrossFit', 'Rehab Training',
+  'Mobility Training', 'Weight Loss', 'Muscle Gain',
+  'Athletic Performance', 'Stress Reduction',
 ];
 
-const SESSION_TYPE_OPTIONS: SelectionCardOption[] = [
-  { id: 'Virtual',   label: 'Virtual',   Icon: Video,  description: 'Video call' },
-  { id: 'In-person', label: 'In-person', Icon: MapPin, description: 'Meet locally' },
-  { id: 'Phone',     label: 'Phone',     Icon: Phone,  description: 'Voice call' },
+const FOCUS_AREAS = [
+  'Beginner Friendly', 'Weight Loss', 'Muscle Gain', 'Flexibility',
+  'Rehabilitation', 'Mobility', 'Low-impact', 'Post-Natal',
+  'Elderly Care', 'Sports Performance', 'Injury Recovery',
+];
+
+const SESSION_TYPES = ['Online (Video)', 'In-Person', 'Home Visit', 'Hybrid'];
+
+const SESSION_INTENSITIES = [
+  'Low (recovery/gentle)', 'Medium (moderate)', 'High (intense/performance)',
+];
+
+const COACHING_STYLES = [
+  'Motivational', 'Strict & Disciplined', 'Supportive & Nurturing',
+  'Educational', 'Goal-Oriented', 'Holistic',
 ];
 
 const LANGUAGES = [
-  'English',
-  'Tamil',
-  'Hindi',
-  'Telugu',
-  'Kannada',
-  'Malayalam',
-  'Other',
+  'English', 'Tamil', 'Hindi', 'Malayalam', 'Telugu', 'Kannada', 'Other',
+];
+
+const SPECIAL_CERTIFICATIONS = [
+  'Rehabilitation Certified', 'Medical Fitness Certified', 'Prenatal/Postnatal',
+  'Sports Nutrition', 'Elderly Fitness', 'Yoga Alliance RYT', 'CrossFit L1/L2', 'Other',
 ];
 
 const CITIES = [
@@ -57,6 +63,16 @@ export default function TrainerExpertiseStep({
   const [citySearch, setCitySearch] = useState('');
   const [isCustomCity, setIsCustomCity] = useState(false);
 
+  // Device-location auto-fill for the City field (one-tap, additive).
+  const {
+    detect: detectCity,
+    status: cityDetectStatus,
+    error: cityDetectError,
+    isSupported: isLocationSupported,
+  } = useLocation();
+  // Tracks manual edits so auto-fill never overwrites a value the user chose.
+  const [userEditedCity, setUserEditedCity] = useState(false);
+
   const filteredCities = useMemo(
     () => CITIES.filter(c => c.toLowerCase().includes(citySearch.toLowerCase())),
     [citySearch]
@@ -78,6 +94,30 @@ export default function TrainerExpertiseStep({
     setIsCustomCity(false);
     setCitySearch('');
     clearFieldError('city');
+  };
+
+  // Route a device-resolved city through the SAME selection paths as manual
+  // entry so required-field validation clears correctly: a canonical CITIES
+  // match reuses selectCity(); anything else uses the existing custom
+  // (isCustomCity) free-text path. Never overwrites a user-entered value.
+  const applyDetectedCity = (detectedCity: string) => {
+    const trimmed = detectedCity.trim();
+    if (!trimmed) return;
+    if (data.city.trim() && userEditedCity) return;
+    const match = CITIES.find(c => c.toLowerCase() === trimmed.toLowerCase());
+    if (match) {
+      selectCity(match);
+    } else {
+      setIsCustomCity(true);
+      setCitySearch('');
+      updateData({ city: trimmed });
+      clearFieldError('city');
+    }
+  };
+
+  const handleDetectCity = async () => {
+    const resolved = await detectCity();
+    if (resolved) applyDetectedCity(resolved.city);
   };
 
   const showOtherLanguageInput = data.languages.includes('Other');
@@ -112,7 +152,7 @@ export default function TrainerExpertiseStep({
     >
       <div className="px-6 pt-4 pb-32 space-y-8">
         <p className="label-caps !text-[11px] text-text-secondary pt-2">
-          Section 2 — Expertise &amp; Matching
+          Your Expertise
         </p>
 
         {/* ── Specialisations ───────────────────────────────────────────── */}
@@ -139,6 +179,32 @@ export default function TrainerExpertiseStep({
             }}
             error={errors.specialisations}
           />
+          <p style={{
+            fontSize: '12px',
+            color: '#6b7280',
+            fontStyle: 'italic',
+            marginTop: '10px',
+            lineHeight: 1.5,
+          }}>
+            💡 Tip: Selecting accurate specialisations and focus areas helps our engine match you with the right clients. Clients are recommended trainers based on their health profile and training preferences.
+          </p>
+        </div>
+
+        {/* ── Focus Areas ───────────────────────────────────────────────── */}
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-medium text-text-primary">
+              What are your focus areas?
+            </label>
+            <p className="text-[12px] text-text-secondary leading-relaxed">
+              The client outcomes you work towards most often.
+            </p>
+          </div>
+          <MultiSelectChips
+            options={FOCUS_AREAS}
+            selected={data.focusAreas}
+            onChange={selected => updateData({ focusAreas: selected })}
+          />
         </div>
 
         {/* ── Session Types ─────────────────────────────────────────────── */}
@@ -146,18 +212,18 @@ export default function TrainerExpertiseStep({
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
               <label className="text-[13px] font-medium text-text-primary">
-                Session types
+                What session types do you offer?
               </label>
               <span className="text-[10px] font-semibold text-red px-1.5 py-0.5 bg-red-light rounded-md">
                 Required
               </span>
             </div>
             <p className="text-[12px] text-text-secondary leading-relaxed">
-              Choose how you prefer to conduct sessions. You can select multiple options based on how you work with clients.
+              Choose how you deliver sessions. Select all that apply.
             </p>
           </div>
-          <SelectionCard
-            options={SESSION_TYPE_OPTIONS}
+          <MultiSelectChips
+            options={SESSION_TYPES}
             selected={data.sessionTypes}
             onChange={selected => {
               updateData({ sessionTypes: selected });
@@ -166,6 +232,54 @@ export default function TrainerExpertiseStep({
             error={errors.sessionTypes}
           />
         </div>
+
+        {/* ── Session Intensity (single select) ─────────────────────────── */}
+        <div className="space-y-3">
+          <label className="text-[13px] font-medium text-text-primary">
+            What session intensity do you typically work at?
+          </label>
+          <div className="flex flex-wrap gap-2.5">
+            {SESSION_INTENSITIES.map(opt => {
+              const isSelected = data.sessionIntensity === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => updateData({ sessionIntensity: opt })}
+                  className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all ${
+                    isSelected
+                      ? 'bg-primary text-white shadow-md shadow-primary/20 scale-105'
+                      : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50 hover:border-gray-300'
+                  }`}
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Coaching Styles ───────────────────────────────────────────── */}
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-medium text-text-primary">
+              What is your coaching style?
+            </label>
+            <p className="text-[12px] text-text-secondary leading-relaxed">
+              Select all that apply.
+            </p>
+          </div>
+          <MultiSelectChips
+            options={COACHING_STYLES}
+            selected={data.coachingStyles}
+            onChange={selected => updateData({ coachingStyles: selected })}
+          />
+        </div>
+
+        {/* ── Languages & Certifications section ─────────────────────────── */}
+        <p className="label-caps !text-[11px] text-text-secondary pt-2">
+          Languages &amp; Certifications
+        </p>
 
         {/* ── Languages Spoken ──────────────────────────────────────────── */}
         <div className="space-y-3">
@@ -224,6 +338,74 @@ export default function TrainerExpertiseStep({
           </AnimatePresence>
         </div>
 
+        {/* ── Special Certifications ────────────────────────────────────── */}
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-medium text-text-primary">
+              Do you hold any special certifications?
+            </label>
+            <p className="text-[12px] text-text-secondary leading-relaxed">
+              Select all that apply.
+            </p>
+          </div>
+          <MultiSelectChips
+            options={SPECIAL_CERTIFICATIONS}
+            selected={data.specialCertifications}
+            onChange={selected => updateData({ specialCertifications: selected })}
+          />
+        </div>
+
+        {/* ── Medical / Rehab certified toggles ─────────────────────────── */}
+        <div className="space-y-3">
+          <label className="text-[13px] font-medium text-text-primary">
+            Are you certified to train clients with medical conditions?
+          </label>
+          <div className="flex gap-2.5">
+            {[{ label: 'Yes', val: true }, { label: 'No', val: false }].map(opt => {
+              const isSelected = data.medicalCertified === opt.val;
+              return (
+                <button
+                  key={opt.label}
+                  type="button"
+                  onClick={() => updateData({ medicalCertified: opt.val })}
+                  className={`flex-1 py-3 rounded-xl text-[13px] font-semibold transition-all ${
+                    isSelected
+                      ? 'bg-primary text-white shadow-md shadow-primary/20'
+                      : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50 hover:border-gray-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <label className="text-[13px] font-medium text-text-primary">
+            Are you certified for rehabilitation training?
+          </label>
+          <div className="flex gap-2.5">
+            {[{ label: 'Yes', val: true }, { label: 'No', val: false }].map(opt => {
+              const isSelected = data.rehabCertified === opt.val;
+              return (
+                <button
+                  key={opt.label}
+                  type="button"
+                  onClick={() => updateData({ rehabCertified: opt.val })}
+                  className={`flex-1 py-3 rounded-xl text-[13px] font-semibold transition-all ${
+                    isSelected
+                      ? 'bg-primary text-white shadow-md shadow-primary/20'
+                      : 'bg-[#F3F4F6] text-[#6B7280] border border-[#D1D5DB]/50 hover:border-gray-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* ── City / Location ───────────────────────────────────────────── */}
         <div className="space-y-3">
           <div className="space-y-1.5">
@@ -255,13 +437,44 @@ export default function TrainerExpertiseStep({
             >
               {data.city || 'Select your city or location'}
             </span>
-            <MapPin
-              size={18}
-              className={errors.city ? 'text-red' : 'text-text-secondary'}
-            />
+            {/* Nested trigger: auto-fill from device location without opening
+                the city sheet. Hidden when geolocation is unsupported. The
+                MapPin keeps its red-on-error colour for the required field. */}
+            {isLocationSupported ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); void handleDetectCity(); }}
+                disabled={cityDetectStatus === 'loading'}
+                aria-label="Use my current location"
+                className="p-1 -m-1 disabled:opacity-60"
+              >
+                {cityDetectStatus === 'loading' ? (
+                  <Loader2 size={18} className="animate-spin text-primary" />
+                ) : (
+                  <MapPin
+                    size={18}
+                    className={errors.city ? 'text-red' : 'text-text-secondary'}
+                  />
+                )}
+              </button>
+            ) : (
+              <MapPin
+                size={18}
+                className={errors.city ? 'text-red' : 'text-text-secondary'}
+              />
+            )}
           </button>
+          <p className="text-[11px] text-text-secondary">
+            Tap the pin to detect your city, or tap the field to choose from the list.
+          </p>
           {errors.city && (
             <p className="text-red text-[11px]">{errors.city}</p>
+          )}
+          {cityDetectStatus === 'loading' && (
+            <p className="text-[11px] text-text-secondary">Detecting your city…</p>
+          )}
+          {cityDetectStatus === 'error' && locationErrorMessage(cityDetectError) && (
+            <p className="text-[11px] text-text-secondary">{locationErrorMessage(cityDetectError)}</p>
           )}
         </div>
       </div>
@@ -307,7 +520,7 @@ export default function TrainerExpertiseStep({
                 {filteredCities.map(city => (
                   <button
                     key={city}
-                    onClick={() => selectCity(city)}
+                    onClick={() => { setUserEditedCity(true); selectCity(city); }}
                     className="w-full flex items-center justify-between p-4 hover:bg-[#F9FAFB] rounded-xl transition-colors"
                   >
                     <span
@@ -363,7 +576,7 @@ export default function TrainerExpertiseStep({
                           placeholder="e.g. Remote, Dubai, Singapore"
                           autoFocus
                           value={data.city}
-                          onChange={e => updateData({ city: e.target.value })}
+                          onChange={e => { setUserEditedCity(true); updateData({ city: e.target.value }); }}
                         />
                       </div>
                       <Button

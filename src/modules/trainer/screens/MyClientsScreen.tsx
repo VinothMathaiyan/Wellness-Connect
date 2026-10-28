@@ -16,6 +16,8 @@ import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
 import { getTrainerClients, getPendingClientRequests, updateClientLinkStatus } from '../../../services/supabaseService';
 import type { TrainerClient } from '../../../services/supabaseService';
+import ScreenHeader from '@/components/ScreenHeader';
+import { toISODate } from '@/utils/date';
 
 type RiskLevel = 'red' | 'amber' | 'green';
 type SortOption = 'name' | 'readiness' | 'lastActive';
@@ -123,7 +125,7 @@ function formatLastActive(logDate: string | null): string {
   const today = new Date();
   const date  = new Date(logDate);
   // Compare calendar dates only
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = toISODate(today);
   const diff = Math.floor(
     (new Date(todayStr).getTime() - new Date(logDate).getTime()) / (1000 * 60 * 60 * 24)
   );
@@ -230,28 +232,19 @@ export default function MyClientsScreen() {
     <MobileShell className="bg-[#F2F8F7]">
 
       {/* ─── Sticky Header ─────────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-5 pt-5 pb-4">
-        <div className="flex items-center gap-2 mb-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors text-text-primary"
-            aria-label="Go back"
-          >
-            <ChevronLeft size={22} />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-[18px] font-bold text-text-primary leading-tight">My Clients</h1>
-            <p className="text-[12px] text-text-secondary mt-0.5">
-              {pendingRequests.length > 0
-                ? `${clients.length} active · ${pendingRequests.length} pending`
-                : `${clients.length} active clients`}
-            </p>
-          </div>
-          <ProfileMenu />
-        </div>
-
+      <ScreenHeader
+        variant="sub"
+        title="My Clients"
+        subtitle={
+          pendingRequests.length > 0
+            ? `${clients.length} active · ${pendingRequests.length} pending`
+            : `${clients.length} active clients`
+        }
+        onBack={() => navigate(-1)}
+        avatar={<ProfileMenu />}
+      >
         {/* Search + Filter row */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 mt-4">
           <div className="relative flex-1">
             <Search
               size={15}
@@ -297,7 +290,7 @@ export default function MyClientsScreen() {
             )}
           </button>
         </div>
-      </div>
+      </ScreenHeader>
 
       {/* ─── Client List ────────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32">
@@ -364,7 +357,7 @@ export default function MyClientsScreen() {
                 <h2 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
                   Requests ({pendingRequests.length})
                 </h2>
-                <div className="space-y-2">
+                <div className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
                   {pendingRequests.map((req) => {
                     const clientName = req.client?.full_name ?? 'Unknown Client';
                     const initials = getInitials(clientName);
@@ -376,7 +369,18 @@ export default function MyClientsScreen() {
                         animate={{ opacity: 1, y: 0 }}
                         className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
                       >
-                        <div className="flex items-stretch">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => navigate(`/trainer/client-request/${req.client_id}`)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              navigate(`/trainer/client-request/${req.client_id}`);
+                            }
+                          }}
+                          className="flex items-stretch cursor-pointer"
+                        >
                           <div
                             className="w-1.5 shrink-0"
                             style={{ backgroundColor: '#f59e0b' }}
@@ -399,6 +403,7 @@ export default function MyClientsScreen() {
                                 PENDING
                               </span>
                             </div>
+                            <ChevronRight size={18} className="text-gray-300 shrink-0 ml-1" />
                           </div>
                         </div>
 
@@ -436,7 +441,7 @@ export default function MyClientsScreen() {
                 <h2 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
                   Active Clients ({visibleClients.length})
                 </h2>
-                <div className="space-y-2">
+                <div className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
                   {visibleClients.map((client, idx) => (
 
                     <motion.button
@@ -613,4 +618,5 @@ export default function MyClientsScreen() {
     </MobileShell>
   );
 }
+
 

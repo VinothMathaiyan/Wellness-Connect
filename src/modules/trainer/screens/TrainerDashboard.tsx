@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import {
 
   AlertTriangle,
@@ -17,11 +17,12 @@ import {
   Clock,
   ArrowUpRight,
   Zap,
-  LogOut,
   Phone,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MobileShell from '../../../components/MobileShell';
+import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '../../../components/ScreenHeader';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import {
@@ -40,11 +41,9 @@ import type { WeeklyCheckinRow } from '../../../services/supabaseService';
 
 export default function TrainerDashboard() {
   const navigate = useNavigate();
-  const { userId, logout } = useWellness();
+  const { userId } = useWellness();
 
   const [trainerName, setTrainerName] = useState('Trainer');
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [trainerAvatarSrc, setTrainerAvatarSrc] = useState<string | null>(null);
   const [clientCount, setClientCount] = useState(0);
   const [pendingClientsCount, setPendingClientsCount] = useState(0);
@@ -86,12 +85,6 @@ export default function TrainerDashboard() {
       };
     });
   })();
-
-  const handleLogout = async () => {
-    setShowProfileMenu(false);
-    await logout();
-    navigate('/', { replace: true });
-  };
 
   const refreshUnreadCount = async () => {
     if (!userId) return;
@@ -190,106 +183,16 @@ export default function TrainerDashboard() {
       <div className="flex-1 overflow-y-auto pb-32">
 
         {/* ─── Branded Operational Header — always shown ─────────────────────────── */}
-        <div className="relative bg-gradient-to-br from-teal-600 via-emerald-500 to-teal-700 px-5 pt-6 pb-7 rounded-b-3xl overflow-hidden shadow-md">
-          <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/10 pointer-events-none" />
-          <div className="absolute bottom-0 -left-6 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
-
-          <div className="relative z-10 flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                <Zap size={15} className="text-white" />
-              </div>
-              <span className="text-white font-bold text-[15px] tracking-tight">WellnessConnect</span>
-            </div>
-            <div className="flex items-center gap-2.5">
-              {/* Avatar — tap to open profile menu */}
-              <div className="relative" ref={profileMenuRef}>
-                <button
-                  onClick={() => setShowProfileMenu(prev => !prev)}
-                  className="w-9 h-9 rounded-full overflow-hidden border-2 border-white/30 bg-white/20 flex items-center justify-center active:opacity-80 transition-opacity"
-                  aria-label="Profile menu"
-                >
-                  {trainerAvatarSrc ? (
-                    <img
-                      src={trainerAvatarSrc}
-                      alt={trainerName}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '15px' }}>
-                      {trainerName.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                </button>
-
-                {/* Backdrop — closes menu on outside tap */}
-                <AnimatePresence>
-                  {showProfileMenu && (
-                    <>
-                      <div
-                        onClick={() => setShowProfileMenu(false)}
-                        style={{
-                          position: 'fixed',
-                          inset: 0,
-                          zIndex: 99,
-                          backgroundColor: 'transparent',
-                        }}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                        transition={{ duration: 0.12 }}
-                        style={{
-                          position: 'fixed',
-                          top: '60px',
-                          right: '16px',
-                          zIndex: 100,
-                          backgroundColor: '#ffffff',
-                          borderRadius: '12px',
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                          minWidth: '200px',
-                          overflow: 'hidden',
-                          border: '1px solid #E5E7EB',
-                        }}
-                      >
-                        {/* Trainer name row */}
-                        <div className="px-4 py-3 border-b border-gray-100">
-                          <p className="text-[13px] font-semibold text-[#111827] truncate">
-                            {trainerName}
-                          </p>
-                          <p className="text-[11px] text-[#6B7280] mt-0.5">Trainer</p>
-                        </div>
-
-                        {/* Log out button */}
-                        <button
-                          onClick={handleLogout}
-                          className="w-full flex items-center gap-2.5 px-4 py-3 text-left active:bg-red-50 transition-colors"
-                        >
-                          <LogOut size={15} style={{ color: '#DC2626', flexShrink: 0 }} />
-                          <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>
-                            Log out
-                          </span>
-                        </button>
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative z-10">
-            <h1 className="text-white text-[22px] font-bold tracking-tight leading-tight">
-              Good Morning, {trainerName} 👋
-            </h1>
-            <p className="text-white/80 text-[13px] font-medium mt-1">
-              {urgentCount > 0
-                ? `${urgentCount} client${urgentCount === 1 ? '' : 's'} require attention today`
-                : 'All clients are on track today'}
-            </p>
-          </div>
-        </div>
+        <ScreenHeader
+          variant="hero"
+          greeting={`Good Morning, ${trainerName} 👋`}
+          subtitle={
+            urgentCount > 0
+              ? `${urgentCount} client${urgentCount === 1 ? '' : 's'} require attention today`
+              : 'All clients are on track today'
+          }
+          avatar={<ProfileMenu avatarSrc={trainerAvatarSrc} />}
+        />
 
         {/* ─── Loading Skeleton ───────────────────────────────────────────────────── */}
         {isLoading ? (
@@ -312,12 +215,12 @@ export default function TrainerDashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <div className="px-5 pt-5 pb-8 space-y-5">
+            <div className="px-5 pt-5 pb-8 space-y-5 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
 
               {/* ─── 2. Client Alert Triage Banner ─────────────────────────────────────── */}
               {urgentCount > 0 ? (
                 <div
-                  className="flex items-start gap-3 shadow-sm"
+                  className="flex items-start gap-3 shadow-sm lg:col-span-2"
                   style={{ backgroundColor: '#FEF3C7', borderRadius: '12px', padding: '12px 16px', border: '1px solid #FDE68A' }}
                 >
                   <AlertTriangle size={18} style={{ color: '#D97706', flexShrink: 0, marginTop: '1px' }} />
@@ -337,7 +240,7 @@ export default function TrainerDashboard() {
               ) : (
                 <button
                   onClick={() => navigate('/trainer/risk-monitor')}
-                  className="flex items-start gap-3 shadow-sm w-full text-left active:opacity-80 transition-opacity"
+                  className="flex items-start gap-3 shadow-sm w-full text-left active:opacity-80 transition-opacity lg:col-span-2"
                   style={{ backgroundColor: '#F0FDF4', borderRadius: '12px', padding: '12px 16px', border: '1px solid #BBF7D0' }}
                 >
                   <CheckCircle size={18} style={{ color: '#16A34A', flexShrink: 0, marginTop: '1px' }} />
@@ -351,6 +254,9 @@ export default function TrainerDashboard() {
                   </div>
                 </button>
               )}
+
+              {/* Left column at lg: — operational cards. Plain stacking div below lg (mobile unchanged). */}
+              <div className="space-y-5">
 
               {/* ─── 3. KPI Cards ──────────────────────────────────────────────────────── */}
               <div className="grid grid-cols-2 gap-3">
@@ -437,12 +343,17 @@ export default function TrainerDashboard() {
                 </div>
               )}
 
+              </div>
+
+              {/* Right column at lg: — weekly overview. Plain stacking div below lg (mobile unchanged). */}
+              <div className="space-y-5">
+
               {/* ─── 6. This Week's Check-ins ──────────────────────────────────────────── */}
               <div>
                 <h3 className="text-[13px] font-bold text-text-secondary uppercase tracking-wider mb-3 ml-1">
                   This Week's Check-ins
                 </h3>
-                <div className="-mx-5 px-5 overflow-x-auto hide-scrollbar">
+                <div className="-mx-5 px-5 overflow-x-auto hide-scrollbar lg:mx-0 lg:px-0">
                   <div className="flex gap-2 min-w-max pb-1">
                     {weekDays.map((day) => {
                       const dayCheckins = weeklyCheckins.filter(c => c.log_date === day.dateStr);
@@ -575,6 +486,8 @@ export default function TrainerDashboard() {
                     Review your clients' readiness trends to adjust training intensity for the week ahead.
                   </p>
                 </div>
+              </div>
+
               </div>
 
             </div>

@@ -10,7 +10,12 @@
       "Bash(node -e \"const i = require\\('c:/Users/Dell/OneDrive/Wellness-Connect/node_modules/lucide-react'\\); ['Images','ImageIcon','FolderOpen','Library','GalleryHorizontal','CheckCircle2'].forEach\\(n=>console.log\\(n,!!i[n]\\)\\)\")",
       "Bash(node -e \"const l = require\\('./node_modules/lucide-react'\\); ['ShieldCheck','Upload','FileText','X'].forEach\\(n => console.log\\(n, !!l[n]\\)\\)\")",
       "Bash(Select-String \"AcceptDecline\")",
-      "Bash(curl -s -o NUL -w \"HTTP %{http_code}\\\\n\" http://localhost:5173)"
+      "Bash(curl -s -o NUL -w \"HTTP %{http_code}\\\\n\" http://localhost:5173)",
+      "Bash(node scripts/_step5_verify.mjs)",
+      "Bash(node scripts/_step5_verify_B.mjs)",
+      "Bash(node scripts/_reject_rpc_verify.mjs)",
+      "Bash(node scripts/_step6_engine_verify.mjs)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }

@@ -6,6 +6,8 @@
 // Storage stays ISO (YYYY-MM-DD / full ISO timestamps) in the database — use
 // toInputDateValue() only for <input type="date"> values, never for display.
 
+import { toISODate } from './date';
+
 /**
  * Format a date value to display string: DD/MM/YYYY
  * Accepts: Date object | ISO string | timestamp
@@ -102,7 +104,7 @@ export function toInputDateValue(value: Date | string | null | undefined): strin
   if (!value) return '';
   const d = new Date(value);
   if (isNaN(d.getTime())) return '';
-  return d.toISOString().split('T')[0];
+  return toISODate(d);
 }
 
 /**

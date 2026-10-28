@@ -5,7 +5,6 @@ const ROUTES = [
   { label: 'T06 Clients', path: '/trainer/clients' },
   { label: 'T07 Client Detail', path: '/trainer/client/2' },
   { label: 'T08 Accept/Decline', path: '/trainer/client-request/pending-001' },
-  { label: 'T09 Session Log', path: '/trainer/session-log/1' },
   { label: 'T12 Check-in Review', path: '/trainer/checkin-review/2' },
   { label: 'T10 Program Builder', path: '/trainer/program-builder/2' },
   { label: 'T10A Schedule', path: '/trainer/schedule-session' },

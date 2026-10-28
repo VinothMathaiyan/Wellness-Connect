@@ -1,59 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  Users,
-  ShieldAlert,
-  MessageSquare,
-  Bell
-} from 'lucide-react';
-import type { ElementType } from 'react';
+import { navConfig } from '../../../components/navConfig';
+import SideNav from '../../../components/SideNav';
 
 export interface AssessmentBottomNavProps {
   escalationCount?: number;
   alertCount?: number;
 }
-
-interface TabConfig {
-  label: string;
-  icon: ElementType;
-  route: string;
-  matchPrefix: string;
-  exact?: boolean;
-}
-
-const tabs: TabConfig[] = [
-  {
-    label: 'Home',
-    icon: LayoutDashboard,
-    route: '/assessment/dashboard',
-    matchPrefix: '/assessment/dashboard',
-    exact: true,
-  },
-  {
-    label: 'Clients',
-    icon: Users,
-    route: '/assessment/clients/queue',
-    matchPrefix: '/assessment/clients',
-  },
-  {
-    label: 'Escalations',
-    icon: ShieldAlert,
-    route: '/assessment/escalations',
-    matchPrefix: '/assessment/escalations',
-  },
-  {
-    label: 'Messages',
-    icon: MessageSquare,
-    route: '/assessment/messages',
-    matchPrefix: '/assessment/messages',
-  },
-  {
-    label: 'Alerts',
-    icon: Bell,
-    route: '/assessment/notifications',
-    matchPrefix: '/assessment/notifications',
-  },
-];
 
 export default function AssessmentBottomNav({
   escalationCount = 0,
@@ -62,7 +14,9 @@ export default function AssessmentBottomNav({
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isActive = (tab: TabConfig): boolean => {
+  const tabs = navConfig.assessment;
+
+  const isActive = (tab: typeof tabs[0]): boolean => {
     if (tab.exact) {
       return location.pathname === tab.matchPrefix;
     }
@@ -70,8 +24,10 @@ export default function AssessmentBottomNav({
   };
 
   return (
-    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
-      <nav
+    <>
+      <SideNav role="assessment" badges={{ escalationCount, alertCount }} />
+      <div className="lg:hidden" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, display: 'flex', justifyContent: 'center' }}>
+        <nav
         className="w-full bg-white border-t border-gray-100 px-2"
         style={{ maxWidth: '448px', height: '64px', paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
@@ -151,6 +107,7 @@ export default function AssessmentBottomNav({
         })}
       </div>
       </nav>
-    </div>
+      </div>
+    </>
   );
 }

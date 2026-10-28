@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, PenSquare, X } from 'lucide-react';
+import { MessageSquare, PenSquare, ShieldCheck, X } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
+import TrainerMessageThreadView from '../components/TrainerMessageThreadView';
 import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
-import { getMessageThreads, getTrainerClients, type TrainerClient } from '../../../services/supabaseService';
+import { getMessageThreads, getTrainerClients, getAssessorId, type TrainerClient } from '../../../services/supabaseService';
+import ScreenHeader from '@/components/ScreenHeader';
 import { formatDate } from '@/utils/dateUtils';
 
 interface MessageThread {
@@ -57,20 +59,57 @@ export default function TrainerMessagesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Compose ("New Message") flow — pick an active client to start a conversation.
+  // Compose ("New Message") flow — pick a recipient: an active+cleared client,
+  // or the Assessment Team (general team message, clientId null).
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [clients, setClients] = useState<TrainerClient[]>([]);
+
+  // lg: master-detail — the thread shown inline beside the list. Mobile keeps
+  // push navigation to /trainer/messages/:userId and never sets this.
+  const [selectedThread, setSelectedThread] = useState<{
+    id: string;
+    clientId: string | null;
+    name?: string;
+    role?: string;
+  } | null>(null);
+
+  const isDesktop = () =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
+
+  function openThread(id: string, clientId: string | null, name?: string, role?: string) {
+    if (isDesktop()) {
+      // Inline selection: show thread beside the list. markMessagesRead runs
+      // inside the thread view; mirror it locally so the row badge clears.
+      setSelectedThread({ id, clientId, name, role });
+      setThreads(prev =>
+        prev.map(t => (t.other_user_id === id ? { ...t, unread_count: 0 } : t)),
+      );
+      return;
+    }
+    // Mobile: exactly the existing push-navigation behavior — rows pass only
+    // clientId; the compose picker additionally passes name/role.
+    navigate(`/trainer/messages/${id}`, {
+      state: role
+        ? { clientId, recipientName: name, recipientRole: role }
+        : { clientId },
+    });
+  }
+  const [assessorId, setAssessorId] = useState<string | null>(null);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientsError, setClientsError] = useState('');
 
   async function openCompose() {
     setIsComposeOpen(true);
-    if (!userId || clients.length > 0) return;
+    if (!userId || (clients.length > 0 || assessorId)) return;
     setClientsLoading(true);
     setClientsError('');
     try {
-      const data = await getTrainerClients(userId);
+      const [data, assessor] = await Promise.all([
+        getTrainerClients(userId),
+        getAssessorId(),
+      ]);
       setClients(data);
+      setAssessorId(assessor);
     } catch (err: unknown) {
       setClientsError(err instanceof Error ? err.message : 'Failed to load clients.');
     } finally {
@@ -78,9 +117,15 @@ export default function TrainerMessagesScreen() {
     }
   }
 
-  function startConversation(clientId: string) {
+  function startConversation(clientId: string, recipientName: string) {
     setIsComposeOpen(false);
-    navigate(`/trainer/messages/${clientId}`, { state: { clientId } });
+    openThread(clientId, clientId, recipientName, 'client');
+  }
+
+  // Message the Assessment Team — general team message (no client subject).
+  function startTeamConversation(teamId: string, recipientName: string) {
+    setIsComposeOpen(false);
+    openThread(teamId, null, recipientName, 'assessor');
   }
 
   useEffect(() => {
@@ -115,25 +160,20 @@ export default function TrainerMessagesScreen() {
   const unreadTotal = threads.reduce((sum, t) => sum + t.unread_count, 0);
 
   return (
-    <MobileShell className="bg-[#F2F8F7]">
-      <div className="flex-1 overflow-y-auto pb-24">
+    <MobileShell className="bg-[#F2F8F7] lg:flex-row">
+      {/* Inbox column — full width on mobile, fixed-width master column at lg: */}
+      <div className="flex-1 overflow-y-auto pb-24 lg:flex-none lg:w-[400px] lg:h-screen lg:border-r lg:border-[#E5E7EB]">
         {/* Header */}
-        <div
-          className="px-5 pt-10 pb-5 rounded-b-3xl shadow-sm text-white"
-          style={{ background: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)' }}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-2xl font-bold mb-1">Messages</h1>
-              {unreadTotal > 0 && !isLoading && (
-                <p className="text-white/80 text-sm font-medium">{unreadTotal} unread</p>
-              )}
-            </div>
+        <ScreenHeader
+          variant="sub"
+          title="Messages"
+          subtitle={unreadTotal > 0 && !isLoading ? `${unreadTotal} unread` : undefined}
+          avatar={
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={openCompose}
-                className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold bg-white/15 text-white active:scale-95 transition-transform"
+                className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold bg-gray-100 text-gray-700 active:scale-95 transition-transform"
                 aria-label="New message"
               >
                 <PenSquare size={16} />
@@ -141,8 +181,8 @@ export default function TrainerMessagesScreen() {
               </button>
               <ProfileMenu />
             </div>
-          </div>
-        </div>
+          }
+        />
 
         <div className="px-4 mt-4 space-y-2">
           {/* Error */}
@@ -182,9 +222,7 @@ export default function TrainerMessagesScreen() {
                   key={thread.other_user_id}
                   type="button"
                   onClick={() =>
-                    navigate(`/trainer/messages/${thread.other_user_id}`, {
-                      state: { clientId: thread.client_id },
-                    })
+                    openThread(thread.other_user_id, thread.client_id, thread.other_user_name)
                   }
                   className="w-full rounded-2xl p-4 border border-gray-100 shadow-sm flex items-center gap-3 active:scale-[0.98] transition-transform text-left"
                   style={{ backgroundColor: hasUnread ? '#f0fdfa' : '#ffffff' }}
@@ -257,6 +295,29 @@ export default function TrainerMessagesScreen() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Detail column — desktop only. Mobile keeps push navigation. */}
+      <div className="hidden lg:flex lg:flex-1 lg:flex-col lg:h-screen">
+        {selectedThread ? (
+          <TrainerMessageThreadView
+            key={selectedThread.id}
+            otherUserId={selectedThread.id}
+            initialClientId={selectedThread.clientId}
+            initialName={selectedThread.name}
+            initialRole={selectedThread.role}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+              style={{ backgroundColor: '#f0fdfa' }}
+            >
+              <MessageSquare size={28} style={{ color: '#0d9488' }} />
+            </div>
+            <p className="text-gray-500 text-sm">Select a conversation to read and reply</p>
+          </div>
+        )}
       </div>
 
       {/* Compose modal (centered overlay) — pick an active client to start a conversation */}
@@ -357,8 +418,84 @@ export default function TrainerMessagesScreen() {
                 </div>
               )}
 
+              {!clientsLoading && !clientsError && (
+                <>
+                  {/* Group: Assessment Team (general team message — clientId null) */}
+                  <p
+                    style={{
+                      padding: '12px 20px 6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6b7280',
+                    }}
+                  >
+                    Assessment Team
+                  </p>
+                  {assessorId ? (
+                    <div
+                      onClick={() => startTeamConversation(assessorId, 'Assessment Team')}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                      style={{
+                        padding: '14px 20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        borderBottom: '1px solid #f3f4f6',
+                        cursor: 'pointer',
+                        backgroundColor: '#ffffff',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '9999px',
+                          backgroundColor: '#166534',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <ShieldCheck size={20} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827' }}>
+                          Assessment Team
+                        </p>
+                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                          Wellness assessors
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p style={{ color: '#9ca3af', fontSize: '13px', padding: '4px 20px 12px' }}>
+                      Assessment team is unavailable right now.
+                    </p>
+                  )}
+
+                  {/* Group: My Clients (active + assessment-cleared) */}
+                  <p
+                    style={{
+                      padding: '12px 20px 6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6b7280',
+                    }}
+                  >
+                    My Clients
+                  </p>
+                </>
+              )}
+
               {!clientsLoading && !clientsError && clients.length === 0 && (
-                <p style={{ color: '#6b7280', fontSize: '14px', textAlign: 'center', padding: '32px 20px' }}>
+                <p style={{ color: '#9ca3af', fontSize: '13px', padding: '4px 20px 12px' }}>
                   No active clients to message yet.
                 </p>
               )}
@@ -367,7 +504,7 @@ export default function TrainerMessagesScreen() {
                 clients.map(client => (
                   <div
                     key={client.id}
-                    onClick={() => startConversation(client.id)}
+                    onClick={() => startConversation(client.id, client.full_name)}
                     onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
                     style={{

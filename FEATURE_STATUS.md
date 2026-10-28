@@ -1,6 +1,6 @@
 # FEATURE_STATUS.md
 # WellnessConnect — Master Status Document
-*Last updated: 24 May 2026*
+*Last updated: 28 May 2026*
 
 ---
 
@@ -171,6 +171,18 @@ Workflow: develop on dev → test → merge to main → auto-deploys to producti
 - Twilio trial: only pre-verified numbers receive SMS until account upgraded
 - Admin portal RLS: preregistered_assessors has open RLS policy (anon read/write) — must lock down when admin moves to real Supabase Auth
 - Admin credentials hardcoded in client bundle — visible in browser dev tools — fix before real users
+
+### Pre-production hardening (from trainer approval gate rollout, 28 May 2026)
+
+- **RLS hardening — 9 tables have RLS disabled:** `client_profiles`, `messages`, `assessor_profiles`, `assessments`, `trainer_approvals`, `assessment_messages`, `monthly_reviews`, `escalations`, `callback_requests`. Flagged by Supabase advisor. When enabling RLS, the `approve_trainer` / `reject_trainer` `SECURITY DEFINER` RPCs (see `20260528_trainer_approval_gate_rpc.sql`) are the **reference pattern** for assessor cross-user writes — any other assessor-writes-another-user's-row action (e.g. clearance updates that touch `profiles`, message moderation, escalation closure) will break identically with silent zero-rows-affected and needs the same treatment.
+
+- **Onboarding form does NOT pre-populate in edit mode** — `useTrainerOnboarding` always initializes from `INITIAL_DATA` regardless of `location.state.mode`. Affects BOTH:
+  - the **Edit Profile** flow (returning trainer clicks Edit Profile → blank form)
+  - the **rejection-resubmit** flow (rejected trainer must re-enter the entire profile to resubmit)
+
+  One fix (load existing trainer profile into the hook when `mode='edit'` or `resubmit=true`) resolves both. **Priority bumped** — resubmit flow is now part of an active gate, blank-form friction has real cost.
+
+- **Rejected/de-approved trainer disappears from existing clients' "My Trainer" tab**, not just from Discovery. The `approved_trainers` view filter applies to the base trainer-list query, so any existing `trainer_client_links` to a now-rejected trainer becomes invisible to the client (no card on either tab). **Accepted as-is for MVP** — a rejected trainer can't deliver service anyway. Post-MVP: render a "trainer temporarily unavailable / contact support" placeholder card on the client's My Trainer tab instead of a silent vanish, so the client isn't confused about where their trainer went.
 
 ---
 

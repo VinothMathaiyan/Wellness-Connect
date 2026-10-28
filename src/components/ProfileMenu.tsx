@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut } from 'lucide-react';
+import { LogOut, UserCog } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWellness } from '@/context/WellnessContext';
 import { supabase } from '@/lib/supabaseClient';
+import UserAvatar from './UserAvatar';
+import WhatsAppSupportButton from '@/modules/shared/components/WhatsAppSupportButton';
+import { SUPPORT_WHATSAPP_NUMBER } from '@/config/support';
 
 /**
  * ProfileMenu — shared avatar + logout dropdown.
@@ -23,7 +26,20 @@ const ROLE_LABELS: Record<string, string> = {
   assessor: 'Assessor',
 };
 
-export default function ProfileMenu() {
+interface ProfileMenuProps {
+  /** Render this image as the avatar instead of the text initial (e.g. trainer's uploaded photo). */
+  avatarSrc?: string | null;
+  /** Where to navigate after logout. Defaults to '/'. */
+  logoutRedirect?: string;
+  /** Logout button label. Defaults to 'Log out'. */
+  logoutLabel?: string;
+}
+
+export default function ProfileMenu({
+  avatarSrc,
+  logoutRedirect = '/',
+  logoutLabel = 'Log out',
+}: ProfileMenuProps = {}) {
   const navigate = useNavigate();
   const { appState, userId, userRole, logout } = useWellness();
   const [open, setOpen] = useState(false);
@@ -46,23 +62,40 @@ export default function ProfileMenu() {
   }, [userId]);
 
   const displayName = name || appState.full_name || 'My Account';
-  const initial = (name || appState.full_name || 'User').charAt(0).toUpperCase();
+  const baseName = name || appState.full_name || 'User';
   const roleLabel = userRole ? ROLE_LABELS[userRole] : 'Account';
 
   const handleLogout = async () => {
     setOpen(false);
     await logout();
-    navigate('/', { replace: true });
+    navigate(logoutRedirect, { replace: true });
+  };
+
+  // Assessors have no profile edit screen, so the row is hidden for them.
+  // Unknown/unresolved roles fall back to the client profile screen so the
+  // option still appears if userRole hasn't hydrated yet when the menu opens.
+  const editProfilePath =
+    userRole === 'trainer' ? '/trainer/onboarding'
+    : userRole === 'client' ? '/onboarding/profile'
+    : userRole === 'assessor' ? null
+    : '/onboarding/profile';
+
+  const handleEditProfile = () => {
+    if (!editProfilePath) return;
+    setOpen(false);
+    // Signal "edit" intent so onboarding screens skip their
+    // already-onboarded → dashboard redirect.
+    navigate(editProfilePath, { state: { mode: 'edit' } });
   };
 
   return (
     <div className="relative">
       <button
         onClick={() => setOpen(prev => !prev)}
-        className="w-[36px] h-[36px] rounded-full bg-white border-[1.5px] border-[#1D9E75] flex items-center justify-center text-[14px] font-bold text-[#1D9E75] active:bg-[#F0F9FF] transition-colors"
+        className="active:opacity-80 transition-opacity focus:outline-none rounded-full"
         aria-label="Profile menu"
       >
-        {initial}
+        <UserAvatar name={baseName} src={avatarSrc} variant="outlined" size="sm" />
       </button>
 
       <AnimatePresence>
@@ -96,12 +129,40 @@ export default function ProfileMenu() {
                 <p className="text-[11px] text-[#6B7280] mt-0.5">{roleLabel}</p>
               </div>
 
+              {editProfilePath && (
+                <>
+                  <button
+                    onClick={handleEditProfile}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors"
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f3f4f6')}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <UserCog size={15} style={{ color: '#374151', flexShrink: 0 }} />
+                    <span style={{ color: '#374151', fontSize: 14, fontWeight: 600 }}>Edit Profile</span>
+                  </button>
+                  <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '4px 0' }} />
+                </>
+              )}
+
+              {/* Contact Support — only shown (with its divider) when a support
+                  number is configured, so an unset env var leaves no orphan row. */}
+              {SUPPORT_WHATSAPP_NUMBER && (
+                <>
+                  <WhatsAppSupportButton
+                    userName={baseName}
+                    role={userRole}
+                    onClick={() => setOpen(false)}
+                  />
+                  <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '4px 0' }} />
+                </>
+              )}
+
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2.5 px-4 py-3 text-left active:bg-red-50 transition-colors"
               >
                 <LogOut size={15} style={{ color: '#DC2626', flexShrink: 0 }} />
-                <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>Log out</span>
+                <span style={{ color: '#DC2626', fontSize: 14, fontWeight: 600 }}>{logoutLabel}</span>
               </button>
             </motion.div>
           </>

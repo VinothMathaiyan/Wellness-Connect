@@ -201,7 +201,7 @@ export default function WeeklyPlanScreen() {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3 lg:max-w-3xl lg:mx-auto lg:w-full">
 
           {/* ── Week Indicator ────────────────────────────────────────────────── */}
           <div className="flex flex-col items-center py-3">

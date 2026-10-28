@@ -172,7 +172,7 @@ export default function CheckinReviewScreen() {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-3 lg:max-w-3xl lg:mx-auto lg:w-full">
 
           {isLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -278,12 +278,22 @@ export default function CheckinReviewScreen() {
                 <ScoreBar label="Energy" value={energyScore} isRed={false} />
               </div>
 
+              {/* ── Client's Note ──────────────────────────────────────────────── */}
+              {data?.noteForTrainer && (
+                <div className="bg-white rounded-2xl shadow-sm p-4">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                    Client&apos;s Note
+                  </p>
+                  <p
+                    className="text-sm text-gray-700 leading-relaxed"
+                    style={{ fontStyle: 'italic' }}
+                  >
+                    &ldquo;{data.noteForTrainer}&rdquo;
+                  </p>
+                </div>
+              )}
+
               {/* ── Trainer Response ──────────────────────────────────────────────── */}
-              {/*
-                Client's Note section is intentionally hidden — daily_metrics
-                has no client_note column yet. Re-enable here once a column
-                exists or once the client note is captured elsewhere.
-              */}
               <div className="bg-white rounded-2xl shadow-sm p-4">
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
                   Your Response to Client

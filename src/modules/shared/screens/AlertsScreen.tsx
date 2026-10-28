@@ -31,6 +31,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { ClientNotification, Notification } from '../../../types';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 
 
 
@@ -100,7 +101,6 @@ import { useNavigate } from 'react-router-dom';
 import { useWellness } from '../../../context/WellnessContext';
 import {
   getClientNotifications,
-  getLatestPendingPlan,
   getRiskAlerts,
   markAlertRead,
   markClientNotificationRead,
@@ -108,6 +108,8 @@ import {
   createEscalation,
   getAssessorId,
 } from '../../../services/supabaseService';
+import ClientBottomNav from '../../client/components/ClientBottomNav';
+import MobileShell from '../../../components/MobileShell';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -148,6 +150,35 @@ function getClientNotificationDisplay(notification: ClientNotification): {
     };
   }
 
+  if (notification.type === 'profile_updated') {
+    return {
+      Icon: ClipboardList,
+      iconColor: '#7C3AED',
+      iconBg: '#EDE9FE',
+      title: 'Assessment team updated your profile',
+      unreadBorder: '#7C3AED',
+    };
+  }
+
+  if (notification.type === 'assessment_complete') {
+    const cleared = (notification.message ?? '').toLowerCase().includes('cleared for training');
+    return cleared
+      ? {
+          Icon: CheckCircle2,
+          iconColor: '#16A34A',
+          iconBg: '#DCFCE7',
+          title: 'Your assessment is complete!',
+          unreadBorder: '#16A34A',
+        }
+      : {
+          Icon: ShieldAlert,
+          iconColor: '#D97706',
+          iconBg: '#FEF3C7',
+          title: 'Your assessment needs further review',
+          unreadBorder: '#D97706',
+        };
+  }
+
   return {
     Icon: ClipboardList,
     iconColor: '#166534',
@@ -166,6 +197,7 @@ function ProgramNotificationItem({
 }) {
   const display = getClientNotificationDisplay(notification);
   const Icon = display.Icon;
+  const isUnread = !notification.is_read;
   const [hovered, setHovered] = React.useState(false);
 
   return (
@@ -175,12 +207,13 @@ function ProgramNotificationItem({
       onMouseLeave={() => setHovered(false)}
       className="w-full rounded-[12px] p-[14px] border-[1.5px] flex items-center gap-[14px] mb-[10px] cursor-pointer active:scale-[0.98] transition-all text-left"
       style={{
-        backgroundColor: hovered ? '#F9FAFB' : '#ffffff',
+        backgroundColor: hovered ? '#F9FAFB' : isUnread ? '#ffffff' : '#F9FAFB',
         cursor: 'pointer',
-        borderColor: '#E5E7EB',
-        borderLeft: notification.is_read
-          ? '3px solid transparent'
-          : `3px solid ${display.unreadBorder}`,
+        borderColor: isUnread ? '#E5E7EB' : '#F3F4F6',
+        opacity: isUnread ? 1 : 0.82,
+        borderLeft: isUnread
+          ? `3px solid ${display.unreadBorder}`
+          : '3px solid transparent',
       }}
     >
       <div
@@ -193,21 +226,21 @@ function ProgramNotificationItem({
       <div className="flex-1 min-w-0">
         <h4
           className="text-[13px] leading-[1.4] mb-0.5"
-          style={{ fontWeight: notification.is_read ? 600 : 700, color: '#111827' }}
+          style={{ fontWeight: isUnread ? 700 : 600, color: isUnread ? '#111827' : '#374151' }}
         >
           {display.title}
         </h4>
         {notification.message && (
-          <p className="text-[12px] leading-snug line-clamp-2" style={{ color: '#4B5563' }}>
+          <p className="text-[12px] leading-snug line-clamp-2" style={{ color: isUnread ? '#4B5563' : '#6B7280' }}>
             {notification.message}
           </p>
         )}
-        <span className="text-[12px] mt-1 block" style={{ color: '#6B7280' }}>
+        <span className="text-[12px] mt-1 block" style={{ color: isUnread ? '#6B7280' : '#9CA3AF' }}>
           {relativeTime(notification.created_at)}
         </span>
       </div>
 
-      {!notification.is_read && (
+      {isUnread && (
         <span
           className="w-[8px] h-[8px] rounded-full shrink-0"
           style={{ backgroundColor: display.unreadBorder }}
@@ -311,21 +344,18 @@ export default function AlertsScreen() {
     }
 
     if (notification.type === 'program_assigned') {
-      try {
-        const pendingPlanId = await getLatestPendingPlan(userId);
-        if (pendingPlanId) {
-          navigate(`/client/program-approval/${pendingPlanId}`);
-        } else {
-          navigate('/client/dashboard');
-        }
-      } catch {
-        console.error('Latest pending plan lookup failed for', userId);
-        navigate('/client/dashboard');
-      }
+      // Programs are active on creation — no approval step. Send the client to
+      // their dashboard, where the active program is shown.
+      navigate('/client/dashboard');
     } else if (notification.type === 'session_cancelled') {
       navigate('/client/sessions');
     } else if (notification.type === 'session_scheduled') {
       navigate('/client/sessions');
+    } else if (notification.type === 'profile_updated') {
+      navigate('/onboarding/profile');
+    } else if (notification.type === 'assessment_complete') {
+      const cleared = (notification.message ?? '').toLowerCase().includes('cleared for training');
+      navigate(cleared ? '/client/trainers' : '/client/dashboard');
     }
   };
 
@@ -364,27 +394,15 @@ export default function AlertsScreen() {
     [clientNotifications, notifications],
   );
 
-  // De-duplicate program updates: keep only the most recent notification per type
-  // (e.g. a single "Program assigned" instead of one for every re-assignment).
-  const dedupedClientNotifications = useMemo(() => {
-    const sorted = [...clientNotifications].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
-    return sorted.reduce((acc, n) => {
-      if (!acc.find(x => x.type === n.type)) acc.push(n);
-      return acc;
-    }, [] as typeof clientNotifications);
-  }, [clientNotifications]);
-
     return (
-        <div className="max-w-md mx-auto w-full min-h-screen relative shadow-xl bg-gray-50 flex flex-col">
+        <MobileShell>
 
-            {/* ZONE 1 — TOP BAR */}
-            <header className="h-[52px] w-full flex items-center justify-between px-[20px] bg-white border-b-[0.5px] border-[#E5E7EB] shrink-0 sticky top-0 z-20">
-                <div className="w-[36px]" />
-                <h1 className="text-[16px] font-semibold text-[#111827]">Alerts</h1>
-                <ProfileMenu />
-            </header>
+            {/* ZONE 1 — TOP BAR — tab destination: title-only header, no back arrow */}
+            <ScreenHeader
+                variant="sub"
+                title="Alerts"
+                avatar={<ProfileMenu />}
+            />
 
             {/* MAIN LIST AREA */}
             <div className="flex-1 overflow-y-auto px-[16px] pb-[80px] scrollbar-hide">
@@ -460,7 +478,7 @@ export default function AlertsScreen() {
                         >
                             PROGRAM UPDATES
                         </h2>
-                        {dedupedClientNotifications.map(notification => (
+                        {clientNotifications.map(notification => (
                             <ProgramNotificationItem
                                 key={notification.id}
                                 notification={notification}
@@ -545,29 +563,9 @@ export default function AlertsScreen() {
             </div>
 
             {/* BOTTOM NAVIGATION BAR */}
-            <nav className="absolute bottom-0 left-0 right-0 h-[56px] bg-white border-t-[0.5px] border-[#E5E7EB] flex items-center justify-around px-[10px] z-[50]">
-                <NavButton label="Home" icon={Home} onClick={() => navigate('/client/dashboard')} />
-                <NavButton label="Trainers" icon={Users} onClick={() => navigate('/client/trainers')} />
-                <NavButton label="Progress" icon={BarChart3} onClick={() => navigate('/client/progress')} />
-                <NavButton label="Messages" icon={MessageSquare} onClick={() => navigate('/client/messages')} />
-                <NavButton label="Alerts" icon={Bell} active={true} badgeContent={unreadCount} />
-            </nav>
-        </div>
+            <ClientBottomNav unreadAlertsCount={unreadCount} />
+        </MobileShell>
     );
 }
 
-// Reused NavButton from HomeScreen UI source of truth
-const NavButton = ({ label, icon: Icon, active = false, onClick, badgeContent }: { label: string; icon: LucideIcon; active?: boolean; onClick?: () => void; badgeContent?: number }) => (
-    <button
-        onClick={onClick}
-        className="flex flex-col items-center justify-center gap-[2px] transition-all"
-    >
-        <div className="relative">
-            <Icon size={20} strokeWidth={active ? 2.5 : 2} color={active ? '#1D9E75' : '#6B7280'} />
-            {badgeContent && badgeContent > 0 && (
-                <div className="absolute -top-[1.5px] -right-[1.5px] w-[6px] h-[6px] bg-[#E24B4A] rounded-full" />
-            )}
-        </div>
-        <span className={`text-[10px] font-medium ${active ? 'text-[#1D9E75]' : 'text-[#6B7280]'}`}>{label}</span>
-    </button>
-);
+

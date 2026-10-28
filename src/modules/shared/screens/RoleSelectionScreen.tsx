@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Activity, Users, Check, Loader2 } from 'lucide-react';
 import MobileShell from '../../../components/MobileShell';
 import Button from '../../../components/Button';
+import Input from '../../../components/Input';
 import { useWellness } from '../../../context/WellnessContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { isTrainerOnboardingComplete } from '../../../services/supabaseService';
@@ -33,6 +34,23 @@ export default function RoleSelectionScreen() {
   const [selectedRole, setSelectedRole] = useState<SelectedRole | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Name + email are captured here (not at the phone-only entry screen) and
+  // only for new users — returning users are routed straight to their
+  // dashboard after OTP and never reach this screen. Pre-fill from appState so
+  // a back-navigation within the flow doesn't lose what was typed.
+  const [fullName, setFullName] = useState(appState.full_name ?? '');
+  const [email, setEmail] = useState(appState.email ?? '');
+  const [touched, setTouched] = useState<{ name: boolean; email: boolean }>({ name: false, email: false });
+
+  const nameError = (v: string): string =>
+    !v || v.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(v.trim())
+      ? 'Please enter your full name'
+      : '';
+  const emailError = (v: string): string =>
+    !v.trim() ? '' : /\S+@\S+\.\S+/.test(v.trim()) ? '' : 'Please enter a valid email address';
+
+  const detailsValid = nameError(fullName) === '' && emailError(email) === '';
+
   // Redirect assessors before the role-selection UI ever renders.
   // Uses userRole from WellnessContext (set by SignUpScreen at login time
   // via setUserRole('assessor')) instead of querying profiles directly —
@@ -48,23 +66,32 @@ export default function RoleSelectionScreen() {
     const target = ROLES.find(r => r.id === role)!;
     setIsLoading(true);
 
-    try {
-      console.log('Upserting profile:', {
-        id: userId, role, full_name: appState.full_name
-      });
+    const cleanName = fullName.trim();
+    const cleanEmail = email.trim() || null;
 
+    try {
+      // COMPLIANCE: profiles.consent_at is recorded ONCE by the DB column
+      // DEFAULT (now()) when this row is first created — which is immediately
+      // after the consent checkbox + OTP. Never add consent_at to this payload:
+      // on a re-upsert it would overwrite the original timestamp and falsify
+      // the consent record.
       const { error } = await supabase
         .from('profiles')
         .upsert({
           id: userId,
           role,
-          full_name: appState.full_name ?? '',
-          phone_number: appState.mobile ?? '',
+          full_name: cleanName,
+          email: cleanEmail,
+          // Write NULL (not '') when absent — '' would collide under the
+          // profiles_phone_number_key UNIQUE constraint; NULLs are allowed.
+          phone_number: appState.mobile || null,
         }, { onConflict: 'id' });
 
       if (error) throw error;
 
-      setAppState(prev => ({ ...prev, userRole: role }));
+      // Keep name/email in appState so downstream onboarding screens
+      // (AccountReady, TrainerSetupComplete) can display them.
+      setAppState(prev => ({ ...prev, full_name: cleanName, email: cleanEmail ?? '', userRole: role }));
 
       // Trainers who already completed onboarding go straight to the dashboard.
       // New trainers (or those with an incomplete profile) continue to /trainer/welcome.
@@ -92,14 +119,38 @@ export default function RoleSelectionScreen() {
 
       {/* Content */}
       <div className="flex-1 px-6 pt-2 pb-28 overflow-y-auto">
-        <div className="pt-6 pb-8 text-center">
+        <div className="pt-6 pb-6 text-center">
           <h2 className="text-[22px] font-bold text-text-primary leading-snug">
-            How will you use the app?
+            Tell us about yourself
           </h2>
           <p className="text-text-secondary text-sm mt-2 leading-relaxed">
-            Choose the role that best describes you to get started.
+            A few details to set up your account.
           </p>
         </div>
+
+        {/* Name + email — collected here for new users (entry screen is phone-only) */}
+        <div className="space-y-3 mb-8">
+          <Input
+            type="text"
+            placeholder="Full name"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            onBlur={() => setTouched(t => ({ ...t, name: true }))}
+            disabled={isLoading}
+            error={touched.name ? nameError(fullName) : undefined}
+          />
+          <Input
+            type="email"
+            placeholder="Email address (optional)"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setTouched(t => ({ ...t, email: true }))}
+            disabled={isLoading}
+            error={touched.email ? emailError(email) : undefined}
+          />
+        </div>
+
+        <p className="text-[13px] font-semibold text-text-primary mb-3 px-1">How will you use the app?</p>
 
         <div className="space-y-4">
           {ROLES.map(({ id, Icon, title, description }) => {
@@ -169,7 +220,7 @@ export default function RoleSelectionScreen() {
       <div className="absolute bottom-0 w-full p-6 bg-white z-10 border-t border-gray-100">
         <Button
           onClick={() => selectedRole && handleRoleSelect(selectedRole)}
-          disabled={!selectedRole || isLoading}
+          disabled={!selectedRole || !detailsValid || isLoading}
           isLoading={isLoading}
         >
           Continue

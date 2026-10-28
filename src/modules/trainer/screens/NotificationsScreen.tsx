@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  ChevronLeft,
   Bell,
   UserPlus,
   MessageSquare,
@@ -12,6 +11,7 @@ import MobileShell from '../../../components/MobileShell';
 import TrainerBottomNav from '../components/TrainerBottomNav';
 import { useWellness } from '../../../context/WellnessContext';
 import ProfileMenu from '../../../components/ProfileMenu';
+import ScreenHeader from '@/components/ScreenHeader';
 import {
   getTrainerNotifications,
   markNotificationRead,
@@ -249,22 +249,12 @@ export default function NotificationsScreen() {
     <MobileShell>
       <div className="flex flex-col min-h-full bg-gray-50">
 
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="bg-white px-4 pt-6 pb-4 flex items-center gap-3 shadow-sm">
-          <button
-            onClick={() => navigate(-1)}
-            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
-            aria-label="Go back"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">
-              Notifications{unreadCount > 0 ? ` (${unreadCount})` : ''}
-            </h1>
-          </div>
-          <ProfileMenu />
-        </div>
+        <ScreenHeader
+          variant="sub"
+          title={`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+          onBack={() => navigate(-1)}
+          avatar={<ProfileMenu />}
+        />
 
         {/* ── Unread summary pill ──────────────────────────────────────────── */}
         {!loading && !hasError && (
